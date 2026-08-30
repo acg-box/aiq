@@ -152,25 +152,25 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.12`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.13`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.12 retains all 72 candidate.11 task-facing semantics,
+`aiq.catalog.v2`. Candidate.13 retains all 72 candidate.12 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:bce01005d0b8591102b85d669be69e7829e65d69a286b68ca11acf358392b2f4`.
+`sha256:1fa2ee49cbb93cc5cbc27a91ba17da16c5e42f65d5e9bc583da090f005db97d0`.
 Its ordered task-metadata digest is
-`sha256:b371110f0e96f25a58a20ff903b12d2d5fa9ebb6a880e929616f45bbb3ab24e4`.
+`sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147`.
 Its public release digest is
-`sha256:baed93769d0a4ddf81066c41190b10e22fa76186cf1e5a9cbe17736e5a55e165`.
+`sha256:3ea18c80a1f832a706bca6305bdf112adba253b21e11e52c0a5f4c56514402d1`.
 
-Candidates.1 through .11 are immutable predecessor evidence. Candidate.5
+Candidates.1 through .12 are immutable predecessor evidence. Candidate.5
 remains the durable source for the seven distinct disclosed scenario, operation,
 result, evaluator, metamorphic, and cross-task substitution contracts. Its
 source integration was rejected because
@@ -189,7 +189,7 @@ corpus, and source inputs for candidate packaging. It binds the complete validat
 context through signed-payload serialization and uses Node.js 24.18.0. The active
 1.0.7, Contrast, historical, and Official validators remain
 unchanged. The commitment validator derives the expected candidate identity from
-the validated embedded catalog and rejects candidate.11 and older identities.
+the validated embedded catalog and rejects candidate.12 and older identities.
 Candidate.9 is rejected because `debugging-04` declared `src/task.mjs` while its
 prompt, workspace bindings, and weighted evaluator import `src/task.ts`, and
 `instruction-following-05` declared the non-schema field type `undefined` for
@@ -210,6 +210,11 @@ and derives workspace locations from progress files plus evaluator `path`
 targets, with evaluator-source fallback only when both are empty. The immutable
 tasks resolve to 71 workspace responses and one final response: progress is exact
 for 66 workspace tasks, empty for four, and a strict subset for one.
+Candidate.12 is rejected before model invocation because file loading used lexical
+task order while candidate validation required checked-catalog order. Candidate.13
+uses the existing catalog-order owner during candidate-only preparation. It also
+selects the v3 commitment schema only on that same candidate preflight route; the
+active and standalone preflight routes continue to require v2.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
@@ -229,7 +234,7 @@ command identities; exact total and per-tool counts still expose undeclared or
 extra calls. One matrix can contain at most 119 declared digest entries. The
 runner removes command text from provider stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.12 remains inactive and not production-publishable. Fresh
+redaction. Candidate.13 remains inactive and not production-publishable. Fresh
 independent review, double sealing, three qualification matrices,
 qualification, adoption, and cutover are pending.
 

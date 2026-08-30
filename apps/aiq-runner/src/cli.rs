@@ -271,6 +271,7 @@ impl ExactFileBinding {
 struct PreflightAdmissionBinding {
 	capabilities: ExactFileBinding,
 	corpus_commitment: ExactFileBinding,
+	candidate_qualification: bool,
 	execution_policy: ExecutionToolPolicy,
 	evaluator_runtime_path: PathBuf,
 	evaluator_runtime_digest: String,
@@ -314,6 +315,7 @@ impl PreflightAdmissionBinding {
 		Ok(Self {
 			capabilities,
 			corpus_commitment,
+			candidate_qualification: inputs.candidate_qualification,
 			execution_policy: inputs.execution_policy.clone(),
 			evaluator_runtime_path: inputs.evaluator_runtime.executable().to_owned(),
 			evaluator_runtime_digest: inputs.evaluator_runtime.executable_digest().to_owned(),
@@ -344,7 +346,10 @@ impl PreflightAdmissionBinding {
 		self.capabilities.verify()?;
 		self.corpus_commitment.verify()?;
 
-		let policy = corpus_commitment::read_execution_tool_policy(&self.corpus_commitment.path)?;
+		let policy = corpus_commitment::read_execution_tool_policy(
+			&self.corpus_commitment.path,
+			self.candidate_qualification,
+		)?;
 
 		if policy != self.execution_policy {
 			return Err("corpus execution policy changed before a capability probe".into());
@@ -405,6 +410,7 @@ impl PreflightAdmissionBinding {
 struct PreflightAdmissionInputs<'a> {
 	capabilities: &'a Path,
 	corpus_commitment: &'a Path,
+	candidate_qualification: bool,
 	execution_policy: &'a ExecutionToolPolicy,
 	evaluator_runtime: &'a EvaluatorRuntime,
 	codex_toolchain_root: &'a Path,
@@ -2111,7 +2117,7 @@ fn run_speed_observation(
 	let codex_binary = controlled_codex_binary(codex_binary)?;
 	let codex_home = controlled_codex_home(codex_home)?;
 	let evaluator_runtime = EvaluatorRuntime::resolve(evaluator_runtime)?;
-	let tool_policy = corpus_commitment::read_execution_tool_policy(corpus_commitment)?;
+	let tool_policy = corpus_commitment::read_execution_tool_policy(corpus_commitment, false)?;
 	let model_toolchain =
 		preflight_model_toolchain(codex_toolchain_root, &tool_policy, &evaluator_runtime)?;
 	let batch = speed_observation::observe_speed(&SpeedObservationOptions {
@@ -2564,7 +2570,7 @@ fn run_preflight(
 	let manifest = read_json::<CapabilityManifest>(&path)?;
 	let codex_binary = controlled_codex_binary(&codex_binary)?;
 	let evaluator_runtime = EvaluatorRuntime::resolve(&evaluator_runtime)?;
-	let policy = corpus_commitment::read_execution_tool_policy(&corpus_commitment)?;
+	let policy = corpus_commitment::read_execution_tool_policy(&corpus_commitment, false)?;
 	let model_toolchain =
 		preflight_model_toolchain(&codex_toolchain_root, &policy, &evaluator_runtime)?;
 	let admission = official_admission.map(read_successful_official_admission).transpose()?;
@@ -2632,6 +2638,7 @@ fn run_preflight(
 		PreflightAdmissionInputs {
 			capabilities: &path,
 			corpus_commitment: &corpus_commitment,
+			candidate_qualification: false,
 			execution_policy: &policy,
 			evaluator_runtime: &evaluator_runtime,
 			codex_toolchain_root: &codex_toolchain_root,
@@ -3378,7 +3385,12 @@ fn prepare_run_model_free(options: &RunOptions) -> Result<PreparedRun, Box<dyn s
 		return Err("task validation failed; no model was invoked".into());
 	}
 
-	let selected_tasks = select_tasks(&report.tasks, &options.task_selectors)?;
+	let mut selected_tasks = select_tasks(&report.tasks, &options.task_selectors)?;
+
+	if options.candidate_qualification {
+		candidate_catalog::order_tasks_by_checked_candidate(&mut selected_tasks)?;
+	}
+
 	let selected_models = select_models(&options.model_selectors)?;
 	let official_shape = selected_tasks.len() == 72 && selected_models == MODEL_MATRIX;
 
@@ -3671,8 +3683,10 @@ fn freeze_run_preflight(
 ) -> Result<PreflightCache, Box<dyn std::error::Error>> {
 	let official_admission_digest = official_admission.map(|(_, digest)| digest.as_str());
 	let evaluator_runtime = resolve_run_evaluator_runtime(options)?;
-	let toolchain_policy =
-		corpus_commitment::read_execution_tool_policy(&options.corpus_commitment)?;
+	let toolchain_policy = corpus_commitment::read_execution_tool_policy(
+		&options.corpus_commitment,
+		options.candidate_qualification,
+	)?;
 	let model_toolchain = corpus_commitment::validate_model_toolchain(
 		&options.codex_toolchain_root,
 		&toolchain_policy,
@@ -3746,6 +3760,7 @@ fn freeze_run_preflight(
 				PreflightAdmissionInputs {
 					capabilities: &options.capabilities,
 					corpus_commitment: &options.corpus_commitment,
+					candidate_qualification: options.candidate_qualification,
 					execution_policy: &toolchain_policy,
 					evaluator_runtime: &evaluator_runtime,
 					codex_toolchain_root: &options.codex_toolchain_root,
@@ -6438,6 +6453,7 @@ mod tests {
 	use clap::Parser as _;
 
 	use crate::capacity;
+	use crate::cli::task;
 	#[cfg(unix)]
 	use crate::corpus_commitment::tests::RunnerProvenancePathFixture;
 	use crate::protocol;
@@ -7105,6 +7121,107 @@ mod tests {
 		assert!(!output.exists());
 
 		fs::remove_dir_all(fixture.root).expect("candidate package authority fixture cleanup");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn loaded_candidate_preparation_and_packaging_share_catalog_order_and_identity() {
+		let fixture = RunnerProvenancePathFixture::new("candidate-preparation-order");
+		let corpus_path = fixture.write("candidate", &fixture.candidate_commitment);
+		let tasks_path =
+			write_task_directory(&fixture.root, "candidate-tasks", &fixture.candidate_tasks);
+		let schedule_path = fixture.root.join("schedule.json");
+
+		fs::write(
+			&schedule_path,
+			serde_json::to_vec(&crate::schedule::ScheduleConfig::default())
+				.expect("candidate schedule JSON"),
+		)
+		.expect("candidate schedule");
+
+		let loaded = super::load_tasks(None, Some(&tasks_path)).expect("loaded candidate tasks");
+
+		assert_eq!(loaded.tasks.len(), 72);
+		assert_eq!(loaded.tasks[8].task_id, "data-processing-01");
+		assert_eq!(fixture.candidate_tasks[8].task_id, "debugging-01");
+
+		let options = super::RunOptions {
+			public_tasks: None,
+			hidden_tasks: Some(tasks_path.clone()),
+			corpus_commitment: corpus_path.clone(),
+			source_root: fixture.source_root.clone(),
+			capabilities: fixture.root.join("capabilities.json"),
+			workspace_root: fixture.root.join("baselines"),
+			execution_root: fixture.root.join("execution"),
+			evaluator_root: fixture.evaluator_root.clone(),
+			evaluator_runtime: fixture.root.join("toolchain/node"),
+			codex_toolchain_root: fixture.root.join("toolchain"),
+			schedule: schedule_path,
+			slot_date: "2026-08-30".to_owned(),
+			occurrence: "night".to_owned(),
+			observed_at: "unix-ms:1788058800000".to_owned(),
+			codex_binary: "/controlled/codex".to_owned(),
+			codex_home: fixture.root.join("codex-home"),
+			artifact_root: fixture.root.join("artifacts"),
+			preflight_cache: fixture.root.join("preflight.json"),
+			official_admission: None,
+			refresh_preflight: false,
+			preflight_ttl_seconds: 86_400,
+			checkpoint: fixture.root.join("checkpoint.json"),
+			task_selectors: Vec::new(),
+			model_selectors: Vec::new(),
+			jobs: 32,
+			run_class: RunClass::Calibration,
+			candidate_qualification: true,
+			output: fixture.root.join("candidate-run.json"),
+		};
+		let prepared =
+			super::prepare_run_model_free(&options).expect("candidate model-free preparation");
+		let package = super::package_calibration_validation(super::CandidatePackageInputs {
+			public_tasks: None,
+			hidden_tasks: Some(&tasks_path),
+			corpus_commitment: Some(&corpus_path),
+			source_root: Some(&fixture.source_root),
+		})
+		.expect("candidate package preparation");
+		let package_tasks = package.tasks.as_ref().expect("candidate package tasks");
+
+		assert_eq!(prepared.report.tasks, fixture.candidate_tasks);
+		assert_eq!(package_tasks, &prepared.report.tasks);
+		assert_eq!(package.context, prepared.validation_context);
+		assert_eq!(
+			task::task_set_hash(package_tasks).expect("package task-set digest"),
+			prepared.task_set_hash
+		);
+		assert_eq!(
+			corpus_commitment::evaluator_digest(package_tasks).expect("package evaluator digest"),
+			corpus_commitment::evaluator_digest(&prepared.report.tasks)
+				.expect("prepared evaluator digest")
+		);
+		assert_eq!(
+			prepared.run_id,
+			resume::classified_run_id(
+				&prepared.slot,
+				&prepared.task_set_hash,
+				prepared.corpus.canonical_sha256(),
+				&prepared.selected_models,
+				RunClass::Calibration,
+			)
+			.expect("candidate run identity")
+		);
+
+		let mut current = options;
+
+		current.candidate_qualification = false;
+		current.output = fixture.root.join("current-run.json");
+
+		assert!(
+			super::prepare_run_model_free(&current).is_err(),
+			"the active validator must continue to reject candidate inputs"
+		);
+		assert!(!current.output.exists());
+
+		fs::remove_dir_all(fixture.root).expect("candidate preparation fixture cleanup");
 	}
 
 	#[cfg(unix)]
