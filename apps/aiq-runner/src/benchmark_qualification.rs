@@ -1830,7 +1830,7 @@ mod tests {
 			.expect("synthetic matrix");
 		let task_ids = tasks.iter().map(|task| task.task_id.clone()).collect::<Vec<_>>();
 		let projection = benchmark_qualification::candidate_projection_from_replayed_results(
-			"aiq-core/1.1.0-candidate.12",
+			"aiq-core/1.1.0-candidate.13",
 			&run.models,
 			&task_ids,
 			&run.results,
@@ -1851,7 +1851,7 @@ mod tests {
 
 		assert!(
 			benchmark_qualification::candidate_projection_from_replayed_results(
-				"aiq-core/1.1.0-candidate.12",
+				"aiq-core/1.1.0-candidate.13",
 				&MODEL_MATRIX,
 				&task_ids,
 				&invalid,
