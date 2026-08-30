@@ -98,13 +98,12 @@ cargo run -p aiq-verifier -- verify-qualification --help
 check. It uses the qualification implementation from the `aiq-runner` library,
 which is the same owner used by the runner command. It recomputes the exact
 artifact from the predeclared manifest, its independently retained expected
-digest, the qualification-ready catalog, and three replay-verified stage and
-attestation pairs. The trusted verifier derives every cell during replay and
-binds it through the signed stage digest. The command rejects unsupported
+digest, the qualification-ready catalog, and one replay-verified stage and
+attestation pair. The trusted verifier derives all 216 cells during replay and
+binds them through the signed stage digest. The command rejects unsupported
 versions, changed policy, catalog or candidate identity drift, missing or
-duplicate cells, runtime-invalid or synthetic cells, reused or swapped child
-evidence, untrusted signers, rejected children, threshold failures, and any
-artifact mismatch. It does not create a new
+duplicate cells, runtime-invalid or synthetic cells, untrusted signers, rejected
+evidence, and any artifact mismatch. It does not create a new
 qualification artifact, invoke a model, publish evidence, or change an already
 rejected child.
 
@@ -115,11 +114,10 @@ candidate stage and attestation files. It rejects Official, partial, synthetic,
 runtime-invalid, or active-1.0.7 evidence. The production worker has no candidate
 mode and continues to accept only its active 1.0.7 environment.
 
-The artifact reports a separate future-single-run prediction interval for each
-configuration and prediction-interval overlap groups. These are run-to-run
-repeatability diagnostics. They are distinct from the fixed-item-bank
-conditional interval used by Official scoring. Exact-cell agreement and mean
-absolute cell delta remain non-gating diagnostics.
+The artifact proves exact end-to-end identities and complete execution of Sol
+medium, Terra medium, and Luna medium over all 72 catalog-ordered tasks. It
+explicitly makes no prediction-interval, Spearman-correlation, run-variance, or
+precise-rank claim. Those stability fields do not exist in the v3 artifact.
 
 The production worker emits one compact `aiq.verifier-record.v2` JSON object to
 standard output after each claimed package. The record includes the exact claim
