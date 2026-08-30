@@ -152,25 +152,25 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.13`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.14`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.13 retains all 72 candidate.12 task-facing semantics,
+`aiq.catalog.v2`. Candidate.14 retains all 72 candidate.13 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:1fa2ee49cbb93cc5cbc27a91ba17da16c5e42f65d5e9bc583da090f005db97d0`.
+`sha256:1b1b11a80a6221fde444f269eeab37a936bda8d5b4962bcb33f0a55a341546df`.
 Its ordered task-metadata digest is
-`sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147`.
+`sha256:7ea2202e1ac3efee9a83a33c4323487bdb1f5d32cdf46ee4c60aaac53471c927`.
 Its public release digest is
-`sha256:3ea18c80a1f832a706bca6305bdf112adba253b21e11e52c0a5f4c56514402d1`.
+`sha256:849871d2a075ae3ec1bdf7cdf085dfe7af8465bb09224a4fdbca9f0c9bf6bfd3`.
 
-Candidates.1 through .12 are immutable predecessor evidence. Candidate.5
+Candidates.1 through .13 are immutable predecessor evidence. Candidate.5
 remains the durable source for the seven distinct disclosed scenario, operation,
 result, evaluator, metamorphic, and cross-task substitution contracts. Its
 source integration was rejected because
@@ -189,7 +189,7 @@ corpus, and source inputs for candidate packaging. It binds the complete validat
 context through signed-payload serialization and uses Node.js 24.18.0. The active
 1.0.7, Contrast, historical, and Official validators remain
 unchanged. The commitment validator derives the expected candidate identity from
-the validated embedded catalog and rejects candidate.12 and older identities.
+the validated embedded catalog and rejects candidate.13 and older identities.
 Candidate.9 is rejected because `debugging-04` declared `src/task.mjs` while its
 prompt, workspace bindings, and weighted evaluator import `src/task.ts`, and
 `instruction-following-05` declared the non-schema field type `undefined` for
@@ -215,6 +215,12 @@ task order while candidate validation required checked-catalog order. Candidate.
 uses the existing catalog-order owner during candidate-only preparation. It also
 selects the v3 commitment schema only on that same candidate preflight route; the
 active and standalone preflight routes continue to require v2.
+Candidate.13 is rejected operational evidence. Its isolated Jordan qualification
+completed all 17 preflight probes and started 88 task cells, but only 56 of 1,224
+cells completed before the five-hour subscription quota reached 100%; seven-day
+usage was 17%. No package, verifier stage, attestation, or qualification artifact
+exists. Candidate.14 keeps every task-facing semantic unchanged and replaces only
+the quota-infeasible candidate release-qualification shape.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
@@ -231,11 +237,12 @@ one `command_execution` call. It also requires one completed command-line digest
 The separate receipt `command_sha256` continues to identify the supplied tool
 file bytes. The runner retains digest counts only for task-declared required
 command identities; exact total and per-tool counts still expose undeclared or
-extra calls. One matrix can contain at most 119 declared digest entries. The
-runner removes command text from provider stdout and stderr evidence, but it
+extra calls. One three-configuration qualification matrix can contain at most
+21 declared digest entries. The runner removes command text from provider
+stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.13 remains inactive and not production-publishable. Fresh
-independent review, double sealing, three qualification matrices,
+redaction. Candidate.14 remains inactive and not production-publishable. Fresh
+independent review, double sealing, one qualification matrix,
 qualification, adoption, and cutover are pending.
 
 AIQ Core 1.1.0 sealing also requires one independently supplied
@@ -249,7 +256,7 @@ not cryptographic proof that a human reviewer was independent. The v1 review
 contract remains isolated to frozen 1.0.7 compatibility.
 
 The shared `aiq-runner` library owns
-`aiq.benchmark-qualification-policy.v1`. Both existing executables use that
+`aiq.benchmark-qualification-policy.v2`. Both existing executables use that
 same in-process implementation:
 
 ```sh
@@ -257,33 +264,21 @@ cargo run -p aiq-runner -- qualify-candidate --help
 cargo run -p aiq-verifier -- verify-qualification --help
 ```
 
-Qualification accepts exactly three predeclared, independently identified,
-complete, non-synthetic 17-by-72 calibration stages for one exact candidate.
-Each stage contains verifier-derived semantic cells and has a valid attestation
-from its predeclared verifier identity. The policy, candidate, and three
-child/run/verifier identities are fixed before analysis and supplied with an
-independently retained manifest digest. Completed package, stage, and
-attestation digests are unpredictable outputs; the artifact binds them only
-after those exact runs exist.
-Each matrix remains one 1,224-cell publication unit. Qualification does not
-pool, splice, publish, or relabel child runs. The policy requires 72 tasks in
-ten domains, at least 60 clusters, at least 48 informative tasks per matrix,
-at least three informative and four non-uniform tasks in every domain, at most
-three universal semantic-zero tasks, and at most three universal full-credit
-tasks. It also requires the median of the three pairwise configuration-rank
-Spearman values to be at least `0.70` and limits every pairwise configuration
-mean movement to five AIQ points.
+Qualification accepts exactly one predeclared, complete, non-synthetic 3-by-72
+Calibration stage: Sol medium, Terra medium, and Luna medium in that order over
+all 72 catalog-ordered tasks. Its verifier-derived 216 cells must all be
+semantically complete, and its attestation must come from the predeclared
+verifier. The manifest fixes the candidate, corpus, source, model selection,
+run, and verifier identities before execution. The final artifact additionally
+binds the exact signed package, runner, stage, attestation, provenance, and
+matrix digests.
 
-Exact-cell agreement and mean absolute cell delta are diagnostics, not gates.
-Each configuration also receives a separate 95% future-single-run prediction
-interval from its three equal-domain mean scores. The deterministic method uses
-the Student t value for two degrees of freedom, sample standard deviation, and
-the `sqrt(1 + 1/3)` prediction factor, then clamps the result to 0 through 100.
-Prediction-interval overlap components form uncertainty-aware comparison
-groups. This run-to-run interval is separate from the existing fixed-item-bank
-conditional interval. A rejected sealed candidate stays rejected. Any task,
-evaluator, policy, or identity revision requires a new candidate identity and a
-new three-run manifest.
+This is an end-to-end execution and identity qualification only. It makes no
+prediction-interval, Spearman-correlation, run-variance, or precise-rank claim.
+Those stability-only fields are absent from the v3 manifest and artifact. The
+active/default 17-configuration matrix and all AIQ Core 1.0.7 behavior remain
+unchanged. Any candidate task, evaluator, policy, or identity revision requires
+a new candidate identity and manifest.
 
 ## Repository map
 

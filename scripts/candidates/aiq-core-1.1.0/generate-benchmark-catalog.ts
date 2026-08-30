@@ -19,22 +19,22 @@ const GENERATOR_PATH = 'scripts/candidates/aiq-core-1.1.0/generate-benchmark-cat
 const DECISION_PATH = 'benchmarks/candidates/aiq-core-1.1.0/design-decisions.json';
 const TASK_RESPONSE_AUTHORITY_PATH =
   'benchmarks/candidates/aiq-core-1.1.0/task-response-authority.json';
-const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.13' as const;
-const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.12' as const;
+const CANDIDATE_ID = 'aiq-core/1.1.0-candidate.14' as const;
+const PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.13' as const;
 const RESPONSE_SOURCE_PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.11' as const;
 const CANDIDATE_9_ID = 'aiq-core/1.1.0-candidate.9' as const;
 const CANDIDATE_8_ID = 'aiq-core/1.1.0-candidate.8' as const;
 const TASK_ISSUE_PREDECESSOR_CANDIDATE_ID = 'aiq-core/1.1.0-candidate.5' as const;
-const PREDECESSOR_SOURCE_COMMIT = '7e7802e752d6bee281f7af5b7f0398e574488066' as const;
-const PREDECESSOR_SOURCE_TREE = '5b49d5de641d4ac9cf741c1f2118e29b6446afef' as const;
+const PREDECESSOR_SOURCE_COMMIT = '6fdfe4a93efe51ba26dbd3bea897585f4372ca7f' as const;
+const PREDECESSOR_SOURCE_TREE = 'd0033307eca6576a824ce599698769b6ad28c62b' as const;
 const PREDECESSOR_TASK_METADATA_SHA256 =
-  'sha256:b371110f0e96f25a58a20ff903b12d2d5fa9ebb6a880e929616f45bbb3ab24e4' as const;
+  'sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147' as const;
 const PREDECESSOR_CATALOG_CANONICAL_SHA256 =
-  'sha256:bce01005d0b8591102b85d669be69e7829e65d69a286b68ca11acf358392b2f4' as const;
+  'sha256:1fa2ee49cbb93cc5cbc27a91ba17da16c5e42f65d5e9bc583da090f005db97d0' as const;
 const PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 =
   'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54' as const;
 const PREDECESSOR_CATALOG_ENTRY_BINDINGS_SHA256 =
-  'sha256:a36de8178fbfa585037dbeb18a5673970d55d825d078ba6e5181bad9d7ab643a' as const;
+  'sha256:c32d47e00928c7c42bbf82bf803248a387ac155c9bd4389d62298cc397d9d513' as const;
 const PREDECESSOR_PUBLIC_CONTRACT_PROJECTION_SHA256 =
   'sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5' as const;
 const PREDECESSOR_EVALUATOR_FIXTURE_TOOL_SHA256 =
@@ -257,14 +257,14 @@ function receiptContractMatchesTask(decision: TaskDecision): boolean {
 }
 
 export interface CandidateDecisionManifest {
-  readonly schema_version: 'aiq.candidate-design-decisions.v13';
+  readonly schema_version: 'aiq.candidate-design-decisions.v14';
   readonly candidate_id: typeof CANDIDATE_ID;
   readonly candidate_task_set_version: '1.1.0';
-  readonly recorded_date: '2026-08-29';
-  readonly authority: 'candidate_12_catalog_order_preparation_repair';
+  readonly recorded_date: '2026-08-30';
+  readonly authority: 'candidate_13_quota_feasible_qualification_policy_repair';
   readonly predecessor_candidate: {
     readonly candidate_id: typeof PREDECESSOR_CANDIDATE_ID;
-    readonly disposition: 'rejected_candidate_task_order_before_model';
+    readonly disposition: 'rejected_qualification_quota_infeasible';
     readonly source_commit: typeof PREDECESSOR_SOURCE_COMMIT;
     readonly source_tree: typeof PREDECESSOR_SOURCE_TREE;
     readonly catalog_canonical_sha256: typeof PREDECESSOR_CATALOG_CANONICAL_SHA256;
@@ -274,7 +274,7 @@ export interface CandidateDecisionManifest {
     readonly task_facing_semantics_sha256: typeof PREDECESSOR_TASK_FACING_SEMANTICS_SHA256;
     readonly task_semantics: 'accepted_unchanged_72';
     readonly task_issue_closure_entries: 42;
-    readonly semantic_retention_rule: 'candidate_12_task_facing_evaluator_fixture_tool_semantics_unchanged';
+    readonly semantic_retention_rule: 'candidate_13_task_facing_evaluator_fixture_tool_semantics_unchanged';
   };
   readonly immutable_rejected_predecessors: readonly [
     'aiq-core/1.1.0-candidate.1',
@@ -289,10 +289,11 @@ export interface CandidateDecisionManifest {
     'aiq-core/1.1.0-candidate.10',
     'aiq-core/1.1.0-candidate.11',
     'aiq-core/1.1.0-candidate.12',
+    'aiq-core/1.1.0-candidate.13',
   ];
   readonly retained_candidate_5_task_issue_closures: {
     readonly predecessor_candidate_id: typeof TASK_ISSUE_PREDECESSOR_CANDIDATE_ID;
-    readonly successor_candidate_id: 'aiq-core/1.1.0-candidate.13';
+    readonly successor_candidate_id: 'aiq-core/1.1.0-candidate.14';
     readonly disposition: 'preserved_unchanged_and_revalidated';
     readonly closure_entries: 42;
     readonly issue_code_counts: Readonly<Record<IssueCode, number>>;
@@ -393,7 +394,7 @@ const CONTROLLED_CORPUS_REQUIREMENTS = Object.freeze([
   'Use this exact catalog entry as the sole expected acceptance-fixture applicability authority and require exact equality with observed controlled classes.',
   'Supply exactly one independently authored aiq.leakage-review.v2 record that binds the reviewer, source, task definition, catalog entry, method, scope, verdict, time, and notes.',
   'Keep the AIQ task scorer 1.0.6 configured weighted binary check fraction with hard gates unchanged and replay every applicable fixture deterministically.',
-  'Do not qualify or publish this candidate until three predeclared complete non-synthetic 17-by-72 matrices pass aiq.benchmark-qualification-policy.v1.',
+  'Do not qualify or publish this candidate until one predeclared complete non-synthetic 3-by-72 family-representative matrix passes aiq.benchmark-qualification-policy.v2.',
 ] as const);
 
 function isJsonObject(value: unknown): value is JsonObject {
@@ -1367,13 +1368,13 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     'candidate lifecycle',
   );
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v13' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v14' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
-    manifest.recorded_date !== '2026-08-29' ||
-    manifest.authority !== 'candidate_12_catalog_order_preparation_repair' ||
+    manifest.recorded_date !== '2026-08-30' ||
+    manifest.authority !== 'candidate_13_quota_feasible_qualification_policy_repair' ||
     predecessor.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
-    predecessor.disposition !== 'rejected_candidate_task_order_before_model' ||
+    predecessor.disposition !== 'rejected_qualification_quota_infeasible' ||
     predecessor.source_commit !== PREDECESSOR_SOURCE_COMMIT ||
     predecessor.source_tree !== PREDECESSOR_SOURCE_TREE ||
     predecessor.catalog_canonical_sha256 !== PREDECESSOR_CATALOG_CANONICAL_SHA256 ||
@@ -1385,7 +1386,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     predecessor.task_semantics !== 'accepted_unchanged_72' ||
     predecessor.task_issue_closure_entries !== 42 ||
     predecessor.semantic_retention_rule !==
-      'candidate_12_task_facing_evaluator_fixture_tool_semantics_unchanged' ||
+      'candidate_13_task_facing_evaluator_fixture_tool_semantics_unchanged' ||
     JSON.stringify(immutableRejectedPredecessors) !==
       JSON.stringify([
         'aiq-core/1.1.0-candidate.1',
@@ -1400,6 +1401,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
         'aiq-core/1.1.0-candidate.10',
         'aiq-core/1.1.0-candidate.11',
         'aiq-core/1.1.0-candidate.12',
+        'aiq-core/1.1.0-candidate.13',
       ]) ||
     retainedTaskClosures.predecessor_candidate_id !== TASK_ISSUE_PREDECESSOR_CANDIDATE_ID ||
     retainedTaskClosures.successor_candidate_id !== CANDIDATE_ID ||
@@ -1526,14 +1528,14 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
   }
 
   return {
-    schema_version: 'aiq.candidate-design-decisions.v13',
+    schema_version: 'aiq.candidate-design-decisions.v14',
     candidate_id: CANDIDATE_ID,
     candidate_task_set_version: TASK_SET_VERSION,
-    recorded_date: '2026-08-29',
-    authority: 'candidate_12_catalog_order_preparation_repair',
+    recorded_date: '2026-08-30',
+    authority: 'candidate_13_quota_feasible_qualification_policy_repair',
     predecessor_candidate: {
       candidate_id: PREDECESSOR_CANDIDATE_ID,
-      disposition: 'rejected_candidate_task_order_before_model',
+      disposition: 'rejected_qualification_quota_infeasible',
       source_commit: PREDECESSOR_SOURCE_COMMIT,
       source_tree: PREDECESSOR_SOURCE_TREE,
       catalog_canonical_sha256: PREDECESSOR_CATALOG_CANONICAL_SHA256,
@@ -1544,7 +1546,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       task_semantics: 'accepted_unchanged_72',
       task_issue_closure_entries: 42,
       semantic_retention_rule:
-        'candidate_12_task_facing_evaluator_fixture_tool_semantics_unchanged',
+        'candidate_13_task_facing_evaluator_fixture_tool_semantics_unchanged',
     },
     immutable_rejected_predecessors: [
       'aiq-core/1.1.0-candidate.1',
@@ -1559,6 +1561,7 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       'aiq-core/1.1.0-candidate.10',
       'aiq-core/1.1.0-candidate.11',
       'aiq-core/1.1.0-candidate.12',
+      'aiq-core/1.1.0-candidate.13',
     ],
     retained_candidate_5_task_issue_closures: {
       predecessor_candidate_id: TASK_ISSUE_PREDECESSOR_CANDIDATE_ID,
@@ -1760,13 +1763,13 @@ export function assertDecisionManifest(
     );
   }
   if (
-    manifest.schema_version !== 'aiq.candidate-design-decisions.v13' ||
+    manifest.schema_version !== 'aiq.candidate-design-decisions.v14' ||
     manifest.candidate_id !== CANDIDATE_ID ||
     manifest.candidate_task_set_version !== TASK_SET_VERSION ||
-    manifest.recorded_date !== '2026-08-29' ||
-    manifest.authority !== 'candidate_12_catalog_order_preparation_repair' ||
+    manifest.recorded_date !== '2026-08-30' ||
+    manifest.authority !== 'candidate_13_quota_feasible_qualification_policy_repair' ||
     manifest.predecessor_candidate.candidate_id !== PREDECESSOR_CANDIDATE_ID ||
-    manifest.predecessor_candidate.disposition !== 'rejected_candidate_task_order_before_model' ||
+    manifest.predecessor_candidate.disposition !== 'rejected_qualification_quota_infeasible' ||
     manifest.predecessor_candidate.source_commit !== PREDECESSOR_SOURCE_COMMIT ||
     manifest.predecessor_candidate.source_tree !== PREDECESSOR_SOURCE_TREE ||
     manifest.predecessor_candidate.task_metadata_sha256 !== PREDECESSOR_TASK_METADATA_SHA256 ||
@@ -2030,7 +2033,7 @@ function reviseTask(
       decision_record: DECISION_PATH,
       kind: 'frozen_candidate_authoring',
       objective:
-        'Freeze AIQ Core 1.1.0 candidate.13 after restoring checked-catalog task order in candidate-only preparation without changing task-facing semantics or the active production benchmark.',
+        'Freeze AIQ Core 1.1.0 candidate.14 after replacing quota-infeasible candidate release qualification with one complete family-representative matrix without changing task-facing semantics or the active production benchmark.',
       task_specific_delta: decision.rationale,
       candidate_4_review: decision.candidate_4_review,
       candidate_5_contract: decision.candidate_5_contract,
@@ -2061,9 +2064,9 @@ function reviseTask(
     },
     tags: revision?.tags ?? prior.tags,
     provenance: {
-      origin: 'candidate_12_catalog_order_preparation_repair_authoring',
+      origin: 'candidate_13_quota_feasible_qualification_policy_repair_authoring',
       owner: 'AIQ benchmark maintainers',
-      recorded_date: '2026-08-29',
+      recorded_date: '2026-08-30',
       predecessor_task_version: '1.1.0',
       predecessor_candidate_id: PREDECESSOR_CANDIDATE_ID,
       source: GENERATOR_PATH,
@@ -2074,7 +2077,7 @@ function reviseTask(
       status: 'independent_private_review_v2_required',
       owner: 'AIQ benchmark maintainers',
       review_requirement: 'exactly_one_matching_aiq_leakage_review_v2_per_task',
-      notes: `${decision.task_id} is candidate.13 source frozen for a fresh independent review. Candidate.12 is rejected source evidence and has no review or seal that can satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
+      notes: `${decision.task_id} is candidate.14 source frozen for a fresh independent review. Candidate.13 is rejected quota-infeasible qualification evidence and has no review or seal that can satisfy this identity; sealing remains blocked until one new supplied review binds this exact task definition and catalog entry.`,
     },
   };
 }
@@ -2123,7 +2126,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       decision === undefined ||
       digestValue(projection) !== decision.candidate_5_task_facing_semantics_sha256
     ) {
-      throw new Error('Candidate.13 task-facing semantics drift from candidate.12.');
+      throw new Error('Candidate.14 task-facing semantics drift from candidate.13.');
     }
   }
   const publicContractProjection = tasks.map((task, index) => ({
@@ -2163,7 +2166,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     ) !== CANDIDATE_5_CATALOG_ENTRY_BINDINGS_SHA256
   ) {
     throw new Error(
-      'Candidate.11 retained task, response, evaluator, fixture, or tool semantics drifted.',
+      'Candidate.14 retained task, response, evaluator, fixture, or tool semantics drifted.',
     );
   }
   const taskMetadataIdentity = {
@@ -2182,7 +2185,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     ...prior,
     schema_version: 'aiq.catalog.v2',
     task_set_version: TASK_SET_VERSION,
-    title: 'AIQ Core 1.1.0 candidate.13 frozen for independent review',
+    title: 'AIQ Core 1.1.0 candidate.14 frozen for independent review',
     status: 'frozen_candidate',
     generated_from: GENERATOR_PATH,
     candidate_identity: {
@@ -2210,7 +2213,7 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       controlled_source:
         'The catalog is the sole expected acceptance-fixture applicability authority. Observed controlled classes must equal each task declaration exactly. Private tasks, fixtures, evaluator content, review requests, leakage reviews, and signing material stay outside Git.',
       predecessor_relation:
-        'Candidates.1 through .12 are immutable predecessor evidence. Candidate.13 preserves all candidate.12 task-facing, response, evaluator, fixture, and tool semantics while restoring checked-catalog task order in candidate-only preparation before a fresh isolated review.',
+        'Candidates.1 through .13 are immutable predecessor evidence. Candidate.14 preserves all candidate.13 task-facing, response, evaluator, fixture, and tool semantics while replacing quota-infeasible candidate release qualification with one complete family-representative matrix before a fresh isolated review.',
     },
     candidate_state: {
       identity_state: 'frozen_for_independent_review',
@@ -2247,9 +2250,9 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
       active: false,
       production_publishable: false,
       next_required_actions: [
-        'Complete one new independent aiq.leakage-review.v2 record for every exact candidate.13 task and catalog-entry digest; candidate.12 has no transferable review records.',
+        'Complete one new independent aiq.leakage-review.v2 record for every exact candidate.14 task and catalog-entry digest; candidate.13 has no transferable review records.',
         'Seal the reviewed private corpus twice without changing this frozen candidate identity.',
-        'Run three fresh, predeclared, complete non-synthetic 17-by-72 matrices and pass aiq.benchmark-qualification-policy.v1.',
+        'Run one fresh, predeclared, complete non-synthetic 3-by-72 family-representative matrix and pass aiq.benchmark-qualification-policy.v2.',
         'Complete qualification, release adoption, and production acceptance before cutover, activation, or publication.',
       ],
     },
@@ -2957,9 +2960,9 @@ function reviseCatalogSchema(priorValue: unknown): JsonObject {
       'task_response_authority',
     ],
     properties: {
-      origin: { const: 'candidate_12_catalog_order_preparation_repair_authoring' },
+      origin: { const: 'candidate_13_quota_feasible_qualification_policy_repair_authoring' },
       owner: { const: 'AIQ benchmark maintainers' },
-      recorded_date: { const: '2026-08-29' },
+      recorded_date: { const: '2026-08-30' },
       predecessor_task_version: { const: '1.1.0' },
       predecessor_candidate_id: { const: PREDECESSOR_CANDIDATE_ID },
       source: { const: GENERATOR_PATH },

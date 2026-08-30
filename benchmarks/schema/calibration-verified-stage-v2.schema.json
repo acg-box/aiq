@@ -113,7 +113,40 @@
           "task_set_version": { "const": "1.1.0" },
           "benchmark_version": { "const": "aiq-core@1.1.0" },
           "task_ids": { "minItems": 72, "maxItems": 72 },
-          "models": { "minItems": 17, "maxItems": 17 }
+          "models": {
+            "prefixItems": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["family", "reasoning_effort"],
+                "properties": {
+                  "family": { "const": "sol" },
+                  "reasoning_effort": { "const": "medium" }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["family", "reasoning_effort"],
+                "properties": {
+                  "family": { "const": "terra" },
+                  "reasoning_effort": { "const": "medium" }
+                }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["family", "reasoning_effort"],
+                "properties": {
+                  "family": { "const": "luna" },
+                  "reasoning_effort": { "const": "medium" }
+                }
+              }
+            ],
+            "items": false,
+            "minItems": 3,
+            "maxItems": 3
+          }
         }
       },
       "else": {
@@ -134,14 +167,14 @@
       "additionalProperties": false,
       "required": ["schema_version", "candidate_id", "disposition", "synthetic", "cells"],
       "properties": {
-        "schema_version": { "const": "aiq.benchmark-qualification-projection.v1" },
-        "candidate_id": { "const": "aiq-core/1.1.0-candidate.13" },
+        "schema_version": { "const": "aiq.benchmark-qualification-projection.v2" },
+        "candidate_id": { "const": "aiq-core/1.1.0-candidate.14" },
         "disposition": { "const": "accepted" },
         "synthetic": { "const": false },
         "cells": {
           "type": "array",
-          "minItems": 1224,
-          "maxItems": 1224,
+          "minItems": 216,
+          "maxItems": 216,
           "items": { "$ref": "#/$defs/qualificationCell" }
         }
       }

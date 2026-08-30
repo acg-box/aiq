@@ -91,6 +91,11 @@ function objectArray(value: unknown, label: string): JsonObject[] {
   return value.map((entry, index) => jsonObject(entry, `${label}[${String(index)}]`));
 }
 
+function unknownArray(value: unknown, label: string): unknown[] {
+  if (!Array.isArray(value)) throw new TypeError(`${label} must be an array.`);
+  return value;
+}
+
 function stringArray(value: unknown, label: string): string[] {
   if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
     throw new TypeError(`${label} must be a string array.`);
@@ -506,7 +511,7 @@ function privateResponseContract(sourceCase: PrivateSourceCase): JsonObject {
   };
 }
 
-await test('the generated candidate.13 public source is deterministic', async () => {
+await test('the generated candidate.14 public source is deterministic', async () => {
   const catalog = buildCatalog();
   deepStrictEqual(
     JSON.parse(await readFile(new URL('catalog.json', candidateRoot), 'utf8')),
@@ -518,15 +523,15 @@ await test('the generated candidate.13 public source is deterministic', async ()
   strictEqual(catalog.status, 'frozen_candidate');
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').candidate_id,
-    'aiq-core/1.1.0-candidate.13',
+    'aiq-core/1.1.0-candidate.14',
   );
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').task_metadata_digest,
-    'sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147',
+    'sha256:7ea2202e1ac3efee9a83a33c4323487bdb1f5d32cdf46ee4c60aaac53471c927',
   );
 });
 
-await test('candidate.13 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
+await test('candidate.14 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
   const rootPackage = jsonObject(
     JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')),
     'root package',
@@ -563,25 +568,25 @@ await test('candidate.13 uses the exact checked-in Node, npm, and TypeScript ide
   );
 });
 
-await test('candidate.12 is exact rejected source evidence and candidate.1 through .12 stay immutable', async () => {
+await test('candidate.13 is exact rejected operational evidence and candidate.1 through .13 stay immutable', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.predecessor_candidate, {
-    candidate_id: 'aiq-core/1.1.0-candidate.12',
-    disposition: 'rejected_candidate_task_order_before_model',
-    source_commit: '7e7802e752d6bee281f7af5b7f0398e574488066',
-    source_tree: '5b49d5de641d4ac9cf741c1f2118e29b6446afef',
+    candidate_id: 'aiq-core/1.1.0-candidate.13',
+    disposition: 'rejected_qualification_quota_infeasible',
+    source_commit: '6fdfe4a93efe51ba26dbd3bea897585f4372ca7f',
+    source_tree: 'd0033307eca6576a824ce599698769b6ad28c62b',
     catalog_canonical_sha256:
-      'sha256:bce01005d0b8591102b85d669be69e7829e65d69a286b68ca11acf358392b2f4',
+      'sha256:1fa2ee49cbb93cc5cbc27a91ba17da16c5e42f65d5e9bc583da090f005db97d0',
     catalog_entry_bindings_sha256:
-      'sha256:a36de8178fbfa585037dbeb18a5673970d55d825d078ba6e5181bad9d7ab643a',
-    task_metadata_sha256: 'sha256:b371110f0e96f25a58a20ff903b12d2d5fa9ebb6a880e929616f45bbb3ab24e4',
+      'sha256:c32d47e00928c7c42bbf82bf803248a387ac155c9bd4389d62298cc397d9d513',
+    task_metadata_sha256: 'sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147',
     public_contract_projection_sha256:
       'sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5',
     task_facing_semantics_sha256:
       'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54',
     task_semantics: 'accepted_unchanged_72',
     task_issue_closure_entries: 42,
-    semantic_retention_rule: 'candidate_12_task_facing_evaluator_fixture_tool_semantics_unchanged',
+    semantic_retention_rule: 'candidate_13_task_facing_evaluator_fixture_tool_semantics_unchanged',
   });
   deepStrictEqual(manifest.immutable_rejected_predecessors, [
     'aiq-core/1.1.0-candidate.1',
@@ -596,6 +601,7 @@ await test('candidate.12 is exact rejected source evidence and candidate.1 throu
     'aiq-core/1.1.0-candidate.10',
     'aiq-core/1.1.0-candidate.11',
     'aiq-core/1.1.0-candidate.12',
+    'aiq-core/1.1.0-candidate.13',
   ]);
 });
 
@@ -637,7 +643,7 @@ await test('all exact candidate.4 task-review records remain bound as historical
   }
 });
 
-await test('candidate.13 retains all tasks while preserving candidate.5 design history', async () => {
+await test('candidate.14 retains all tasks while preserving candidate.5 design history', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   const expected = {
@@ -665,7 +671,7 @@ await test('candidate.13 retains all tasks while preserving candidate.5 design h
   deepStrictEqual(observed, expected);
 });
 
-await test('every task has one candidate.13 identity and exact candidate.12 semantics', async () => {
+await test('every task has one candidate.14 identity and exact candidate.13 semantics', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   assertDecisionManifest(manifest, taskIds());
@@ -680,7 +686,7 @@ await test('every task has one candidate.13 identity and exact candidate.12 sema
     strictEqual(task.task_id, decision.task_id);
     strictEqual(task.cluster_id, decision.cluster_id);
     strictEqual(/^[a-z_]+-cluster-[0-9]{2}$/u.test(decision.cluster_id), true);
-    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.12');
+    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.13');
     strictEqual(design.decision, 'retained');
     strictEqual(design.predecessor_decision, decision.predecessor_decision);
     deepStrictEqual(design.candidate_4_review, decision.candidate_4_review);
@@ -757,7 +763,7 @@ await test('candidate.9 to candidate.10 changes only the two rejected public con
   ]);
 });
 
-await test('candidate.12 to candidate.13 preserves task, response, evaluator, fixture, and tool semantics', () => {
+await test('candidate.13 to candidate.14 preserves task, response, evaluator, fixture, and tool semantics', () => {
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   strictEqual(
     digestValue(publicContractProjection(tasks)),
@@ -1459,7 +1465,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   const ids = taskIds();
   const staleIdentity: unknown = structuredClone(manifest);
   jsonObject(staleIdentity, 'stale candidate identity').candidate_id =
-    'aiq-core/1.1.0-candidate.12';
+    'aiq-core/1.1.0-candidate.13';
   throws(() => parseDecisionManifest(staleIdentity), /Candidate decision manifest identity/u);
   const missing: CandidateDecisionManifest = {
     ...manifest,
@@ -1489,7 +1495,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   );
 });
 
-await test('candidate schemas bind candidate.13 identity and independent source authority', async () => {
+await test('candidate schemas bind candidate.14 identity and independent source authority', async () => {
   const catalogSchema = jsonObject(
     JSON.parse(await readFile(new URL('catalog.schema.json', candidateRoot), 'utf8')),
     'catalog schema',
@@ -1575,7 +1581,7 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   const manifest = jsonObject(
     JSON.parse(
       await readFile(
-        new URL('benchmark-qualification-manifest-v2.schema.json', schemaRoot),
+        new URL('benchmark-qualification-manifest-v3.schema.json', schemaRoot),
         'utf8',
       ),
     ),
@@ -1583,7 +1589,7 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   );
   const artifact = jsonObject(
     JSON.parse(
-      await readFile(new URL('benchmark-qualification-v2.schema.json', schemaRoot), 'utf8'),
+      await readFile(new URL('benchmark-qualification-v3.schema.json', schemaRoot), 'utf8'),
     ),
     'qualification artifact schema',
   );
@@ -1594,16 +1600,21 @@ await test('qualification schemas bind predeclaration to replay-verified candida
     'calibration stage schema',
   );
   const manifestProperties = jsonObject(manifest.properties, 'manifest properties');
-  const manifestChildren = jsonObject(manifestProperties.children, 'manifest children');
-  const child = jsonObject(manifestChildren.items, 'manifest child');
+  const child = jsonObject(
+    jsonObject(manifest.$defs, 'manifest definitions').predeclaredChild,
+    'manifest child',
+  );
   const childRequired = stringArray(child.required, 'manifest child required fields');
   const manifestDefinitions = jsonObject(manifest.$defs, 'manifest definitions');
   const candidate = jsonObject(manifestDefinitions.candidate, 'manifest candidate');
   const candidateRequired = stringArray(candidate.required, 'manifest candidate fields');
+  const policy = jsonObject(manifestDefinitions.policy, 'manifest policy');
+  const policyRequired = stringArray(policy.required, 'manifest policy fields');
 
   deepStrictEqual(manifestProperties.schema_version, {
-    const: 'aiq.benchmark-qualification-manifest.v2',
+    const: 'aiq.benchmark-qualification-manifest.v3',
   });
+  strictEqual(manifestProperties.children, undefined);
   deepStrictEqual(childRequired, ['child_id', 'source_run_id', 'verifier']);
   strictEqual(childRequired.includes('source_run_digest'), false);
   strictEqual(childRequired.includes('verifier_attestation_digest'), false);
@@ -1617,14 +1628,67 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   ]) {
     strictEqual(candidateRequired.includes(field), true, `${field} must be predeclared`);
   }
+  deepStrictEqual(policyRequired, [
+    'version',
+    'required_tasks',
+    'required_models',
+    'required_completed_cells',
+  ]);
+  const requiredModels = jsonObject(manifestDefinitions.requiredModels, 'required models');
+  const requiredModelItems = unknownArray(requiredModels.prefixItems, 'required model items');
+  deepStrictEqual(
+    requiredModelItems.map(
+      (item, index) =>
+        jsonObject(
+          jsonObject(
+            unknownArray(
+              jsonObject(item, `required model ${String(index)}`).allOf,
+              'model rules',
+            )[1],
+            'model family rule',
+          ).properties,
+          'model family properties',
+        ).family,
+    ),
+    [{ const: 'sol' }, { const: 'terra' }, { const: 'luna' }],
+  );
+  for (const stale of [
+    'required_matrices',
+    'minimum_median_rank_spearman',
+    'maximum_configuration_mean_shift',
+    'informative_facility_min',
+  ]) {
+    strictEqual(jsonObject(policy.properties, 'policy properties')[stale], undefined);
+  }
 
   const artifactProperties = jsonObject(artifact.properties, 'artifact properties');
   const claims = jsonObject(artifactProperties.claims, 'artifact claims');
   const claimProperties = jsonObject(claims.properties, 'claim properties');
   deepStrictEqual(claimProperties.method_version, {
-    const: 'aiq.three-replay-verified-complete-matrix-qualification.v2',
+    const: 'aiq.single-replay-verified-complete-family-matrix-qualification.v1',
   });
+  deepStrictEqual(claimProperties.completed_cells, { const: 216 });
+  for (const stale of [
+    'matrices',
+    'pairwise',
+    'median_configuration_rank_spearman',
+    'configurations',
+    'comparison_group_method',
+    'comparison_groups',
+    'violations',
+  ]) {
+    strictEqual(claimProperties[stale], undefined, `${stale} must not remain`);
+  }
   const artifactDefinitions = jsonObject(artifact.$defs, 'artifact definitions');
+  const scope = jsonObject(artifactDefinitions.scope, 'artifact claim scope');
+  const scopeProperties = jsonObject(scope.properties, 'artifact claim scope properties');
+  const excluded = jsonObject(scopeProperties.excludes, 'excluded claims');
+  deepStrictEqual(unknownArray(excluded.prefixItems, 'excluded claim items'), [
+    { const: 'prediction_interval' },
+    { const: 'spearman_correlation' },
+    { const: 'run_variance' },
+    { const: 'precise_ranking' },
+  ]);
   const artifactChild = jsonObject(artifactDefinitions.child, 'artifact child');
   const artifactChildRequired = stringArray(artifactChild.required, 'artifact child fields');
   for (const field of [
@@ -1648,13 +1712,13 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   );
   const projectionProperties = jsonObject(projection.properties, 'projection properties');
   deepStrictEqual(projectionProperties.candidate_id, {
-    const: 'aiq-core/1.1.0-candidate.13',
+    const: 'aiq-core/1.1.0-candidate.14',
   });
   deepStrictEqual(projectionProperties.disposition, { const: 'accepted' });
   deepStrictEqual(projectionProperties.synthetic, { const: false });
   const cells = jsonObject(projectionProperties.cells, 'projection cells');
-  strictEqual(cells.minItems, 1224);
-  strictEqual(cells.maxItems, 1224);
+  strictEqual(cells.minItems, 216);
+  strictEqual(cells.maxItems, 216);
 });
 
 await test('catalog, commitment validator schema, and stale mutations share one identity boundary', async () => {
@@ -1679,6 +1743,7 @@ await test('catalog, commitment validator schema, and stale mutations share one 
     'sha256:5380334c44bd297dc05020961bd6ae5433e840288a03b8afc02c483cc62c0a95',
     'sha256:cfac96630c9efe3153d80ed43effd6e541bef751e1e7f766a52cfb2910fa3fc4',
     'sha256:393cb2563b2161ccb42dd5a50ea63a7827f4d5c485ca0a98103e80eef3d0fbe6',
+    'sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147',
   ]) {
     const staleSchema = structuredClone(commitmentSchema);
     const catalogProperties = jsonObject(

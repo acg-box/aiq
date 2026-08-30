@@ -20,7 +20,9 @@ use crate::scoring::{
 };
 use crate::{
 	adapter::{CapabilityValidationStatus, ConfigurationProbeStatus, ProbeStatus},
-	benchmark_qualification::{self, CandidateQualificationProjection},
+	benchmark_qualification::{
+		self, CANDIDATE_QUALIFICATION_MODEL_MATRIX, CandidateQualificationProjection,
+	},
 	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
 	corpus_commitment::{self, RunClass, RunProvenanceCommitment},
 	model::{MODEL_MATRIX, ModelConfig, ModelFamily},
@@ -386,7 +388,7 @@ impl CalibrationVerifiedStageV1 {
 			|| self.scores.len() != self.models.len()
 			|| self.result_efficiency.len() != self.models.len().saturating_mul(self.task_ids.len())
 			|| if candidate_qualification {
-				self.models != MODEL_MATRIX
+				self.models != CANDIDATE_QUALIFICATION_MODEL_MATRIX
 					|| self.task_ids.len() != 72
 					|| self.qualification_projection.is_none()
 			} else {
