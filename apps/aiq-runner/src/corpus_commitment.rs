@@ -1948,31 +1948,9 @@ pub(crate) mod tests {
 				.expect("fixture evaluator root");
 			fs::create_dir(&toolchain_root).expect("fixture toolchain root");
 			fs::write(&runner_source, b"committed runner source").expect("fixture runner source");
-			fs::write(&evaluator_path, b"process.stdout.write('{}\\n');\\n")
-				.expect("fixture evaluator");
 
-			let evaluator_digest = format!(
-				"sha256:{}",
-				hex::encode(Sha256::digest(
-					fs::read(&evaluator_path).expect("fixture evaluator bytes")
-				))
-			);
-
-			for (name, version) in [("node", "v24.18.0"), ("rg", "ripgrep 15.1.0")] {
-				let source = executable_source.join(name);
-
-				fs::write(&source, format!("#!/bin/sh\nprintf '%s\\n' '{version}'\n"))
-					.expect("fixture executable");
-				fs::set_permissions(&source, fs::Permissions::from_mode(0o700))
-					.expect("fixture executable mode");
-				fs::hard_link(&source, toolchain_root.join(name)).expect("toolchain hard link");
-			}
-
-			let runtime = crate::task::EvaluatorRuntime::resolve(&toolchain_root.join("node"))
-				.expect("fixture Node runtime");
-			let policy = super::fixture_validated_model_toolchain(&toolchain_root, &runtime)
-				.policy()
-				.clone();
+			let (evaluator_digest, runtime, policy) =
+				Self::runtime_fixture(&evaluator_path, &executable_source, &toolchain_root);
 			let mut core_tasks = runner::synthetic_demo_tasks();
 
 			Self::bind_external_evaluators(
@@ -2036,6 +2014,54 @@ pub(crate) mod tests {
 			}
 		}
 
+		fn runtime_fixture(
+			evaluator_path: &std::path::Path,
+			executable_source: &std::path::Path,
+			toolchain_root: &std::path::Path,
+		) -> (String, crate::task::EvaluatorRuntime, super::ExecutionToolPolicy) {
+			fs::write(
+				evaluator_path,
+				concat!(
+					"#!/bin/sh\n",
+					"cat >/dev/null\n",
+					"printf '%s\\n' '",
+					r#"{"schema_version":"aiq.evaluator-result.v3","outcome":"correct","score":1.0,"checks":[{"check_id":"fixture","weight":1,"passed":true,"failure_class":"none","evidence_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]}"#,
+					"'\n",
+				),
+			)
+			.expect("fixture evaluator");
+
+			let evaluator_digest = format!(
+				"sha256:{}",
+				hex::encode(Sha256::digest(
+					fs::read(evaluator_path).expect("fixture evaluator bytes")
+				))
+			);
+
+			for (name, version) in [("node", "v24.18.0"), ("rg", "ripgrep 15.1.0")] {
+				let source = executable_source.join(name);
+				let contents = if name == "node" {
+					format!(
+						"#!/bin/sh\nif [ \"$1\" = --version ]; then printf '%s\\n' '{version}'; else exec /bin/sh \"$@\"; fi\n"
+					)
+				} else {
+					format!("#!/bin/sh\nprintf '%s\\n' '{version}'\n")
+				};
+
+				fs::write(&source, contents).expect("fixture executable");
+				fs::set_permissions(&source, fs::Permissions::from_mode(0o700))
+					.expect("fixture executable mode");
+				fs::hard_link(&source, toolchain_root.join(name)).expect("toolchain hard link");
+			}
+
+			let runtime = crate::task::EvaluatorRuntime::resolve(&toolchain_root.join("node"))
+				.expect("fixture Node runtime");
+			let policy =
+				super::fixture_validated_model_toolchain(toolchain_root, &runtime).policy().clone();
+
+			(evaluator_digest, runtime, policy)
+		}
+
 		fn candidate_tasks(
 			candidate_value: &serde_json::Value,
 			candidate_authority: &candidate_catalog::CandidateCatalogAuthority,
@@ -2078,7 +2104,8 @@ pub(crate) mod tests {
 			for task in tasks {
 				let configuration = serde_json::from_value(serde_json::json!({
 					"schema_version": crate::task::EVALUATOR_CONFIG_SCHEMA_VERSION,
-					"completion_policy": "natural_completion"
+					"completion_policy": "natural_completion",
+					"checks": [{"check_id":"fixture","type":"text","weight":1}]
 				}))
 				.expect("formal evaluator configuration");
 				let configuration_digest =

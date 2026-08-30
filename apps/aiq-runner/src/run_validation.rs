@@ -16,6 +16,7 @@ use crate::{
 		PREFLIGHT_MARKER_ARTIFACT_KIND, PREFLIGHT_MARKER_BYTES, PREFLIGHT_MARKER_SHA256,
 		ProbeStatus,
 	},
+	benchmark_qualification::CANDIDATE_QUALIFICATION_MODEL_MATRIX,
 	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
 	corpus_commitment::{self, RunClass, ValidatedCorpusCommitment},
 	model::{MODEL_MATRIX, ModelConfig},
@@ -238,14 +239,14 @@ pub fn validate_candidate_qualification_calibration(
 		candidate.tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
 	let observed_task_ids = run.task_ids.iter().map(String::as_str).collect::<Vec<_>>();
 
-	if run.models != MODEL_MATRIX
+	if run.models != CANDIDATE_QUALIFICATION_MODEL_MATRIX
 		|| run.task_ids.len() != 72
-		|| run.results.len() != 1_224
+		|| run.results.len() != 216
 		|| observed_task_ids != expected_task_ids
 		|| run.results.iter().any(|result| result.task_version != CANDIDATE_TASK_SET_VERSION)
 	{
 		return Err(RunValidationError::new(
-			"candidate qualification requires one exact complete 17-by-72 calibration",
+			"candidate qualification requires one exact complete 3-by-72 calibration",
 		));
 	}
 

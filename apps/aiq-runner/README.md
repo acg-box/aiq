@@ -39,9 +39,9 @@ path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. The checked-in candidate.13 source is frozen for a fresh
-independent review. Candidate.12 is immutable rejected predecessor evidence, it
-has no transferable review records, and an empty candidate.13 review directory
+declaration exactly. The checked-in candidate.14 source is frozen for a fresh
+independent review. Candidate.13 is immutable rejected quota-infeasible evidence,
+it has no transferable review records, and an empty candidate.14 review directory
 blocks sealing without creating output.
 The tracked private-authoring validator checks response types against the
 schema-owned enum and response locations against authority derived from the
@@ -63,20 +63,20 @@ copy. The command does not invoke Codex or generate task content. Recorded
 review-process separation is evidence, not cryptographic proof of human
 independence.
 
-Create a deterministic qualification or rejection artifact from three
-predeclared, replay-verified complete calibration stages without invoking a model:
+Create a deterministic qualification artifact from one predeclared,
+replay-verified complete family-representative calibration stage without invoking a model:
 
 ```sh
 cargo run -p aiq-runner -- qualify-candidate --help
 ```
 
-Supply three `--stage` and three paired `--attestation` paths in manifest order,
-plus the independently retained `--expected-manifest-sha256`. The manifest fixes
-the policy, candidate, and child/run/verifier identities before analysis. The
-completed package, stage, attestation, and matrix digests are bound after the
-exact runs exist. Qualification keeps every 1,224-cell child separate. It never pools, splices,
-publishes, or relabels a child run. A rejected candidate requires a new
-candidate identity before any revised task or evaluator is run.
+Supply one `--stage` and its paired `--attestation`, plus the independently
+retained `--expected-manifest-sha256`. The manifest fixes the policy, candidate,
+run, and verifier identities before execution. The completed package, stage,
+attestation, provenance, and 216-cell matrix digests are bound after the exact
+run exists. Qualification proves complete execution and identity only. It makes
+no prediction-interval, Spearman-correlation, run-variance, or precise-rank
+claim.
 
 Create deterministic synthetic output without invoking Codex:
 
@@ -159,7 +159,9 @@ never Official.
 
 `run --candidate-qualification` is the only execution route that selects the
 AIQ Core 1.1.0 candidate commitment validator. It requires Calibration, all 72
-candidate tasks, the exact 17-model matrix, and a new durable output. Combining
+candidate tasks, exactly Sol medium, Terra medium, and Luna medium, and a new
+durable output. The capability manifest and preflight continue to cover the full
+17-configuration runtime authority. Combining
 it with Official fails before preflight or model work. Omitting the flag keeps
 the active 1.0.7 validator and rejects a candidate commitment.
 

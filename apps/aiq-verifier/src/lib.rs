@@ -100,7 +100,7 @@ const ADDITIONAL_MODES_HELP: &str = "Additional modes:
       Verify one source package, then replay it with a candidate evaluator set.
       This mode writes one permanently non-Official create-new diagnostic report.
   aiq-verifier verify-qualification --help
-      Recompute one three-matrix candidate qualification without models or publication.
+      Recompute one family-representative candidate qualification without models or publication.
 
 Run `aiq-verifier <mode> --help` for the exact mode arguments.";
 
@@ -795,10 +795,10 @@ struct ValidateEnvironmentCli {
 #[command(
 	name = "aiq-verifier verify-qualification",
 	version,
-	about = "Recompute one exact three-matrix candidate qualification without publication"
+	about = "Recompute one exact candidate qualification matrix without publication"
 )]
 struct VerifyQualificationCli {
-	/// Qualification or rejection artifact to verify.
+	/// Qualification artifact to verify.
 	#[arg(long)]
 	artifact: PathBuf,
 	/// Exact predeclared candidate, policy, and child manifest.
@@ -810,10 +810,10 @@ struct VerifyQualificationCli {
 	/// Exact qualification-ready AIQ Core 1.1.0 public catalog.
 	#[arg(long)]
 	catalog: PathBuf,
-	/// Replay-verified candidate calibration stage. Repeat exactly three times in predeclared order.
+	/// The one replay-verified candidate calibration stage.
 	#[arg(long = "stage", required = true)]
 	stages: Vec<PathBuf>,
-	/// Signed verifier attestation paired with each stage in the same order.
+	/// The signed verifier attestation paired with the stage.
 	#[arg(long = "attestation", required = true)]
 	attestations: Vec<PathBuf>,
 }
@@ -5028,12 +5028,16 @@ fn run_validate_environment(cli: ValidateEnvironmentCli) -> Result<(), WorkerErr
 }
 
 fn run_verify_qualification(cli: VerifyQualificationCli) -> Result<(), WorkerError> {
-	if cli.stages.len() != 3 || cli.attestations.len() != 3 {
+	let [stage_path] = cli.stages.as_slice() else {
 		return Err(WorkerError::configuration(
-			"verify-qualification requires exactly three --stage and three --attestation inputs",
+			"verify-qualification requires exactly one --stage input",
 		));
-	}
-
+	};
+	let [attestation_path] = cli.attestations.as_slice() else {
+		return Err(WorkerError::configuration(
+			"verify-qualification requires exactly one --attestation input",
+		));
+	};
 	let artifact: BenchmarkQualificationArtifact =
 		read_regular_json(&cli.artifact, "qualification artifact")?;
 	let manifest: BenchmarkQualificationManifest =
@@ -5041,31 +5045,22 @@ fn run_verify_qualification(cli: VerifyQualificationCli) -> Result<(), WorkerErr
 	let catalog_value: Value = read_regular_json(&cli.catalog, "candidate catalog")?;
 	let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
-	let stages = cli
-		.stages
-		.iter()
-		.map(|path| {
-			read_regular_json::<CalibrationVerifiedStageV1>(path, "candidate qualification stage")
-		})
-		.collect::<Result<Vec<_>, _>>()?;
-	let attestations = cli
-		.attestations
-		.iter()
-		.map(|path| {
-			read_regular_json::<CalibrationVerifierAttestationV1>(
-				path,
-				"candidate qualification attestation",
-			)
-		})
-		.collect::<Result<Vec<_>, _>>()?;
+	let stage = read_regular_json::<CalibrationVerifiedStageV1>(
+		stage_path,
+		"candidate qualification stage",
+	)?;
+	let attestation = read_regular_json::<CalibrationVerifierAttestationV1>(
+		attestation_path,
+		"candidate qualification attestation",
+	)?;
 
 	benchmark_qualification::verify_qualification_artifact(
 		&artifact,
 		&manifest,
 		&cli.expected_manifest_sha256,
 		&catalog,
-		&stages,
-		&attestations,
+		&stage,
+		&attestation,
 	)
 	.map_err(|error| WorkerError::configuration(error.to_string()))?;
 
@@ -5704,6 +5699,7 @@ fn utc_components(seconds: u64) -> Result<(i64, i64, i64, u64, u64, u64), Worker
 
 #[cfg(test)]
 mod tests {
+	use std::mem;
 	use std::panic;
 	#[cfg(unix)]
 	use std::{
@@ -5752,8 +5748,8 @@ mod tests {
 		},
 		benchmark_qualification::{
 			self, BenchmarkQualificationManifest, BenchmarkQualificationStatus,
-			PredeclaredQualificationChild, QualificationCandidateIdentity, QualificationCell,
-			QualificationCellStatus, QualificationChildDisposition,
+			CANDIDATE_QUALIFICATION_MODEL_MATRIX, PredeclaredQualificationChild,
+			QualificationCandidateIdentity, QualificationCellStatus, QualificationChildDisposition,
 		},
 		candidate_catalog,
 		corpus_commitment::{self, RunClass, RunProvenanceCommitment},
@@ -6386,15 +6382,11 @@ mod tests {
 			self.convert_to_calibration_task_count(self.tasks.len());
 		}
 
-		fn convert_to_candidate_calibration(&mut self) {
-			self.convert_to_calibration();
-
-			let catalog_value: serde_json::Value = serde_json::from_str(include_str!(
-				"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
-			))
-			.expect("candidate catalog JSON");
-			let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
-				.expect("candidate catalog authority");
+		fn bind_candidate_tasks(
+			&mut self,
+			catalog_value: &serde_json::Value,
+			catalog: &candidate_catalog::CandidateCatalogAuthority,
+		) -> std::collections::BTreeMap<String, String> {
 			let catalog_tasks = catalog_value["tasks"].as_array().expect("candidate catalog tasks");
 			let positions = catalog
 				.tasks
@@ -6426,20 +6418,66 @@ mod tests {
 				positions.get(task.task_id.as_str()).copied().unwrap_or(usize::MAX)
 			});
 
-			let envelope: protocol::SubmissionEnvelope =
-				serde_json::from_slice(&self.package).expect("current calibration envelope");
-			let task_hashes = self
-				.tasks
+			self.tasks
 				.iter()
 				.map(|task| {
-					(task.task_id.as_str(), task.content_hash().expect("candidate task digest"))
+					(task.task_id.clone(), task.content_hash().expect("candidate task digest"))
 				})
-				.collect::<std::collections::BTreeMap<_, _>>();
+				.collect()
+		}
+
+		fn retain_candidate_model_matrix(&self, run: &mut CalibrationRunRecord) -> PathBuf {
+			let evaluator_results_path = self
+				.artifact_root
+				.join(run.evaluator_results_artifact.content_hash.trim_start_matches("sha256:"))
+				.join(&run.evaluator_results_artifact.kind);
+			let evaluator_results: runner::EvaluatorResultsBundle = serde_json::from_slice(
+				&fs::read(evaluator_results_path).expect("candidate evaluator-results bytes"),
+			)
+			.expect("candidate evaluator-results bundle");
+			let (results, evaluator_results): (Vec<_>, Vec<_>) = mem::take(&mut run.results)
+				.into_iter()
+				.zip(evaluator_results.results)
+				.filter(|(result, _)| CANDIDATE_QUALIFICATION_MODEL_MATRIX.contains(&result.model))
+				.unzip();
+			let evaluator_results = runner::EvaluatorResultsBundle {
+				schema_version: runner::EVALUATOR_RESULTS_SCHEMA_VERSION.to_owned(),
+				results: evaluator_results,
+			};
+			let evaluator_results_bytes = protocol::canonical_json(&evaluator_results)
+				.expect("candidate evaluator-results JSON");
+			let (artifact, path) = Self::write_artifact(
+				&self.artifact_root,
+				"evaluator-results.json",
+				&evaluator_results_bytes,
+			);
+
+			run.models = CANDIDATE_QUALIFICATION_MODEL_MATRIX.to_vec();
+			run.results = results;
+			run.evaluator_results_artifact = artifact;
+			run.execution_concurrency = Some(CANDIDATE_QUALIFICATION_MODEL_MATRIX.len());
+
+			path
+		}
+
+		fn convert_to_candidate_calibration(&mut self) {
+			self.convert_to_calibration();
+
+			let catalog_value: serde_json::Value = serde_json::from_str(include_str!(
+				"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
+			))
+			.expect("candidate catalog JSON");
+			let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
+				.expect("candidate catalog authority");
+			let envelope: protocol::SubmissionEnvelope =
+				serde_json::from_slice(&self.package).expect("current calibration envelope");
+			let task_hashes = self.bind_candidate_tasks(&catalog_value, &catalog);
 			let task_set_hash = task::task_set_hash(&self.tasks).expect("candidate task-set hash");
 			let evaluator_digest = corpus_commitment::evaluator_digest(&self.tasks)
 				.expect("candidate evaluator digest");
 			let mut run: CalibrationRunRecord =
 				serde_json::from_value(envelope.payload).expect("current calibration payload");
+			let evaluator_results_path = self.retain_candidate_model_matrix(&mut run);
 
 			run.task_ids = self.tasks.iter().map(|task| task.task_id.clone()).collect();
 
@@ -6505,6 +6543,7 @@ mod tests {
 			self.package = protocol::canonical_json(&envelope)
 				.expect("candidate local-verification package bytes");
 			self.package_sha256 = hex::encode(Sha256::digest(&self.package));
+			self.evaluator_results_path = evaluator_results_path;
 		}
 
 		fn convert_to_calibration_task_count(&mut self, task_count: usize) {
@@ -6872,78 +6911,6 @@ mod tests {
 		candidate_catalog::validate_candidate_catalog(&value).expect("candidate catalog")
 	}
 
-	fn candidate_qualification_stage(
-		mut stage: CalibrationVerifiedStageV1,
-		index: usize,
-	) -> (CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1, [u8; 32]) {
-		let catalog = candidate_qualification_catalog();
-		let task_ids = catalog.tasks.iter().map(|task| task.task_id.clone()).collect::<Vec<_>>();
-		let run_shift = [-0.005, 0.0, 0.005][index];
-		let cells = MODEL_MATRIX
-			.iter()
-			.enumerate()
-			.flat_map(|(model_index, model)| {
-				task_ids.iter().enumerate().map(move |(task_index, task_id)| QualificationCell {
-					task_id: task_id.clone(),
-					model: *model,
-					status: QualificationCellStatus::Completed,
-					semantic_score: Some(
-						0.12 + model_index as f64 * 0.045
-							+ (task_index % 5) as f64 * 0.01
-							+ run_shift,
-					),
-				})
-			})
-			.collect();
-		let identity_character = char::from(b'1' + index as u8);
-
-		stage.run_id = format!("run_{}", identity_character.to_string().repeat(64));
-		stage.package_sha256 = identity_character.to_string().repeat(64);
-		stage.content_hash = format!("sha256:{}", identity_character.to_string().repeat(64));
-		stage.task_ids = task_ids.clone();
-		stage.task_selection_digest = protocol::canonical_hash(&task_ids).expect("task selection");
-		stage.task_set_version = candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned();
-		stage.benchmark_version =
-			format!("{}@{}", AIQ_TASK_SET_ID, candidate_catalog::CANDIDATE_TASK_SET_VERSION);
-		stage.provenance.run_class = RunClass::Calibration;
-		stage.provenance.corpus_release_id = "corpus_candidate_qualification_fixture".to_owned();
-		stage.provenance.catalog_digest = catalog.task_metadata_digest;
-
-		stage.provenance.task_set_digest.clone_from(&stage.task_set_hash);
-
-		for (result_index, result) in stage.result_efficiency.iter_mut().enumerate() {
-			result.task_id.clone_from(&task_ids[result_index % task_ids.len()]);
-		}
-
-		stage.telemetry_digest =
-			protocol::canonical_hash(&stage.result_efficiency).expect("candidate telemetry");
-		stage.qualification_projection =
-			Some(aiq_runner::benchmark_qualification::CandidateQualificationProjection {
-				schema_version: benchmark_qualification::QUALIFICATION_PROJECTION_SCHEMA_VERSION
-					.to_owned(),
-				candidate_id: catalog.candidate_id,
-				disposition: QualificationChildDisposition::Accepted,
-				synthetic: false,
-				cells,
-			});
-		stage.stage_digest = stage.compute_stage_digest().expect("candidate stage digest");
-
-		stage.verify_candidate_qualification().expect("candidate stage");
-
-		let verifier_secret = [80 + index as u8; 32];
-		let attestation =
-			sign_candidate_qualification_attestation(&stage, verifier_secret, 100 + index as u64);
-
-		attestation
-			.verify_candidate_qualification(
-				&stage,
-				VerifierSigningIdentity::from_secret(verifier_secret).node(),
-			)
-			.expect("candidate attestation");
-
-		(stage, attestation, verifier_secret)
-	}
-
 	fn sign_candidate_qualification_attestation(
 		stage: &CalibrationVerifiedStageV1,
 		secret: [u8; 32],
@@ -7015,10 +6982,9 @@ mod tests {
 
 	fn candidate_qualification_manifest(
 		catalog: &candidate_catalog::CandidateCatalogAuthority,
-		stages: &[CalibrationVerifiedStageV1],
-		attestations: &[CalibrationVerifierAttestationV1],
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
 	) -> BenchmarkQualificationManifest {
-		let stage = &stages[0];
 		let provenance = &stage.provenance;
 
 		BenchmarkQualificationManifest {
@@ -7041,16 +7007,11 @@ mod tests {
 				model_selection_digest: stage.model_selection_digest.clone(),
 			},
 			policy: benchmark_qualification::BenchmarkQualificationPolicy::default(),
-			children: stages
-				.iter()
-				.zip(attestations)
-				.enumerate()
-				.map(|(index, (stage, attestation))| PredeclaredQualificationChild {
-					child_id: format!("candidate-child-{}", index + 1),
-					source_run_id: stage.run_id.clone(),
-					verifier: attestation.verifier.clone(),
-				})
-				.collect(),
+			child: PredeclaredQualificationChild {
+				child_id: "candidate-child-1".to_owned(),
+				source_run_id: stage.run_id.clone(),
+				verifier: attestation.verifier.clone(),
+			},
 		}
 	}
 
@@ -7058,12 +7019,12 @@ mod tests {
 		manifest: &BenchmarkQualificationManifest,
 		manifest_digest: &str,
 		catalog: &candidate_catalog::CandidateCatalogAuthority,
-		stages: &[CalibrationVerifiedStageV1],
-		attestations: &[CalibrationVerifierAttestationV1],
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
 	) {
-		let mut changed_stages = stages.to_vec();
+		let mut changed_stage = stage.clone();
 
-		changed_stages[0].qualification_projection.as_mut().expect("projection").cells[0]
+		changed_stage.qualification_projection.as_mut().expect("projection").cells[0]
 			.semantic_score = Some(0.99);
 
 		assert!(
@@ -7071,75 +7032,38 @@ mod tests {
 				manifest,
 				manifest_digest,
 				catalog,
-				&changed_stages,
-				attestations,
+				&changed_stage,
+				attestation,
 			)
 			.is_err(),
 			"cell tamper must invalidate the signed stage"
 		);
 
-		let mut swapped_attestations = attestations.to_vec();
-
-		swapped_attestations.swap(0, 1);
+		let untrusted_attestation = sign_candidate_qualification_attestation(stage, [99; 32], 500);
 
 		assert!(
 			benchmark_qualification::qualify_candidate(
 				manifest,
 				manifest_digest,
 				catalog,
-				stages,
-				&swapped_attestations,
-			)
-			.is_err(),
-			"stage and attestation swap must fail"
-		);
-
-		let mut reused_stages = stages.to_vec();
-		let mut reused_attestations = attestations.to_vec();
-
-		reused_stages[1] = reused_stages[0].clone();
-		reused_attestations[1] = reused_attestations[0].clone();
-
-		assert!(
-			benchmark_qualification::qualify_candidate(
-				manifest,
-				manifest_digest,
-				catalog,
-				&reused_stages,
-				&reused_attestations,
-			)
-			.is_err(),
-			"reused child evidence must fail"
-		);
-
-		let mut untrusted_attestations = attestations.to_vec();
-
-		untrusted_attestations[0] =
-			sign_candidate_qualification_attestation(&stages[0], [99; 32], 500);
-
-		assert!(
-			benchmark_qualification::qualify_candidate(
-				manifest,
-				manifest_digest,
-				catalog,
-				stages,
-				&untrusted_attestations,
+				stage,
+				&untrusted_attestation,
 			)
 			.is_err(),
 			"an untrusted self-selected verifier must fail"
 		);
 
-		let mut unsigned_attestations = attestations.to_vec();
+		let mut unsigned_attestation = attestation.clone();
 
-		unsigned_attestations[0].signature.clear();
+		unsigned_attestation.signature.clear();
 
 		assert!(
 			benchmark_qualification::qualify_candidate(
 				manifest,
 				manifest_digest,
 				catalog,
-				stages,
-				&unsigned_attestations,
+				stage,
+				&unsigned_attestation,
 			)
 			.is_err(),
 			"unsigned evidence must fail"
@@ -7154,8 +7078,8 @@ mod tests {
 				&changed_manifest,
 				manifest_digest,
 				catalog,
-				stages,
-				attestations,
+				stage,
+				attestation,
 			)
 			.is_err(),
 			"changed candidate identity must fail"
@@ -7166,14 +7090,13 @@ mod tests {
 		manifest: &BenchmarkQualificationManifest,
 		manifest_digest: &str,
 		catalog: &candidate_catalog::CandidateCatalogAuthority,
-		stages: &[CalibrationVerifiedStageV1],
-		attestations: &[CalibrationVerifierAttestationV1],
-		secrets: &[[u8; 32]],
+		stage: &CalibrationVerifiedStageV1,
+		attestation: &CalibrationVerifierAttestationV1,
+		secret: [u8; 32],
 	) {
 		for mutation in 0..4 {
-			let mut changed_stages = stages.to_vec();
-			let projection =
-				changed_stages[0].qualification_projection.as_mut().expect("projection");
+			let mut changed_stage = stage.clone();
+			let projection = changed_stage.qualification_projection.as_mut().expect("projection");
 
 			match mutation {
 				0 => projection.disposition = QualificationChildDisposition::Rejected,
@@ -7187,63 +7110,56 @@ mod tests {
 				},
 			}
 
-			changed_stages[0].stage_digest =
-				changed_stages[0].compute_stage_digest().expect("mutated stage digest");
+			changed_stage.stage_digest =
+				changed_stage.compute_stage_digest().expect("mutated stage digest");
 
-			let mut changed_attestations = attestations.to_vec();
-
-			changed_attestations[0] = sign_candidate_qualification_attestation(
-				&changed_stages[0],
-				secrets[0],
-				600 + mutation,
-			);
+			let changed_attestation =
+				sign_candidate_qualification_attestation(&changed_stage, secret, 600 + mutation);
 
 			assert!(
 				benchmark_qualification::qualify_candidate(
 					manifest,
 					manifest_digest,
 					catalog,
-					&changed_stages,
-					&changed_attestations,
+					&changed_stage,
+					&changed_attestation,
 				)
 				.is_err(),
 				"rejected, runtime-invalid, synthetic, or incomplete evidence mutation {mutation} must fail"
 			);
 		}
 
-		let mut changed_stages = stages.to_vec();
+		let mut changed_stage = stage.clone();
 
-		changed_stages[0].package_sha256 = "f".repeat(64);
+		changed_stage.package_sha256 = "f".repeat(64);
 
 		assert!(
 			benchmark_qualification::qualify_candidate(
 				manifest,
 				manifest_digest,
 				catalog,
-				&changed_stages,
-				attestations,
+				&changed_stage,
+				attestation,
 			)
 			.is_err(),
 			"changed package digest must fail"
 		);
 
-		changed_stages[0] = stages[0].clone();
-		changed_stages[0].run_id = format!("run_{}", "e".repeat(64));
-		changed_stages[0].stage_digest =
-			changed_stages[0].compute_stage_digest().expect("changed source stage digest");
+		changed_stage = stage.clone();
+		changed_stage.run_id = format!("run_{}", "e".repeat(64));
+		changed_stage.stage_digest =
+			changed_stage.compute_stage_digest().expect("changed source stage digest");
 
-		let mut changed_attestations = attestations.to_vec();
-
-		changed_attestations[0] =
-			sign_candidate_qualification_attestation(&changed_stages[0], secrets[0], 700);
+		let changed_attestation =
+			sign_candidate_qualification_attestation(&changed_stage, secret, 700);
 
 		assert!(
 			benchmark_qualification::qualify_candidate(
 				manifest,
 				manifest_digest,
 				catalog,
-				&changed_stages,
-				&changed_attestations,
+				&changed_stage,
+				&changed_attestation,
 			)
 			.is_err(),
 			"changed source run identity must fail"
@@ -7729,7 +7645,7 @@ mod tests {
 	}
 
 	#[test]
-	fn qualification_verifier_requires_three_explicit_stage_and_attestation_pairs() {
+	fn qualification_verifier_requires_one_explicit_stage_and_attestation_pair() {
 		let parsed = VerifyQualificationCli::try_parse_from([
 			"aiq-verifier verify-qualification",
 			"--artifact",
@@ -7742,21 +7658,13 @@ mod tests {
 			"catalog.json",
 			"--stage",
 			"stage-1.json",
-			"--stage",
-			"stage-2.json",
-			"--stage",
-			"stage-3.json",
 			"--attestation",
 			"attestation-1.json",
-			"--attestation",
-			"attestation-2.json",
-			"--attestation",
-			"attestation-3.json",
 		])
 		.expect("qualification CLI");
 
-		assert_eq!(parsed.stages.len(), 3);
-		assert_eq!(parsed.attestations.len(), 3);
+		assert_eq!(parsed.stages.len(), 1);
+		assert_eq!(parsed.attestations.len(), 1);
 		assert!(
 			crate::run_verify_qualification(VerifyQualificationCli {
 				artifact: PathBuf::from("qualification.json"),
@@ -7765,8 +7673,8 @@ mod tests {
 					"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 						.to_owned(),
 				catalog: PathBuf::from("catalog.json"),
-				stages: vec![PathBuf::from("stage-1.json")],
-				attestations: vec![PathBuf::from("attestation-1.json")],
+				stages: Vec::new(),
+				attestations: Vec::new(),
 			})
 			.is_err()
 		);
@@ -8831,8 +8739,11 @@ mod tests {
 		let projection =
 			stage.qualification_projection.as_ref().expect("candidate qualification projection");
 
-		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.13");
-		assert_eq!(projection.cells.len(), 1_224);
+		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.14");
+		assert_eq!(projection.cells.len(), 216);
+		assert_eq!(stage.models, CANDIDATE_QUALIFICATION_MODEL_MATRIX);
+		assert_eq!(stage.result_efficiency.len(), 216);
+		assert_eq!(stage.scores.len(), 3);
 		assert_eq!(stage.trust, TrustTier::Untrusted);
 		assert_eq!(attestation.stage_digest, stage.stage_digest);
 		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
@@ -8869,48 +8780,38 @@ mod tests {
 	}
 
 	#[test]
-	fn replay_verified_candidate_qualification_rejects_fabrication_and_substitution() {
+	fn replay_verified_candidate_qualification_is_complete_and_rejects_fabrication() {
 		let mut fixture = LocalReplayFixture::new();
 
-		fixture.convert_to_calibration();
+		fixture.convert_to_candidate_calibration();
 
-		let prepared = fixture
-			.prepare(
-				&fixture.root.join("candidate-base-stage.json"),
-				&fixture.root.join("candidate-base-attestation.json"),
-			)
-			.expect("base calibration replay");
-		let PreparedEvidence::Calibration { stage: base_stage, .. } = prepared.evidence else {
-			panic!("expected calibration evidence");
+		let prepared = fixture.prepare_candidate().expect("candidate offline replay");
+		let PreparedEvidence::Calibration { stage, attestation } = prepared.evidence else {
+			panic!("expected candidate calibration evidence");
 		};
-		let evidence = (0..3)
-			.map(|index| candidate_qualification_stage(base_stage.clone(), index))
-			.collect::<Vec<_>>();
-		let stages = evidence.iter().map(|(stage, _, _)| stage.clone()).collect::<Vec<_>>();
-		let attestations =
-			evidence.iter().map(|(_, attestation, _)| attestation.clone()).collect::<Vec<_>>();
-		let secrets = evidence.iter().map(|(_, _, secret)| *secret).collect::<Vec<_>>();
 		let catalog = candidate_qualification_catalog();
-		let manifest = candidate_qualification_manifest(&catalog, &stages, &attestations);
+		let manifest = candidate_qualification_manifest(&catalog, &stage, &attestation);
 		let manifest_digest = protocol::canonical_hash(&manifest).expect("manifest digest");
 		let artifact = benchmark_qualification::qualify_candidate(
 			&manifest,
 			&manifest_digest,
 			&catalog,
-			&stages,
-			&attestations,
+			&stage,
+			&attestation,
 		)
 		.expect("replay-verified qualification");
 
 		assert_eq!(artifact.claims.status, BenchmarkQualificationStatus::Qualified);
+		assert_eq!(artifact.claims.completed_cells, 216);
+		assert_eq!(artifact.claims.models, CANDIDATE_QUALIFICATION_MODEL_MATRIX);
 
 		benchmark_qualification::verify_qualification_artifact(
 			&artifact,
 			&manifest,
 			&manifest_digest,
 			&catalog,
-			&stages,
-			&attestations,
+			&stage,
+			&attestation,
 		)
 		.expect("qualification verification");
 
@@ -8918,16 +8819,16 @@ mod tests {
 			&manifest,
 			&manifest_digest,
 			&catalog,
-			&stages,
-			&attestations,
+			&stage,
+			&attestation,
 		);
 		assert_candidate_state_and_source_mutations_rejected(
 			&manifest,
 			&manifest_digest,
 			&catalog,
-			&stages,
-			&attestations,
-			&secrets,
+			&stage,
+			&attestation,
+			[8; 32],
 		);
 	}
 
