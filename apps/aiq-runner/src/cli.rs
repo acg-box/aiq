@@ -40,7 +40,9 @@ use crate::official_admission::{
 };
 use crate::pinned_path::{PinnedDirectoryIdentity, PinnedPathIdentity};
 use crate::{
-	benchmark_qualification::{self, BenchmarkQualificationManifest, BenchmarkQualificationStatus},
+	benchmark_qualification::{
+		self, BenchmarkQualificationManifest, CANDIDATE_QUALIFICATION_MODEL_MATRIX,
+	},
 	candidate_catalog,
 };
 use aiq_runner::{
@@ -1296,11 +1298,11 @@ enum Command {
 		#[arg(long)]
 		output: PathBuf,
 	},
-	/// Qualify one exact candidate from three predeclared complete calibration matrices.
+	/// Qualify one exact candidate from one predeclared complete calibration matrix.
 	///
-	/// This command is model-free. It never pools, publishes, or relabels a child matrix.
+	/// This command is model-free and never publishes or relabels the child matrix.
 	QualifyCandidate {
-		/// Exact predeclared candidate, policy, and three-child manifest.
+		/// Exact predeclared candidate, policy, and child manifest.
 		#[arg(long)]
 		manifest: PathBuf,
 		/// Independently retained canonical SHA-256 of the predeclared manifest.
@@ -1309,14 +1311,13 @@ enum Command {
 		/// Exact qualification-ready AIQ Core 1.1.0 public catalog.
 		#[arg(long)]
 		catalog: PathBuf,
-		/// Replay-verified candidate calibration stage. Repeat exactly three times in
-		/// predeclared child order.
+		/// The one replay-verified candidate calibration stage.
 		#[arg(long = "stage", required = true)]
 		stages: Vec<PathBuf>,
-		/// Signed verifier attestation paired with each stage in the same order.
+		/// The signed verifier attestation paired with the stage.
 		#[arg(long = "attestation", required = true)]
 		attestations: Vec<PathBuf>,
-		/// Create-new deterministic qualification or rejection artifact.
+		/// Create-new deterministic qualification artifact.
 		#[arg(long)]
 		output: PathBuf,
 	},
@@ -2188,42 +2189,26 @@ fn run_qualify_candidate(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	validate_new_output_set(&[("qualification output", output)])?;
 
-	if stage_paths.len() != 3 || attestation_paths.len() != 3 {
-		return Err(
-			"qualify-candidate requires exactly three --stage and three --attestation inputs"
-				.into(),
-		);
-	}
-
+	let [stage_path] = stage_paths else {
+		return Err("qualify-candidate requires exactly one --stage input".into());
+	};
+	let [attestation_path] = attestation_paths else {
+		return Err("qualify-candidate requires exactly one --attestation input".into());
+	};
 	let manifest = read_json::<BenchmarkQualificationManifest>(manifest_path)?;
 	let catalog_value = read_json::<serde_json::Value>(catalog_path)?;
 	let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)?;
-	let stages = stage_paths
-		.iter()
-		.map(|path| read_json::<CalibrationVerifiedStageV1>(path))
-		.collect::<Result<Vec<_>, _>>()?;
-	let attestations = attestation_paths
-		.iter()
-		.map(|path| read_json::<CalibrationVerifierAttestationV1>(path))
-		.collect::<Result<Vec<_>, _>>()?;
+	let stage = read_json::<CalibrationVerifiedStageV1>(stage_path)?;
+	let attestation = read_json::<CalibrationVerifierAttestationV1>(attestation_path)?;
 	let artifact = benchmark_qualification::qualify_candidate(
 		&manifest,
 		expected_manifest_sha256,
 		&catalog,
-		&stages,
-		&attestations,
+		&stage,
+		&attestation,
 	)?;
-	let rejected = artifact.claims.status == BenchmarkQualificationStatus::Rejected;
 
 	write_json(output, &artifact)?;
-
-	if rejected {
-		return Err(format!(
-			"candidate qualification was rejected; deterministic evidence was written to {}",
-			output.display()
-		)
-		.into());
-	}
 
 	Ok(())
 }
@@ -3321,11 +3306,12 @@ fn parse_controlled_codex_home(value: &str) -> Result<PathBuf, String> {
 fn validate_run_mode_options(
 	options: &RunOptions,
 	official_shape: bool,
+	candidate_qualification_shape: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	validate_candidate_run_mode(
 		options.candidate_qualification,
 		options.run_class,
-		official_shape,
+		candidate_qualification_shape,
 		&options.output,
 	)?;
 
@@ -3358,7 +3344,7 @@ fn validate_candidate_run_mode(
 	}
 	if !complete_shape {
 		return Err(
-			"candidate qualification requires exactly 72 controlled tasks and the exact 17-model matrix; no model was invoked"
+			"candidate qualification requires exactly 72 controlled tasks and the exact three medium configurations; no model was invoked"
 				.into(),
 		);
 	}
@@ -3393,8 +3379,10 @@ fn prepare_run_model_free(options: &RunOptions) -> Result<PreparedRun, Box<dyn s
 
 	let selected_models = select_models(&options.model_selectors)?;
 	let official_shape = selected_tasks.len() == 72 && selected_models == MODEL_MATRIX;
+	let candidate_qualification_shape =
+		selected_tasks.len() == 72 && selected_models == CANDIDATE_QUALIFICATION_MODEL_MATRIX;
 
-	validate_run_mode_options(options, official_shape)?;
+	validate_run_mode_options(options, official_shape, candidate_qualification_shape)?;
 
 	let corpus = validate_run_corpus(
 		options.candidate_qualification,
@@ -6898,7 +6886,7 @@ mod tests {
 	}
 
 	#[test]
-	fn qualification_cli_uses_three_explicit_stage_and_attestation_pairs() {
+	fn qualification_cli_uses_one_explicit_stage_and_attestation_pair() {
 		let parsed = super::Cli::try_parse_from([
 			"aiq-runner",
 			"qualify-candidate",
@@ -6910,16 +6898,8 @@ mod tests {
 			"catalog.json",
 			"--stage",
 			"stage-1.json",
-			"--stage",
-			"stage-2.json",
-			"--stage",
-			"stage-3.json",
 			"--attestation",
 			"attestation-1.json",
-			"--attestation",
-			"attestation-2.json",
-			"--attestation",
-			"attestation-3.json",
 			"--output",
 			"qualification.json",
 		]);
@@ -6928,7 +6908,7 @@ mod tests {
 			parsed,
 			Ok(super::Cli {
 				command: super::Command::QualifyCandidate { stages, attestations, .. },
-			}) if stages.len() == 3 && attestations.len() == 3
+			}) if stages.len() == 1 && attestations.len() == 1
 		));
 
 		let root = fixture_root("qualification-count");
@@ -6938,8 +6918,8 @@ mod tests {
 				Path::new("manifest.json"),
 				"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				Path::new("catalog.json"),
-				&[PathBuf::from("one.json")],
-				&[PathBuf::from("one.json")],
+				&[],
+				&[],
 				&root.join("qualification.json"),
 			)
 			.is_err()
@@ -7124,6 +7104,78 @@ mod tests {
 	}
 
 	#[cfg(unix)]
+	fn assert_candidate_credential_boundary(
+		fixture: &RunnerProvenancePathFixture,
+		options: &super::RunOptions,
+	) {
+		let runtime_root = fixture.root.join("codex-runtime");
+		let codex_binary = runtime_root.join("codex");
+		let codex_host = runtime_root.join("codex-code-mode-host");
+		let invocation_marker = fixture.root.join("unexpected-codex-invocation");
+
+		fs::create_dir_all(&runtime_root).expect("candidate Codex runtime root");
+		fs::write(
+			&codex_binary,
+			format!(
+				"#!/bin/sh\n: > '{}'\nprintf '%s\\n' 'codex-cli fixture'\n",
+				invocation_marker.display()
+			),
+		)
+		.expect("candidate Codex fixture");
+		fs::write(&codex_host, "#!/bin/sh\nexit 0\n").expect("candidate Codex host fixture");
+		fs::set_permissions(&codex_binary, fs::Permissions::from_mode(0o700))
+			.expect("candidate Codex fixture mode");
+		fs::set_permissions(&codex_host, fs::Permissions::from_mode(0o700))
+			.expect("candidate Codex host fixture mode");
+
+		for directory in [
+			&options.workspace_root,
+			&options.execution_root,
+			&options.codex_home,
+			&options.artifact_root,
+		] {
+			fs::create_dir_all(directory).expect("candidate controlled directory");
+		}
+
+		let capability_manifest = crate::model::CapabilityManifest {
+			schema_version: "aiq.capabilities.v1".to_owned(),
+			node_id: format!("node_{}", "f".repeat(64)),
+			observed_at: "2026-08-30T00:00:00Z".to_owned(),
+			codex_version: "codex-cli fixture".to_owned(),
+			models: crate::model::MODEL_MATRIX
+				.iter()
+				.map(|model| crate::model::ModelCapability {
+					model: *model,
+					status: crate::model::CapabilityStatus::Available,
+					reason: None,
+				})
+				.collect(),
+		};
+
+		fs::write(
+			&options.capabilities,
+			serde_json::to_vec(&capability_manifest).expect("candidate capability JSON"),
+		)
+		.expect("candidate capability manifest");
+
+		let mut boundary = options.clone();
+
+		boundary.codex_binary = codex_binary.display().to_string();
+		boundary.evaluator_runtime = fixture.runtime.executable().to_owned();
+		boundary.codex_toolchain_root = fixture.root.join("toolchain");
+
+		let error = match super::prepare_authorized_live_run(boundary) {
+			Ok(_) => panic!("missing controlled credential must stop before model work"),
+			Err(error) => error,
+		};
+
+		assert_eq!(error.to_string(), "controlled Codex authentication is unavailable");
+		assert!(!invocation_marker.exists(), "credential rejection must make zero Codex calls");
+		assert!(!options.preflight_cache.exists());
+		assert!(!options.checkpoint.exists());
+	}
+
+	#[cfg(unix)]
 	#[test]
 	fn loaded_candidate_preparation_and_packaging_share_catalog_order_and_identity() {
 		let fixture = RunnerProvenancePathFixture::new("candidate-preparation-order");
@@ -7169,7 +7221,10 @@ mod tests {
 			preflight_ttl_seconds: 86_400,
 			checkpoint: fixture.root.join("checkpoint.json"),
 			task_selectors: Vec::new(),
-			model_selectors: Vec::new(),
+			model_selectors: crate::benchmark_qualification::CANDIDATE_QUALIFICATION_MODEL_MATRIX
+				.iter()
+				.map(|model| model.key())
+				.collect(),
 			jobs: 32,
 			run_class: RunClass::Calibration,
 			candidate_qualification: true,
@@ -7187,6 +7242,10 @@ mod tests {
 		let package_tasks = package.tasks.as_ref().expect("candidate package tasks");
 
 		assert_eq!(prepared.report.tasks, fixture.candidate_tasks);
+		assert_eq!(
+			prepared.selected_models,
+			crate::benchmark_qualification::CANDIDATE_QUALIFICATION_MODEL_MATRIX
+		);
 		assert_eq!(package_tasks, &prepared.report.tasks);
 		assert_eq!(package.context, prepared.validation_context);
 		assert_eq!(
@@ -7209,6 +7268,8 @@ mod tests {
 			)
 			.expect("candidate run identity")
 		);
+
+		assert_candidate_credential_boundary(&fixture, &options);
 
 		let mut current = options;
 

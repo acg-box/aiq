@@ -4846,8 +4846,13 @@ mod tests {
 			Executor, ExecutorError, MAX_CODEX_VERSION_BYTES, MAX_INLINE_PREVIEW_BYTES,
 			ProbeStatus, SandboxPolicy,
 		},
+		benchmark_qualification::{self, CANDIDATE_QUALIFICATION_MODEL_MATRIX},
+		calibration_verification,
 		corpus_commitment::{self, RunClass},
 		model::{CapabilityManifest, MODEL_MATRIX},
+		normalization::{
+			AttestedDeploymentMetadata, VerifiedPackageIdentity, VerifierSigningIdentity,
+		},
 		protocol,
 		resume::{self, InFlightCell, PendingEvaluation, RunCheckpoint, RunCommitments},
 		run_validation,
@@ -5112,10 +5117,25 @@ mod tests {
 
 			self.stats.active.fetch_sub(1, Ordering::SeqCst);
 
+			let stdout = if String::from_utf8_lossy(&request.stdin)
+				.contains("node bin/task-tool.mjs")
+			{
+				concat!(
+					r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"node bin/task-tool.mjs"}}"#,
+					"\n",
+					r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","status":"completed"}}"#,
+					"\n",
+					r#"{"type":"item.completed","item":{"type":"agent_message","text":"OK"}}"#,
+				)
+				.as_bytes()
+				.to_vec()
+			} else {
+				br#"{"type":"item.completed","item":{"type":"agent_message","text":"OK"}}"#.to_vec()
+			};
+
 			Ok(ExecutionCapture {
 				exit_code: Some(0),
-				stdout: br#"{"type":"item.completed","item":{"type":"agent_message","text":"OK"}}"#
-					.to_vec(),
+				stdout,
 				stderr: Vec::new(),
 				timed_out: false,
 				budget_exceeded: None,
@@ -5600,8 +5620,15 @@ mod tests {
 		ScheduleSlot,
 		RunCommitments,
 	) {
-		let (_synthetic_tasks, models, mut manifest, mut validation, slot, mut commitments) =
-			selected_fixture(72, MODEL_MATRIX.len());
+		let (
+			_synthetic_tasks,
+			_selected_models,
+			mut manifest,
+			mut validation,
+			slot,
+			mut commitments,
+		) = selected_fixture(72, CANDIDATE_QUALIFICATION_MODEL_MATRIX.len());
+		let models = CANDIDATE_QUALIFICATION_MODEL_MATRIX.to_vec();
 		let candidate = candidate_catalog::checked_candidate_catalog_authority()
 			.expect("checked candidate catalog");
 
@@ -5623,6 +5650,7 @@ mod tests {
 
 		commitments.task_set_hash.clone_from(&task_set_hash);
 		commitments.evaluator_digest.clone_from(&evaluator_digest);
+		commitments.models.clone_from(&models);
 
 		set_capacity_jobs(&mut commitments, &tasks, &models, &validation, 8);
 
@@ -5735,7 +5763,7 @@ mod tests {
 		validation_context: &run_validation::CalibrationValidationContext,
 		run: &super::CalibrationRunRecord,
 		tasks: &[TaskDefinition],
-	) {
+	) -> VerifiedPackageIdentity {
 		let active_error = run_validation::validate_calibration_run_record(run)
 			.expect_err("active validation must reject candidate provenance");
 
@@ -5764,17 +5792,101 @@ mod tests {
 		.expect("candidate package for local verifier replay");
 		let decoded: protocol::SubmissionEnvelope =
 			serde_json::from_slice(&package).expect("candidate package JSON");
-
-		decoded.verify(&BTreeSet::new()).expect("candidate package signature");
+		let verified = decoded.verify(&BTreeSet::new()).expect("candidate package signature");
 
 		assert_eq!(decoded.idempotency_key, run.run_id);
 		assert_eq!(decoded.content_hash, envelope.content_hash);
 		assert_eq!(decoded.signature, envelope.signature);
+
+		VerifiedPackageIdentity {
+			package_sha256: hex::encode(Sha256::digest(&package)),
+			content_hash: verified.content_hash,
+			signer: verified.signer,
+		}
+	}
+
+	fn verify_and_qualify_candidate_run(
+		run: &super::CalibrationRunRecord,
+		tasks: &[TaskDefinition],
+		package: &VerifiedPackageIdentity,
+	) -> crate::benchmark_qualification::BenchmarkQualificationArtifact {
+		let metadata = AttestedDeploymentMetadata {
+			task_set_id: crate::scoring::AIQ_TASK_SET_ID.to_owned(),
+			task_set_version: candidate_catalog::CANDIDATE_TASK_SET_VERSION.to_owned(),
+			benchmark_version: format!(
+				"{}@{}",
+				crate::scoring::AIQ_TASK_SET_ID,
+				candidate_catalog::CANDIDATE_TASK_SET_VERSION
+			),
+			prompt_set_digest: run.provenance.prompt_digest.clone(),
+			runner_commit: "d".repeat(40),
+			region: "local-test".to_owned(),
+			scheduled_unix_ms: run
+				.schedule_slot
+				.scheduled_unix_ms()
+				.expect("candidate scheduled time"),
+			started_unix_ms: run.started_unix_ms,
+			finished_unix_ms: run.finished_unix_ms,
+			synthetic_test: false,
+		};
+		let verifier = VerifierSigningIdentity::from_secret([32; 32]);
+		let provider_usage = vec![runner::ProviderTokenUsage::default(); run.results.len()];
+		let (stage, attestation) =
+			calibration_verification::verify_and_attest_candidate_qualification_run(
+				&verifier,
+				run,
+				tasks,
+				package,
+				&metadata,
+				&provider_usage,
+				1_000,
+			)
+			.expect("candidate offline verification evidence");
+		let candidate = candidate_catalog::checked_candidate_catalog_authority()
+			.expect("candidate catalog authority");
+		let provenance = &stage.provenance;
+		let manifest = crate::benchmark_qualification::BenchmarkQualificationManifest {
+			schema_version: crate::benchmark_qualification::QUALIFICATION_MANIFEST_SCHEMA_VERSION
+				.to_owned(),
+			candidate: crate::benchmark_qualification::QualificationCandidateIdentity {
+				candidate_id: candidate.candidate_id.clone(),
+				catalog_digest: candidate.catalog_digest.clone(),
+				task_metadata_digest: candidate.task_metadata_digest.clone(),
+				task_set_digest: stage.task_set_hash.clone(),
+				corpus_release_id: provenance.corpus_release_id.clone(),
+				corpus_commitment_digest: provenance.corpus_commitment_sha256.clone(),
+				evaluator_digest: provenance.evaluator_digest.clone(),
+				harness_digest: provenance.harness_digest.clone(),
+				prompt_digest: provenance.prompt_digest.clone(),
+				tool_policy_digest: provenance.tool_policy_digest.clone(),
+				network_policy_digest: provenance.network_policy_digest.clone(),
+				environment_digest: provenance.environment_digest.clone(),
+				source_manifest_digest: provenance.source_manifest_digest.clone(),
+				model_selection_digest: stage.model_selection_digest.clone(),
+			},
+			policy: crate::benchmark_qualification::BenchmarkQualificationPolicy::default(),
+			child: crate::benchmark_qualification::PredeclaredQualificationChild {
+				child_id: "candidate-child-1".to_owned(),
+				source_run_id: stage.run_id.clone(),
+				verifier: attestation.verifier.clone(),
+			},
+		};
+		let manifest_digest =
+			protocol::canonical_hash(&manifest).expect("qualification manifest digest");
+
+		benchmark_qualification::qualify_candidate(
+			&manifest,
+			&manifest_digest,
+			&candidate,
+			&stage,
+			&attestation,
+		)
+		.expect("candidate qualification")
 	}
 
 	#[cfg(unix)]
 	#[test]
-	fn candidate_completed_run_recovery_and_local_package_keep_exact_validation_context() {
+	fn candidate_three_by_seventy_two_fake_executor_recovers_and_packages_in_216_calls() {
 		let root = env::temp_dir().join(format!(
 			"aiq-candidate-completed-recovery-{}-{}",
 			process::id(),
@@ -5841,8 +5953,21 @@ mod tests {
 			panic!("recovered candidate calibration")
 		};
 
-		assert_eq!(stats.calls.lock().expect("candidate call count").len(), 1_224);
+		assert_eq!(stats.calls.lock().expect("candidate call count").len(), 216);
 		assert_eq!(first.results, recovered.results);
+		assert_eq!(first.models, CANDIDATE_QUALIFICATION_MODEL_MATRIX);
+		assert_eq!(first.results.len(), 216);
+
+		let incomplete = recovered
+			.results
+			.iter()
+			.filter(|result| result.task_score.is_none())
+			.map(|result| {
+				(result.task_id.clone(), result.model, result.status, result.failure.clone())
+			})
+			.collect::<Vec<_>>();
+
+		assert!(incomplete.is_empty(), "incomplete candidate results: {incomplete:?}");
 
 		validation_context
 			.validate(&first, Some(&tasks))
@@ -5858,7 +5983,13 @@ mod tests {
 			&recovered,
 			&tasks,
 		);
-		assert_candidate_package_boundaries(&identity, &validation_context, &recovered, &tasks);
+
+		let package =
+			assert_candidate_package_boundaries(&identity, &validation_context, &recovered, &tasks);
+		let qualification = verify_and_qualify_candidate_run(&recovered, &tasks, &package);
+
+		assert_eq!(qualification.claims.completed_cells, 216);
+		assert_eq!(qualification.claims.models, CANDIDATE_QUALIFICATION_MODEL_MATRIX);
 
 		fs::remove_dir_all(root).expect("candidate fixture cleanup");
 		fs::remove_dir_all(corpus_fixture.root).expect("candidate corpus fixture cleanup");

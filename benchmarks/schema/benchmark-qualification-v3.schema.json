@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/benchmark-qualification-v3.schema.json",
+  "title": "AIQ benchmark qualification artifact v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "claims_digest", "claims"],
+  "properties": {
+    "schema_version": { "const": "aiq.benchmark-qualification.v3" },
+    "claims_digest": { "$ref": "#/$defs/digest" },
+    "claims": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "candidate",
+        "policy",
+        "policy_digest",
+        "manifest_digest",
+        "method_version",
+        "scope",
+        "child",
+        "task_count",
+        "models",
+        "completed_cells"
+      ],
+      "properties": {
+        "status": { "const": "qualified" },
+        "candidate": {
+          "$ref": "benchmark-qualification-manifest-v3.schema.json#/$defs/candidate"
+        },
+        "policy": {
+          "$ref": "benchmark-qualification-manifest-v3.schema.json#/$defs/policy"
+        },
+        "policy_digest": { "$ref": "#/$defs/digest" },
+        "manifest_digest": { "$ref": "#/$defs/digest" },
+        "method_version": {
+          "const": "aiq.single-replay-verified-complete-family-matrix-qualification.v1"
+        },
+        "scope": { "$ref": "#/$defs/scope" },
+        "child": { "$ref": "#/$defs/child" },
+        "task_count": { "const": 72 },
+        "models": {
+          "$ref": "benchmark-qualification-manifest-v3.schema.json#/$defs/requiredModels"
+        },
+        "completed_cells": { "const": 216 }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "plainDigest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9._:/-]+(?![\\s\\S])"
+    },
+    "nodeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "public_key"],
+      "properties": {
+        "node_id": { "type": "string", "pattern": "^node_[0-9a-f]{64}(?![\\s\\S])" },
+        "public_key": { "$ref": "#/$defs/plainDigest" }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["proves", "excludes"],
+      "properties": {
+        "proves": {
+          "const": "end_to_end_execution_and_exact_corpus_source_package_verifier_identity_with_complete_family_representative_coverage"
+        },
+        "excludes": {
+          "type": "array",
+          "prefixItems": [
+            { "const": "prediction_interval" },
+            { "const": "spearman_correlation" },
+            { "const": "run_variance" },
+            { "const": "precise_ranking" }
+          ],
+          "items": false,
+          "minItems": 4,
+          "maxItems": 4
+        }
+      }
+    },
+    "child": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "child_id",
+        "source_run_id",
+        "source_run_digest",
+        "source_package_sha256",
+        "source_package_content_hash",
+        "runner",
+        "verifier",
+        "verifier_attestation_digest",
+        "run_provenance_digest",
+        "matrix_digest"
+      ],
+      "properties": {
+        "child_id": { "$ref": "#/$defs/identity" },
+        "source_run_id": { "$ref": "#/$defs/identity" },
+        "source_run_digest": { "$ref": "#/$defs/digest" },
+        "source_package_sha256": { "$ref": "#/$defs/plainDigest" },
+        "source_package_content_hash": { "$ref": "#/$defs/digest" },
+        "runner": { "$ref": "#/$defs/nodeIdentity" },
+        "verifier": { "$ref": "#/$defs/nodeIdentity" },
+        "verifier_attestation_digest": { "$ref": "#/$defs/digest" },
+        "run_provenance_digest": { "$ref": "#/$defs/digest" },
+        "matrix_digest": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

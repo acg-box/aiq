@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aiq.wiki/schema/benchmark-qualification-manifest-v3.schema.json",
+  "title": "AIQ benchmark qualification manifest v3",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "candidate", "policy", "child"],
+  "properties": {
+    "schema_version": { "const": "aiq.benchmark-qualification-manifest.v3" },
+    "candidate": { "$ref": "#/$defs/candidate" },
+    "policy": { "$ref": "#/$defs/policy" },
+    "child": { "$ref": "#/$defs/predeclaredChild" }
+  },
+  "$defs": {
+    "identity": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9._:/-]+(?![\\s\\S])"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])"
+    },
+    "nodeIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["node_id", "public_key"],
+      "properties": {
+        "node_id": { "type": "string", "pattern": "^node_[0-9a-f]{64}(?![\\s\\S])" },
+        "public_key": { "type": "string", "pattern": "^[0-9a-f]{64}(?![\\s\\S])" }
+      }
+    },
+    "model": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["family", "reasoning_effort"],
+      "properties": {
+        "family": { "enum": ["sol", "terra", "luna"] },
+        "reasoning_effort": { "const": "medium" }
+      }
+    },
+    "requiredModels": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "allOf": [
+            { "$ref": "#/$defs/model" },
+            { "properties": { "family": { "const": "sol" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/model" },
+            { "properties": { "family": { "const": "terra" } } }
+          ]
+        },
+        {
+          "allOf": [
+            { "$ref": "#/$defs/model" },
+            { "properties": { "family": { "const": "luna" } } }
+          ]
+        }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "predeclaredChild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["child_id", "source_run_id", "verifier"],
+      "properties": {
+        "child_id": { "$ref": "#/$defs/identity" },
+        "source_run_id": { "$ref": "#/$defs/identity" },
+        "verifier": { "$ref": "#/$defs/nodeIdentity" }
+      }
+    },
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "candidate_id",
+        "catalog_digest",
+        "task_metadata_digest",
+        "task_set_digest",
+        "corpus_release_id",
+        "corpus_commitment_digest",
+        "evaluator_digest",
+        "harness_digest",
+        "prompt_digest",
+        "tool_policy_digest",
+        "network_policy_digest",
+        "environment_digest",
+        "source_manifest_digest",
+        "model_selection_digest"
+      ],
+      "properties": {
+        "candidate_id": { "const": "aiq-core/1.1.0-candidate.14" },
+        "catalog_digest": { "$ref": "#/$defs/digest" },
+        "task_metadata_digest": { "$ref": "#/$defs/digest" },
+        "task_set_digest": { "$ref": "#/$defs/digest" },
+        "corpus_release_id": { "$ref": "#/$defs/identity" },
+        "corpus_commitment_digest": { "$ref": "#/$defs/digest" },
+        "evaluator_digest": { "$ref": "#/$defs/digest" },
+        "harness_digest": { "$ref": "#/$defs/digest" },
+        "prompt_digest": { "$ref": "#/$defs/digest" },
+        "tool_policy_digest": { "$ref": "#/$defs/digest" },
+        "network_policy_digest": { "$ref": "#/$defs/digest" },
+        "environment_digest": { "$ref": "#/$defs/digest" },
+        "source_manifest_digest": { "$ref": "#/$defs/digest" },
+        "model_selection_digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "required_tasks",
+        "required_models",
+        "required_completed_cells"
+      ],
+      "properties": {
+        "version": { "const": "aiq.benchmark-qualification-policy.v2" },
+        "required_tasks": { "const": 72 },
+        "required_models": { "$ref": "#/$defs/requiredModels" },
+        "required_completed_cells": { "const": 216 }
+      }
+    }
+  }
+}
