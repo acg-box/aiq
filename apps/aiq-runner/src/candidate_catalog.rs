@@ -19,7 +19,7 @@ pub const CANDIDATE_CATALOG_SCHEMA_VERSION: &str = "aiq.catalog.v2";
 /// Exact source-foundation task-set version.
 pub const CANDIDATE_TASK_SET_VERSION: &str = "1.1.0";
 /// Exact source-only candidate identity accepted by the checked candidate boundary.
-pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.14";
+pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.15";
 /// Exact candidate catalog path. This does not replace the active 1.0.7 catalog.
 pub const CANDIDATE_CATALOG_PATH: &str = "benchmarks/candidates/aiq-core-1.1.0/catalog.json";
 /// Exact candidate task schema path.
@@ -254,6 +254,7 @@ pub fn validate_candidate_catalog(
 			| "aiq-core/1.1.0-candidate.12"
 			| "aiq-core/1.1.0-candidate.13"
 			| "aiq-core/1.1.0-candidate.14"
+			| "aiq-core/1.1.0-candidate.15"
 	) {
 		"1.1.0"
 	} else {
@@ -280,23 +281,8 @@ pub fn validate_candidate_catalog(
 	})
 }
 
-pub(crate) fn task_bindings_match_checked_candidate(tasks: &[TaskDefinition]) -> bool {
-	let Ok(catalog) = checked_candidate_catalog_authority() else { return false };
-
-	tasks.len() == catalog.tasks.len()
-		&& tasks.iter().zip(&catalog.tasks).all(|(task, expected)| {
-			task.task_id == expected.task_id
-				&& task.task_version == CANDIDATE_TASK_SET_VERSION
-				&& task.domain == expected.domain
-				&& task.cluster_id.as_deref() == Some(expected.cluster_id.as_str())
-				&& task.catalog_entry_digest.as_deref()
-					== Some(expected.catalog_entry_digest.as_str())
-				&& task.scorer_version == "1.0.6"
-		})
-}
-
 /// Orders exact candidate task sources by the checked catalog authority.
-pub(crate) fn order_tasks_by_checked_candidate(
+pub fn order_tasks_by_checked_candidate(
 	tasks: &mut [TaskDefinition],
 ) -> Result<(), CandidateCatalogError> {
 	let catalog = checked_candidate_catalog_authority()?;
@@ -318,6 +304,21 @@ pub(crate) fn order_tasks_by_checked_candidate(
 	tasks.sort_by_key(|task| positions.get(task.task_id.as_str()).copied().unwrap_or(usize::MAX));
 
 	Ok(())
+}
+
+pub(crate) fn task_bindings_match_checked_candidate(tasks: &[TaskDefinition]) -> bool {
+	let Ok(catalog) = checked_candidate_catalog_authority() else { return false };
+
+	tasks.len() == catalog.tasks.len()
+		&& tasks.iter().zip(&catalog.tasks).all(|(task, expected)| {
+			task.task_id == expected.task_id
+				&& task.task_version == CANDIDATE_TASK_SET_VERSION
+				&& task.domain == expected.domain
+				&& task.cluster_id.as_deref() == Some(expected.cluster_id.as_str())
+				&& task.catalog_entry_digest.as_deref()
+					== Some(expected.catalog_entry_digest.as_str())
+				&& task.scorer_version == "1.0.6"
+		})
 }
 
 pub(crate) fn checked_candidate_catalog_authority()
@@ -558,7 +559,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.14");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.15");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 

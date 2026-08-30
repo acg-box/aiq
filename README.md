@@ -152,25 +152,25 @@ or legacy data.
 ## AIQ Core 1.1.0 source foundation
 
 The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.14`. It does not change the sole active production
+`aiq-core/1.1.0-candidate.15`. It does not change the sole active production
 tuple above. It is not a sealed candidate, a qualification result, a release,
 or production-ready evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.14 retains all 72 candidate.13 task-facing semantics,
+`aiq.catalog.v2`. Candidate.15 retains all 72 candidate.14 task-facing semantics,
 including the seven distinct tool-use constructs, and records their candidate.5
 design history as 65 retained and seven revised tasks. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:1b1b11a80a6221fde444f269eeab37a936bda8d5b4962bcb33f0a55a341546df`.
+`sha256:3414c7f4aa9683ad89d3ca97afad94c57d49858a1e7ac38e81a479fbd4c77a79`.
 Its ordered task-metadata digest is
-`sha256:7ea2202e1ac3efee9a83a33c4323487bdb1f5d32cdf46ee4c60aaac53471c927`.
+`sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796`.
 Its public release digest is
-`sha256:849871d2a075ae3ec1bdf7cdf085dfe7af8465bb09224a4fdbca9f0c9bf6bfd3`.
+`sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5`.
 
-Candidates.1 through .13 are immutable predecessor evidence. Candidate.5
+Candidates.1 through .14 are immutable predecessor evidence. Candidate.5
 remains the durable source for the seven distinct disclosed scenario, operation,
 result, evaluator, metamorphic, and cross-task substitution contracts. Its
 source integration was rejected because
@@ -189,7 +189,7 @@ corpus, and source inputs for candidate packaging. It binds the complete validat
 context through signed-payload serialization and uses Node.js 24.18.0. The active
 1.0.7, Contrast, historical, and Official validators remain
 unchanged. The commitment validator derives the expected candidate identity from
-the validated embedded catalog and rejects candidate.13 and older identities.
+the validated embedded catalog and rejects candidate.14 and older identities.
 Candidate.9 is rejected because `debugging-04` declared `src/task.mjs` while its
 prompt, workspace bindings, and weighted evaluator import `src/task.ts`, and
 `instruction-following-05` declared the non-schema field type `undefined` for
@@ -220,7 +220,11 @@ completed all 17 preflight probes and started 88 task cells, but only 56 of 1,22
 cells completed before the five-hour subscription quota reached 100%; seven-day
 usage was 17%. No package, verifier stage, attestation, or qualification artifact
 exists. Candidate.14 keeps every task-facing semantic unchanged and replaces only
-the quota-infeasible candidate release-qualification shape.
+the quota-infeasible candidate release-qualification shape. Its one 216-cell run
+and package completed, but the real candidate verifier loaded ordinary filenames
+lexically and rejected the catalog-ordered evaluator identity before replay. No
+stage, attestation, or qualification artifact exists. Candidate.15 reuses the
+existing checked-catalog ordering owner in that candidate-only verifier load path.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one

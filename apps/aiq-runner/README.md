@@ -39,10 +39,10 @@ path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. The checked-in candidate.14 source is frozen for a fresh
-independent review. Candidate.13 is immutable rejected quota-infeasible evidence,
-it has no transferable review records, and an empty candidate.14 review directory
-blocks sealing without creating output.
+declaration exactly. The checked-in candidate.15 source is frozen for a fresh
+independent review. Candidate.14 is immutable rejected verifier-loader evidence;
+its review and seal records are not transferable, and an empty candidate.15 review
+directory blocks sealing without creating output.
 The tracked private-authoring validator checks response types against the
 schema-owned enum and response locations against authority derived from the
 serialized private task bytes. It selects the one complete workspace policy,

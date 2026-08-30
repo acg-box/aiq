@@ -4446,30 +4446,24 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 	}
 
 	let tasks_root = controlled_root(&cli.tasks, "task root")?;
-	let tasks = load_local_tasks(&tasks_root)?;
-	let evaluator_root = controlled_root(&cli.evaluator_root, "evaluator root")?;
+	let mut tasks = load_local_tasks(&tasks_root)?;
+
+	if cli.candidate_qualification {
+		candidate_catalog::order_tasks_by_checked_candidate(&mut tasks)
+			.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	}
+
+	let evaluators = controlled_root(&cli.evaluator_root, "evaluator root")?;
 	let replay_root = controlled_root(&cli.replay_root, "replay root")?;
-	let artifact_resolver = LocalArtifactResolver::new(&cli.artifact_root)?;
-	let toolchain_root = controlled_root(&cli.codex_toolchain_root, "model toolchain root")?;
+	let artifacts = LocalArtifactResolver::new(&cli.artifact_root)?;
+	let toolchain = controlled_root(&cli.codex_toolchain_root, "model toolchain root")?;
 
-	validate_local_root_separation(
-		&artifact_resolver,
-		&evaluator_root,
-		&replay_root,
-		&toolchain_root,
-	)?;
+	validate_local_root_separation(&artifacts, &evaluators, &replay_root, &toolchain)?;
 
-	let evaluator_runtime = EvaluatorRuntime::resolve(&cli.evaluator_runtime)
+	let runtime = EvaluatorRuntime::resolve(&cli.evaluator_runtime)
 		.map_err(|error| WorkerError::configuration(error.to_string()))?;
 
-	validate_local_replay_assets(
-		&cli,
-		&tasks,
-		&environment,
-		&evaluator_root,
-		&evaluator_runtime,
-		&toolchain_root,
-	)?;
+	validate_local_replay_assets(&cli, &tasks, &environment, &evaluators, &runtime, &toolchain)?;
 
 	let signing_identity =
 		VerifierSigningIdentity::from_secret(signing_key_from_environment(&cli.signing_key_env)?);
@@ -4504,11 +4498,11 @@ fn run_verify_local(cli: VerifyLocalCli) -> Result<(), WorkerError> {
 		package_sha256: &package_sha256,
 		expected_idempotency_key: None,
 		replay_identity: &format!("local-{package_sha256}"),
-		resolver: &artifact_resolver,
+		resolver: &artifacts,
 		tasks: &tasks,
 		environment: &environment,
-		evaluator_root: &evaluator_root,
-		evaluator_runtime: Some(&evaluator_runtime),
+		evaluator_root: &evaluators,
+		evaluator_runtime: Some(&runtime),
 		replay_root: &replay_root,
 		signing_identity: &signing_identity,
 		official_admission: official_admission.as_ref(),
@@ -8739,7 +8733,7 @@ mod tests {
 		let projection =
 			stage.qualification_projection.as_ref().expect("candidate qualification projection");
 
-		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.14");
+		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.15");
 		assert_eq!(projection.cells.len(), 216);
 		assert_eq!(stage.models, CANDIDATE_QUALIFICATION_MODEL_MATRIX);
 		assert_eq!(stage.result_efficiency.len(), 216);
@@ -8747,6 +8741,114 @@ mod tests {
 		assert_eq!(stage.trust, TrustTier::Untrusted);
 		assert_eq!(attestation.stage_digest, stage.stage_digest);
 		assert_ne!(attestation.runner.node_id, attestation.verifier.node_id);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn real_candidate_verifier_loader_orders_ordinary_files_and_rejects_drift() {
+		let (tasks, _) = operational_source_tasks();
+		let catalog_value: serde_json::Value = serde_json::from_str(include_str!(
+			"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
+		))
+		.expect("candidate catalog JSON");
+		let catalog = candidate_catalog::validate_candidate_catalog(&catalog_value)
+			.expect("candidate catalog authority");
+		let mut fixture = LocalReplayFixture::new();
+
+		fixture.tasks = tasks;
+
+		fixture.bind_candidate_tasks(&catalog_value, &catalog);
+
+		let file_tasks = fixture.tasks.clone();
+		let expected_task_set_digest =
+			task::task_set_hash(&file_tasks).expect("expected candidate task-set digest");
+		let expected_evaluator_digest = corpus_commitment::evaluator_digest(&file_tasks)
+			.expect("expected candidate evaluator digest");
+		let write_tasks = |root: &Path, tasks: &[task::TaskDefinition]| {
+			fs::create_dir_all(root).expect("candidate task directory");
+
+			for task in tasks {
+				fs::write(
+					root.join(format!("{}.json", task.task_id)),
+					protocol::canonical_json(task).expect("candidate task JSON"),
+				)
+				.expect("candidate task file");
+			}
+		};
+		let tasks_root = fixture.root.join("candidate-tasks");
+
+		write_tasks(&tasks_root, &file_tasks);
+
+		let mut loaded = crate::load_local_tasks(&tasks_root).expect("real candidate task load");
+		let catalog_ids =
+			catalog.tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
+		let lexical_ids = loaded.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
+
+		assert_eq!(
+			lexical_ids.iter().zip(&catalog_ids).position(|(left, right)| left != right),
+			Some(8),
+			"ordinary filenames must reproduce the verifier lexical/catalog mismatch"
+		);
+		assert_ne!(
+			corpus_commitment::evaluator_digest(&loaded).expect("lexical evaluator digest"),
+			expected_evaluator_digest
+		);
+
+		candidate_catalog::order_tasks_by_checked_candidate(&mut loaded)
+			.expect("checked candidate ordering");
+
+		assert_eq!(
+			loaded.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>(),
+			catalog_ids
+		);
+		assert_eq!(
+			task::task_set_hash(&loaded).expect("candidate task-set digest"),
+			expected_task_set_digest
+		);
+		assert_eq!(
+			corpus_commitment::evaluator_digest(&loaded).expect("candidate evaluator digest"),
+			expected_evaluator_digest
+		);
+
+		let missing_root = fixture.root.join("candidate-tasks-missing");
+
+		write_tasks(&missing_root, &file_tasks[1..]);
+
+		assert!(crate::load_local_tasks(&missing_root).is_err());
+
+		let mut unrelated = file_tasks.clone();
+
+		unrelated[0].task_id = "coding-09".to_owned();
+
+		let unrelated_root = fixture.root.join("candidate-tasks-unrelated");
+
+		write_tasks(&unrelated_root, &unrelated);
+
+		let mut unrelated_loaded =
+			crate::load_local_tasks(&unrelated_root).expect("unrelated task load");
+
+		assert!(
+			candidate_catalog::order_tasks_by_checked_candidate(&mut unrelated_loaded).is_err()
+		);
+
+		let mut stale = file_tasks;
+
+		stale[0].task_version = "1.0.7".to_owned();
+
+		let stale_root = fixture.root.join("candidate-tasks-stale");
+
+		write_tasks(&stale_root, &stale);
+
+		let mut stale_loaded = crate::load_local_tasks(&stale_root).expect("stale task load");
+
+		candidate_catalog::order_tasks_by_checked_candidate(&mut stale_loaded)
+			.expect("stale task ordering");
+
+		assert_ne!(
+			task::task_set_hash(&stale_loaded).expect("stale task-set digest"),
+			expected_task_set_digest,
+			"stale candidate task must fail the verifier identity guard"
+		);
 	}
 
 	#[test]
