@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-debugging-01",
-  "task_version": "1.0.7",
+  "task_version": "1.1.0",
   "title": "Name the seeded boundary defect",
   "domain": "debugging",
   "difficulty": "easy",

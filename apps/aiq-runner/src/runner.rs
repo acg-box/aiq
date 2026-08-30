@@ -2283,7 +2283,7 @@ pub fn synthetic_tasks() -> Vec<TaskDefinition> {
 #[must_use]
 pub fn synthetic_demo_tasks() -> Vec<TaskDefinition> {
 	let catalog = serde_json::from_str::<SyntheticCatalog>(include_str!(
-		"../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json"
+		"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
 	))
 	.expect("checked-in benchmark catalog must deserialize");
 	let catalog_entry_digests = scoring::frozen_catalog_entry_digests()
@@ -5764,10 +5764,8 @@ mod tests {
 		run: &super::CalibrationRunRecord,
 		tasks: &[TaskDefinition],
 	) -> VerifiedPackageIdentity {
-		let active_error = run_validation::validate_calibration_run_record(run)
-			.expect_err("active validation must reject candidate provenance");
-
-		assert_eq!(active_error.to_string(), "signed run provenance bindings are invalid");
+		run_validation::validate_calibration_run_record(run)
+			.expect("active validation must accept the adopted 1.1.0 provenance");
 
 		let envelope = identity
 			.sign(
@@ -5777,19 +5775,17 @@ mod tests {
 				protocol::TrustTier::Untrusted,
 			)
 			.expect("candidate package signature");
-		let active_package_error = submission::serialize_signed_package(&envelope)
-			.expect_err("production submission serialization must reject candidate provenance");
-
-		assert!(
-			active_package_error.to_string().contains("signed run provenance bindings are invalid")
-		);
-
+		let active_package = submission::serialize_signed_package(&envelope)
+			.expect("ordinary calibration serialization must accept adopted 1.1.0 provenance");
 		let package = submission::serialize_calibration_package_for_local_verification(
 			&envelope,
 			validation_context,
 			Some(tasks),
 		)
 		.expect("candidate package for local verifier replay");
+
+		assert_eq!(package, active_package);
+
 		let decoded: protocol::SubmissionEnvelope =
 			serde_json::from_slice(&package).expect("candidate package JSON");
 		let verified = decoded.verify(&BTreeSet::new()).expect("candidate package signature");
@@ -8091,7 +8087,7 @@ mod tests {
 			schema_version: resume::PENDING_EVALUATION_SCHEMA_VERSION.to_owned(),
 			run_id: format!("run_{}", "a".repeat(64)),
 			task_id: "tool-use-01".to_owned(),
-			task_version: "1.0.7".to_owned(),
+			task_version: "1.1.0".to_owned(),
 			task_hash: format!("sha256:{}", "b".repeat(64)),
 			model: MODEL_MATRIX[0],
 			final_response: "OK".to_owned(),

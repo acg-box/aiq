@@ -52,7 +52,7 @@ void test('runs calibration against the production initializer catalog authority
     schema.match(/create function public\.aiq_production_reference_status[\s\S]*?\n\$\$;/i)?.[0] ??
     '';
 
-  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.0\.7'\)/);
+  assert.match(calibrationIntegration, /task_catalog_is_exact\('aiq-core','1\.1\.0'\)/);
   assert.match(calibrationIntegration, /'calibration_admission_digest',null/);
   assert.match(calibrationIntegration, /'calibration_bank',null/);
   assert.match(calibrationIntegration, /'terminal_attempt_lineage',terminal_attempt_lineage/);
@@ -71,7 +71,7 @@ void test('runs calibration against the production initializer catalog authority
   );
   assert.match(
     productionReadiness,
-    /frozen_catalog_identity_is_valid\([\s\S]*'aiq-core', '1\.0\.7', '1\.0\.8'/,
+    /frozen_catalog_identity_is_valid\([\s\S]*'aiq-core', '1\.1\.0', '1\.0\.8'/,
   );
   assert.doesNotMatch(calibrationIntegration, /update aiq_private\.aiq_task_catalog/);
   assert.doesNotMatch(calibrationIntegration, /insert into aiq_private\.aiq_task_catalog/);
@@ -898,11 +898,11 @@ void test('production readiness attests the exact schema and gateway role shape'
   );
   assert.match(
     schema,
-    /task_set_identity_sha256 =\s*'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'/,
+    /task_set_identity_sha256 =\s*'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a'/,
   );
   assert.match(
     schema,
-    /evaluator_identity_sha256 =\s*'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c'/,
+    /evaluator_identity_sha256 =\s*'sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809'/,
   );
   assert.match(schema, /pg_catalog\.pg_has_role\('authenticator',gateway_role\.rolname,'MEMBER'\)/);
 });

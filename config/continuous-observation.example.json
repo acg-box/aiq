@@ -1,6 +1,6 @@
 {
   "schema_version": "aiq.continuous-observation-config.v2",
-  "release_root": "/absolute/private/path/to/releases/aiq-core-1.0.7-7e4ff5f",
+  "release_root": "/absolute/private/path/to/releases/aiq-core-1.1.0-7e4ff5f",
   "release_manifest_sha256": "sha256:replace_with_exact_observation_release_manifest_digest",
   "state_root": "/absolute/private/path/to/continuous-observation-state",
   "codex_auth_source": "/absolute/private/path/to/codex/auth.json",

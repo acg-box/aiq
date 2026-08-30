@@ -11,10 +11,10 @@ hosts project `aiq` on PostgreSQL 17.6 with reference
 `aiq.wiki` zone owns DNS handoff. Production uses the private Storage buckets
 `aiq-submission-packages` and `aiq-runner-artifacts`.
 
-The only production tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate
+The only supported production tuple is AIQ Core `1.1.0`, task scorer `1.0.6`, aggregate
 scoring `1.0.8`, and measurement `2.0.0`. Do not publish, preserve online,
 migrate, or display a legacy tuple as production evidence. Production must
-remain without an Official AIQ 2.0 publication until the retained complete,
+remain without an Official AIQ 2.0 publication until a fresh complete,
 non-synthetic, signed 17-by-72 calibration is replayed under policy v2 to
 establish the fixed item bank and admission v3, and
 a separate fresh 17-by-72 Official package passes native verifier replay and
@@ -35,17 +35,17 @@ under the active tuple.
 
 ## Product contract
 
-- Repository source targets AIQ Core `1.0.7`, with 72 private controlled tasks
+- Repository source targets AIQ Core `1.1.0`, with 72 private controlled tasks
   in ten domains. Task evaluation stays at `1.0.6`; aggregate scoring is
   `1.0.8`.
 - Every formal task encodes `wall_seconds: null`, `max_steps: null`, and
   `max_tool_calls: null`. Controlled evaluator configuration uses
   `aiq.evaluator-config.v2` with `completion_policy: natural_completion` and no
   aggregate or per-check deadline.
-- The public `1.0.7` catalog is deterministic and identity-frozen. Fresh Core
-  and Contrast seals, a policy-v2 fixed-bank admission from the unchanged
-  complete calibration package, a separate complete Official run, publication,
-  and deployment remain pending. No earlier publication is a fallback.
+- The retained candidate.15 catalog is the deterministic, identity-frozen
+  source for the active `1.1.0` task set. A fresh complete 17-by-72 calibration,
+  policy-v2 fixed-bank admission, separate complete Official run, publication,
+  and deployment are required. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -101,22 +101,22 @@ under the active tuple.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1
+sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796
 ```
 
-Its public release digest is
-`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
-The release-policy identity is `aiq-core/1.0.7`. Do not infer any controlled
+Its public source-release digest is
+`sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5`.
+The production task-set identity is `aiq-core/1.1.0`; the retained catalog source
+identity is `aiq-core/1.1.0-candidate.15`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
-`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+`sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`.
 The current no-deadline public-safe database task-set identity is
-`sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72`,
+`sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`,
 and its task-commitment manifest identity is
-`sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`.
-These are checked-in pre-seal bindings. Seal Core and Contrast twice from the
-final clean identity commit, then run both model-free validators. Final
-controlled corpus identities remain provisional until calibration accepts the
-candidate.
+`sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b`.
+These are checked-in bindings derived from the reviewed candidate.15 seal.
+Production activation still requires the exact private corpus, calibration,
+admission, Official package, and verifier evidence.
 The checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
@@ -149,12 +149,14 @@ descriptions. Users can select system, light, or dark color themes. Production
 views must use only real evidence for the sole production tuple, not synthetic
 or legacy data.
 
-## AIQ Core 1.1.0 source foundation
+## AIQ Core 1.1.0 source authority
 
-The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.15`. It does not change the sole active production
-tuple above. It is not a sealed candidate, a qualification result, a release,
-or production-ready evidence.
+The active `1.1.0` task authority is the frozen, reviewed candidate.15 source at
+`benchmarks/candidates/aiq-core-1.1.0/`. The repository retains its candidate
+identity so the already reviewed task and catalog bytes do not change during
+adoption. The ordinary runner, verifier, schemas, database desired state, and
+Web contract all use those same bytes. Checked-in source does not substitute for
+the private calibration, admission, Official execution, or production readback.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
 `aiq.catalog.v2`. Candidate.15 retains all 72 candidate.14 task-facing semantics,
@@ -245,9 +247,9 @@ extra calls. One three-configuration qualification matrix can contain at most
 21 declared digest entries. The runner removes command text from provider
 stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.14 remains inactive and not production-publishable. Fresh
-independent review, double sealing, one qualification matrix,
-qualification, adoption, and cutover are pending.
+redaction. Candidate.14 remains inactive and not production-publishable.
+Candidate.15 is the adopted source; production cutover requires the complete
+calibration and Official release evidence described above.
 
 AIQ Core 1.1.0 sealing also requires one independently supplied
 `aiq.leakage-review.v2` record for every task. Each record binds the reviewer,
@@ -280,9 +282,9 @@ matrix digests.
 This is an end-to-end execution and identity qualification only. It makes no
 prediction-interval, Spearman-correlation, run-variance, or precise-rank claim.
 Those stability-only fields are absent from the v3 manifest and artifact. The
-active/default 17-configuration matrix and all AIQ Core 1.0.7 behavior remain
-unchanged. Any candidate task, evaluator, policy, or identity revision requires
-a new candidate identity and manifest.
+active/default production matrix remains all 17 configurations. Any task,
+evaluator, policy, or source-identity revision requires a new reviewed source
+identity and fresh release evidence.
 
 ## Repository map
 

@@ -20,7 +20,7 @@ pub const CANDIDATE_CATALOG_SCHEMA_VERSION: &str = "aiq.catalog.v2";
 pub const CANDIDATE_TASK_SET_VERSION: &str = "1.1.0";
 /// Exact source-only candidate identity accepted by the checked candidate boundary.
 pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.15";
-/// Exact candidate catalog path. This does not replace the active 1.0.7 catalog.
+/// Exact retained candidate catalog path promoted as the active 1.1.0 task authority.
 pub const CANDIDATE_CATALOG_PATH: &str = "benchmarks/candidates/aiq-core-1.1.0/catalog.json";
 /// Exact candidate task schema path.
 pub const CANDIDATE_TASK_SCHEMA_PATH: &str =

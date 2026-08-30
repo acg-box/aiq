@@ -6,18 +6,18 @@ import { pathToFileURL } from 'node:url';
 
 type JsonObject = Record<string, unknown>;
 
-const CATALOG_IDENTITY = 'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1';
+const CATALOG_IDENTITY = 'sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796';
 const CATALOG_RELEASE_IDENTITY =
-  'sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae';
+  'sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5';
 const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
 const PRODUCTION_DATABASE_HOST = `db.${PRODUCTION_SUPABASE_PROJECT_REF}.supabase.co`;
 const PRODUCTION_DATABASE_POOLER_HOST = 'aws-0-ca-central-1.pooler.supabase.com';
 const PRODUCTION_DATABASE_POOLER_USER = `postgres.${PRODUCTION_SUPABASE_PROJECT_REF}`;
-const TASK_SET_IDENTITY = 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72';
+const TASK_SET_IDENTITY = 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a';
 const REVIEWED_TASK_COMMITMENTS_IDENTITY =
-  'sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d';
+  'sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b';
 const EVALUATOR_IDENTITY =
-  'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+  'sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809';
 const DIGEST_PATTERN = /^sha256:(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
 const HEX_PATTERN = /^(?!0{64}(?![\s\S]))[0-9a-f]{64}(?![\s\S])/;
 const RELEASE_ID_PATTERN = /^corpus_[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?(?![\s\S])/;
@@ -358,7 +358,7 @@ function validateCommitment(
     'reference.corpus_commitment',
   );
   if (
-    commitment.schema_version !== 'aiq.corpus-commitment.v2' ||
+    commitment.schema_version !== 'aiq.corpus-commitment.v3' ||
     commitment.controlled !== true ||
     commitment.synthetic !== false
   ) {
@@ -374,9 +374,9 @@ function validateCommitment(
     'corpus commitment catalog',
   );
   if (
-    bindingCatalog.schema_version !== 'aiq.catalog.v1' ||
+    bindingCatalog.schema_version !== 'aiq.catalog.v2' ||
     bindingCatalog.task_set_id !== 'aiq-core' ||
-    bindingCatalog.task_set_version !== '1.0.7' ||
+    bindingCatalog.task_set_version !== '1.1.0' ||
     bindingCatalog.identity_sha256 !== CATALOG_IDENTITY ||
     bindingCatalog.identity_scope !== 'ordered_full_task_metadata'
   ) {
@@ -513,7 +513,7 @@ function validateReviewedTaskCommitments(
   if (
     manifest.schema_version !== 'aiq.production-task-commitments.v1' ||
     manifest.task_set_id !== 'aiq-core' ||
-    manifest.task_set_version !== '1.0.7' ||
+    manifest.task_set_version !== '1.1.0' ||
     digest(manifest.task_set_identity_sha256, 'reviewed task-set identity') !== TASK_SET_IDENTITY ||
     documentDigest(manifest) !== REVIEWED_TASK_COMMITMENTS_IDENTITY
   ) {
@@ -756,7 +756,7 @@ function scoringRows(reviewedAt: string): JsonObject[] {
     {
       scoring_version: '1.0.6',
       schema_version: 'aiq.task-score.v1',
-      benchmark_version: 'aiq-core@1.0.7',
+      benchmark_version: 'aiq-core@1.1.0',
       name: 'AIQ reproducible task evaluator score 1.0.6',
       fixed_fixture_estimand:
         'The task-level reproducible evaluator score in [0, 1]; this registry row is not an aggregate score method.',
@@ -785,7 +785,7 @@ function scoringRows(reviewedAt: string): JsonObject[] {
     {
       scoring_version: '1.0.8',
       schema_version: 'aiq.score-snapshot.v2',
-      benchmark_version: 'aiq-core@1.0.7',
+      benchmark_version: 'aiq-core@1.1.0',
       name: 'AIQ calibrated latent score 2.0',
       fixed_fixture_estimand:
         'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is retained as a diagnostic and is not the Official ranking score.',
@@ -867,7 +867,7 @@ function referenceRows(
     taskSets: [
       {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.7',
+        task_set_version: '1.1.0',
         title: 'AIQ Core 72',
         task_count: 72,
         domain_count: 10,
@@ -881,7 +881,7 @@ function referenceRows(
         metadata: {
           synthetic: false,
           corpus_release_id: reference.releaseId,
-          corpus_commitment_schema: 'aiq.corpus-commitment.v2',
+          corpus_commitment_schema: 'aiq.corpus-commitment.v3',
           corpus_commitment_sha256: reference.corpusCommitmentSha256,
           catalog_release_identity_sha256: CATALOG_RELEASE_IDENTITY,
           evaluator_identity_sha256: reference.evaluatorIdentitySha256,
@@ -896,7 +896,7 @@ function referenceRows(
       if (binding === undefined) throw new Error('task binding is missing');
       return {
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.7',
+        task_set_version: '1.1.0',
         task_id: task.task_id,
         task_version: task.task_version,
         title: task.title,
@@ -1045,7 +1045,7 @@ begin
   if (select count(*) from aiq_private.aiq_task_catalog) <> 72
     or (select count(*) from aiq_private.aiq_model_configs where expected_in_matrix) <> 17
     or (select count(*) from aiq_private.aiq_nodes where not synthetic and public_visible) <> 3
-    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.0.7', '1.0.8')
+    or not aiq_private.frozen_catalog_identity_is_valid('aiq-core', '1.1.0', '1.0.8')
   then
     raise exception 'AIQ production reference initialization did not validate'
       using errcode = '23514';
@@ -1125,9 +1125,9 @@ export function prepareInitialization(
 ): PreparedInitialization {
   const catalog = object(catalogValue, 'catalog');
   if (
-    catalog.schema_version !== 'aiq.catalog.v1' ||
+    catalog.schema_version !== 'aiq.catalog.v2' ||
     catalog.task_set_id !== 'aiq-core' ||
-    catalog.task_set_version !== '1.0.7' ||
+    catalog.task_set_version !== '1.1.0' ||
     object(catalog.task_metadata_identity, 'catalog.task_metadata_identity').digest !==
       CATALOG_IDENTITY ||
     object(catalog.catalog_release_identity, 'catalog.catalog_release_identity').digest !==
@@ -1274,9 +1274,9 @@ export async function prepareInitializationFromFiles(
   const [schema, catalogBytes, corpusSchemaBytes, reviewedTaskCommitmentsBytes] = await Promise.all(
     [
       readFile(resolve(repositoryRoot, 'databases/schema.sql'), 'utf8'),
-      readFile(resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.7/catalog.json')),
-      readFile(resolve(repositoryRoot, 'benchmarks/schema/corpus-commitment-v2.schema.json')),
-      readFile(resolve(repositoryRoot, 'databases/aiq-core-1.0.7-task-commitments.json')),
+      readFile(resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.1.0/catalog.json')),
+      readFile(resolve(repositoryRoot, 'benchmarks/schema/corpus-commitment-v3.schema.json')),
+      readFile(resolve(repositoryRoot, 'databases/aiq-core-1.1.0-task-commitments.json')),
     ],
   );
   return prepareInitialization(

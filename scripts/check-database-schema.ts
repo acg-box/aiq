@@ -140,8 +140,8 @@ function checkActivePublicReadVersionFilters(schema: string): void {
 
   const runFilters = [
     /run\.task_set_id\s*=\s*'aiq-core'/,
-    /run\.task_set_version\s*=\s*'1\.0\.7'/,
-    /run\.benchmark_version\s*=\s*'aiq-core@1\.0\.7'/,
+    /run\.task_set_version\s*=\s*'1\.1\.0'/,
+    /run\.benchmark_version\s*=\s*'aiq-core@1\.1\.0'/,
     /run\.scoring_version\s*=\s*'1\.0\.8'/,
   ];
   for (const viewName of [
@@ -156,7 +156,7 @@ function checkActivePublicReadVersionFilters(schema: string): void {
       assert.match(
         section,
         filter,
-        `${viewName} must expose only task 1.0.7 with aggregate scoring 1.0.8.`,
+        `${viewName} must expose only task 1.1.0 with aggregate scoring 1.0.8.`,
       );
     }
   }
@@ -171,19 +171,19 @@ function checkActivePublicReadVersionFilters(schema: string): void {
 
   const scoringVersions = sections.get('public_scoring_versions');
   assert.ok(scoringVersions);
-  assert.match(scoringVersions, /benchmark_version\s*=\s*'aiq-core@1\.0\.7'/);
+  assert.match(scoringVersions, /benchmark_version\s*=\s*'aiq-core@1\.1\.0'/);
   assert.match(scoringVersions, /scoring_version\s*=\s*'1\.0\.8'/);
 
   const taskCoverage = sections.get('public_task_coverage');
   assert.ok(taskCoverage);
-  assert.match(taskCoverage, /scoring\.benchmark_version\s*=\s*'aiq-core@1\.0\.7'/);
+  assert.match(taskCoverage, /scoring\.benchmark_version\s*=\s*'aiq-core@1\.1\.0'/);
   assert.match(taskCoverage, /scoring\.scoring_version\s*=\s*'1\.0\.8'/);
 
   const trend = sections.get('public_trend_points');
   assert.ok(trend);
   assert.ok(
     (trend.match(/run\.task_set_id\s*=\s*'aiq-core'/g) ?? []).length >= 2,
-    'public_trend_points must filter both its range bounds and observations to AIQ 1.0.7.',
+    'public_trend_points must filter both its range bounds and observations to AIQ 1.1.0.',
   );
 
   for (const viewName of [
@@ -194,7 +194,7 @@ function checkActivePublicReadVersionFilters(schema: string): void {
     const section = sections.get(viewName);
     assert.ok(section, `The schema checker is missing ${viewName}.`);
     assert.match(section, /run\.task_set_id\s*=\s*'aiq-core'/);
-    assert.match(section, /run\.task_set_version\s*=\s*'1\.0\.7'/);
+    assert.match(section, /run\.task_set_version\s*=\s*'1\.1\.0'/);
     assert.match(section, /run\.scoring_version\s*=\s*'1\.0\.8'/);
   }
 }
@@ -272,9 +272,9 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = '84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1';
-  const catalogReleaseDigest = '2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae';
-  const evaluatorDigest = 'd4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+  const catalogDigest = '85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796';
+  const catalogReleaseDigest = 'e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5';
+  const evaluatorDigest = '748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809';
   const controlledTaskTreeDigest =
     '94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15';
   const predecessorCatalogDigest =
@@ -303,14 +303,19 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
     schema,
     new RegExp(`catalog_release_identity_sha256' =\\s*'sha256:${catalogReleaseDigest}'`),
   );
-  assert.match(schema, /task_set\.task_set_version = '1\.0\.7'/);
+  assert.match(schema, /task_set\.task_set_version = '1\.1\.0'/);
   assert.match(schema, /scoring\.scoring_version = '1\.0\.8'/);
-  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.0\.7'/);
+  assert.match(schema, /scoring\.benchmark_version = 'aiq-core@1\.1\.0'/);
+  assert.match(
+    schema,
+    /task_set\.metadata ->> 'corpus_commitment_schema' =\s*'aiq\.corpus-commitment\.v3'/,
+    'The active task set must bind the v3 corpus commitment schema.',
+  );
   assert.match(schema, new RegExp(`sha256:${evaluatorDigest}`));
-  assert.match(syntheticDemo, /'aiq-core@1\.0\.7'/);
+  assert.match(syntheticDemo, /'aiq-core@1\.1\.0'/);
   assert.match(
     syntheticDemo,
-    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.0\.7', '1\.0\.8'/,
+    /package\.normalization_digest, package\.node_id, 'aiq-core', '1\.1\.0', '1\.0\.8'/,
   );
 
   const pricingValidator =
@@ -354,9 +359,9 @@ function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): v
 
 function checkEvaluatorIdentities(schema: string): void {
   const evaluatorIdentity =
-    'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+    'sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809';
   const selectedEvaluatorDigest =
-    'sha256:ed1e38d4ffb3a39e64a83d65b6d115b691857b37b41ad9413acedcba33c949f8';
+    'sha256:4ea7463e7762aa498f1b314919cd0dc2eb07144e374f8ea743a59c3973c31ce0';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -403,7 +408,7 @@ function checkEvaluatorIdentities(schema: string): void {
 }
 
 function checkReviewedTaskSetIdentity(schema: string): void {
-  const taskSetIdentity = 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72';
+  const taskSetIdentity = 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a';
   const officialValidator =
     schema.match(
       /create function aiq_private\.dto_run_provenance_is_valid[\s\S]*?\n\$_\$;/i,
@@ -457,9 +462,9 @@ function checkReviewedTaskSetIdentity(schema: string): void {
 }
 
 export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
-  const taskSetIdentity = 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72';
+  const taskSetIdentity = 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a';
   const reviewedCommitmentsIdentity =
-    'sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d';
+    'sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b';
   const fixture = jsonObject(value);
   assert.deepEqual(Object.keys(fixture).toSorted(), [
     'schema_version',
@@ -470,7 +475,7 @@ export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
   ]);
   assert.equal(fixture.schema_version, 'aiq.production-task-commitments.v1');
   assert.equal(fixture.task_set_id, 'aiq-core');
-  assert.equal(fixture.task_set_version, '1.0.7');
+  assert.equal(fixture.task_set_version, '1.1.0');
   assert.equal(fixture.task_set_identity_sha256, taskSetIdentity);
   const tasks = unknownArray(fixture.tasks);
   assert.equal(tasks.length, 72);
@@ -502,7 +507,7 @@ export function checkDatabaseTaskCommitmentFixture(value: unknown): void {
 
 export function checkDatabaseInitializerSource(initializer: string): void {
   const evaluatorIdentity =
-    'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+    'sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809';
   assert.match(
     initializer,
     new RegExp(`const EVALUATOR_IDENTITY =\\s*'${evaluatorIdentity}'`),
@@ -529,12 +534,12 @@ export function checkDatabaseInitializerSource(initializer: string): void {
     )?.[0] ?? '';
   assert.match(
     initializer,
-    /const TASK_SET_IDENTITY =\s*'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72'/,
+    /const TASK_SET_IDENTITY =\s*'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a'/,
     'The initializer must declare the native task-set identity.',
   );
   assert.match(
     initializer,
-    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d'/,
+    /const REVIEWED_TASK_COMMITMENTS_IDENTITY =\s*'sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b'/,
     'The initializer must declare the reviewed task commitment manifest identity.',
   );
   assert.match(
@@ -1216,7 +1221,7 @@ export async function checkDatabaseSchema(
     readFile(join(repositoryRoot, 'databases/schema.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/synthetic-demo.sql'), 'utf8'),
     readFile(join(repositoryRoot, 'databases/init.ts'), 'utf8'),
-    readFile(join(repositoryRoot, 'databases/aiq-core-1.0.7-task-commitments.json'), 'utf8').then(
+    readFile(join(repositoryRoot, 'databases/aiq-core-1.1.0-task-commitments.json'), 'utf8').then(
       (bytes) => JSON.parse(bytes) as unknown,
     ),
   ]);
