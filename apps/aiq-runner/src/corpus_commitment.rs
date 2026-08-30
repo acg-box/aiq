@@ -671,9 +671,10 @@ pub fn validate_evaluator_runtime_commitment(
 	Ok(())
 }
 
-/// Reads the strict execution tool policy from a bounded corpus v2 document.
+/// Reads the strict execution tool policy from the schema selected by the isolated run route.
 pub fn read_execution_tool_policy(
 	path: &Path,
+	candidate_qualification: bool,
 ) -> Result<ExecutionToolPolicy, CorpusCommitmentError> {
 	let metadata = fs::symlink_metadata(path)
 		.map_err(|_| CorpusCommitmentError::new("corpus commitment is unavailable"))?;
@@ -690,10 +691,18 @@ pub fn read_execution_tool_policy(
 		CorpusCommitmentError::new(format!("cannot read corpus commitment: {error}"))
 	})?)
 	.map_err(|error| CorpusCommitmentError::new(format!("invalid corpus commitment: {error}")))?;
+	let expected_schema = if candidate_qualification {
+		"aiq.corpus-commitment.v3"
+	} else {
+		"aiq.corpus-commitment.v2"
+	};
 
-	if value.pointer("/schema_version").and_then(Value::as_str) != Some("aiq.corpus-commitment.v2")
-	{
-		return Err(CorpusCommitmentError::new("corpus commitment schema is not v2"));
+	if value.pointer("/schema_version").and_then(Value::as_str) != Some(expected_schema) {
+		return Err(CorpusCommitmentError::new(if candidate_qualification {
+			"candidate corpus commitment schema is not v3"
+		} else {
+			"corpus commitment schema is not v2"
+		}));
 	}
 
 	serde_json::from_value(
@@ -2229,6 +2238,41 @@ pub(crate) mod tests {
 
 			path
 		}
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn execution_tool_policy_schema_is_selected_by_candidate_route() {
+		let fixture = RunnerProvenancePathFixture::new("execution-policy-route");
+		let candidate = fixture.write("candidate", &fixture.candidate_commitment);
+		let current = fixture.write("current", &fixture.core_commitment);
+
+		assert_eq!(
+			super::read_execution_tool_policy(&candidate, true)
+				.expect("candidate v3 execution policy")
+				.schema_version,
+			"aiq.execution-tool-policy.v1"
+		);
+		assert_eq!(
+			super::read_execution_tool_policy(&candidate, false)
+				.expect_err("candidate commitment on the active route")
+				.to_string(),
+			"corpus commitment schema is not v2"
+		);
+		assert_eq!(
+			super::read_execution_tool_policy(&current, false)
+				.expect("active v2 execution policy")
+				.schema_version,
+			"aiq.execution-tool-policy.v1"
+		);
+		assert_eq!(
+			super::read_execution_tool_policy(&current, true)
+				.expect_err("active commitment on the candidate route")
+				.to_string(),
+			"candidate corpus commitment schema is not v3"
+		);
+
+		fs::remove_dir_all(fixture.root).expect("execution-policy route fixture cleanup");
 	}
 
 	#[test]

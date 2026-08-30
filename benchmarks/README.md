@@ -150,21 +150,21 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 candidate source
 
 `candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.12`. It does not replace the active 1.0.7 public
+`aiq-core/1.1.0-candidate.13`. It does not replace the active 1.0.7 public
 authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-The candidate.12 public identities are:
+The candidate.13 public identities are:
 
 - canonical catalog:
-  `sha256:bce01005d0b8591102b85d669be69e7829e65d69a286b68ca11acf358392b2f4`;
+  `sha256:1fa2ee49cbb93cc5cbc27a91ba17da16c5e42f65d5e9bc583da090f005db97d0`;
 - ordered task metadata:
-  `sha256:b371110f0e96f25a58a20ff903b12d2d5fa9ebb6a880e929616f45bbb3ab24e4`;
+  `sha256:26b488595379ca9a7da6a44603a881431b78a6e146b536e9aa0c820272e5b147`;
 - public release:
-  `sha256:baed93769d0a4ddf81066c41190b10e22fa76186cf1e5a9cbe17736e5a55e165`.
+  `sha256:3ea18c80a1f832a706bca6305bdf112adba253b21e11e52c0a5f4c56514402d1`.
 
-Candidates.1 through .11 are immutable predecessor evidence.
+Candidates.1 through .12 are immutable predecessor evidence.
 Candidate.5 retains its model-free authoring evidence and all task semantics,
 but its source integration is rejected. Its catalog declared task-metadata
 identity
@@ -225,6 +225,12 @@ result is 71 workspace responses and one final response. Progress is exact for
 66 workspace tasks, empty for four, and a strict subset for one. Bounded child
 diagnostics remain unchanged.
 
+Candidate.12 is rejected before model invocation. The 72 task files loaded in
+lexical order, but candidate validation and qualification require checked-catalog
+order. Candidate.13 applies the existing catalog-order owner during candidate-only
+preparation. Its candidate preflight route selects the existing v3 commitment
+schema; active and standalone preflight continue to require v2.
+
 Each revised task discloses a distinct `input.json` scenario contract, one
 deterministic domain operation, and one task-specific semantic result contract.
 The seven operation signatures have different consumed fields, produced fields,
@@ -233,7 +239,7 @@ a metamorphic basis for all task-specific scenario fields. The authoring proof
 must run all 42 cross-task supplied-tool substitutions. A failure caused only
 by a changed receipt is not behavior evidence.
 
-Candidate.12 preserves the exact 42 candidate.5 task-issue closures. The
+Candidate.13 preserves the exact 42 candidate.5 task-issue closures. The
 `QUALIFICATION_EVIDENCE_BRIDGE_UNAUTHENTICATED` repair is one separate
 source-integrity closure. The candidate.7 validation-context failure is a second
 source-only closure. The package-input correction and Node.js runtime correction
@@ -263,7 +269,7 @@ behavior.
 Each task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`. `timeout` is `not_applicable` because the
 candidate uses natural completion. The catalog is the sole expected-class
-authority. Candidate.12 is frozen for a fresh independent review, but it is
+authority. Candidate.13 is frozen for a fresh independent review, but it is
 inactive and not production-publishable. Fresh review, double sealing, three
 complete qualification matrices, qualification, adoption, and cutover are
 pending.
@@ -286,9 +292,9 @@ The candidate contracts are:
 
 The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
-verdict, method, scope, and notes. Candidate.11 has no transferable review
+verdict, method, scope, and notes. Candidate.12 has no transferable review
 evidence. The sealer requires one fresh matching record for each exact
-candidate.12 task and catalog entry. It does not infer review completion from
+candidate.13 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
 Qualification consumes three complete replay-verified stage and attestation
@@ -302,7 +308,7 @@ comparison groups. One complete 1,224-cell matrix remains the publication unit.
 The protocol never pools or splices children. A rejected candidate must receive
 a new identity before a task, evaluator, or policy revision is run again.
 
-Regenerate and test the candidate.12 public source without private inputs:
+Regenerate and test the candidate.13 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts

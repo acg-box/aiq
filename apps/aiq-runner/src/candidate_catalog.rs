@@ -19,7 +19,7 @@ pub const CANDIDATE_CATALOG_SCHEMA_VERSION: &str = "aiq.catalog.v2";
 /// Exact source-foundation task-set version.
 pub const CANDIDATE_TASK_SET_VERSION: &str = "1.1.0";
 /// Exact source-only candidate identity accepted by the checked candidate boundary.
-pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.12";
+pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.13";
 /// Exact candidate catalog path. This does not replace the active 1.0.7 catalog.
 pub const CANDIDATE_CATALOG_PATH: &str = "benchmarks/candidates/aiq-core-1.1.0/catalog.json";
 /// Exact candidate task schema path.
@@ -252,6 +252,7 @@ pub fn validate_candidate_catalog(
 			| "aiq-core/1.1.0-candidate.10"
 			| "aiq-core/1.1.0-candidate.11"
 			| "aiq-core/1.1.0-candidate.12"
+			| "aiq-core/1.1.0-candidate.13"
 	) {
 		"1.1.0"
 	} else {
@@ -556,14 +557,14 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.12");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.13");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 
 		let mut stale = value;
 
 		stale["candidate_identity"]["candidate_id"] =
-			serde_json::json!("aiq-core/1.1.0-candidate.11");
+			serde_json::json!("aiq-core/1.1.0-candidate.12");
 
 		assert!(candidate_catalog::validate_candidate_catalog(&stale).is_err());
 	}
