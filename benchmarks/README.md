@@ -1,6 +1,6 @@
 # AIQ Core benchmark contract
 
-Repository source targets the public AIQ Core `1.0.7` candidate, task scorer
+Repository source targets AIQ Core `1.1.0`, task scorer
 `1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0`. It is a fixed
 72-task benchmark across ten domains. The public catalog defines task identity,
 domain, difficulty, tool policy, budget, evaluator identity, and public-safe
@@ -10,20 +10,19 @@ content stay outside Git.
 All 72 formal tasks use `wall_seconds: null`, `max_steps: null`, and
 `max_tool_calls: null`. Prompt, evaluator, semantic scoring, and tool
 permissions remain unchanged. The public
-catalog is deterministic and identity-frozen. The new identity requires fresh
-independent Core and Contrast seals and a regenerated 72-task database
-commitment. One complete real 1.0.7 calibration package is retained unchanged.
-Policy-v2 replay and admission v3, final native build verification, a real
-Official run, publication, and final deployment are pending. The only
-production tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate scorer
+catalog is deterministic and identity-frozen. The active identity comes from
+the reviewed candidate.15 source and sealed 72-task corpus. A fresh complete
+17-by-72 calibration, policy-v2 replay and admission v3, final native build
+verification, a separate real Official run, publication, and final deployment
+are required. The only supported production tuple is AIQ Core `1.1.0`, task scorer `1.0.6`, aggregate scorer
 `1.0.8`, and measurement `2.0.0`. Do not reset,
 initialize, or publish until a
 real non-synthetic signed 17-by-72 package passes native verifier replay. No
 earlier publication is a compatibility source or fallback.
 
-Earlier bounded runs remain immutable unpublished release evidence. The
-retained complete non-Official 17-by-72 package is the sole calibration source;
-the verifier replays all 1,224 cells without model calls and issues a new signed
+Earlier bounded runs remain immutable unpublished release evidence. The new
+complete non-Official 17-by-72 package is the sole 1.1.0 calibration source.
+The verifier replays all 1,224 cells without model calls and issues a new signed
 fixed-bank admission. A separate complete 17-by-72 Official run remains
 required. No operator can override the release policy.
 
@@ -35,11 +34,11 @@ rates, nondegenerate domains, and sufficient model and latent-score spread.
 
 ## Public authority
 
-- `candidates/aiq-core-1.0.7/catalog.json` is the active generated public
+- `candidates/aiq-core-1.1.0/catalog.json` is the active generated public
   catalog for repository source.
-- `candidates/aiq-core-1.0.7/catalog.schema.json` validates the active source
+- `candidates/aiq-core-1.1.0/catalog.schema.json` validates the active source
   catalog.
-- `schema/corpus-commitment-v2.schema.json` validates the controlled AIQ Core
+- `schema/corpus-commitment-v3.schema.json` validates the controlled AIQ Core
   corpus commitment document.
 - `schema/result-package-v4.schema.json` validates signed runner packages.
 - `schema/normalized-batch-v4.schema.json` validates the database stage.
@@ -52,23 +51,24 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1
+sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796
 ```
 
 Its release identity is:
 
 ```text
-sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae
+sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5
 ```
 
-The release-policy identity is `aiq-core/1.0.7`. The reviewed evaluator identity
-is `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+The production task-set identity is `aiq-core/1.1.0`, derived from retained source
+identity `aiq-core/1.1.0-candidate.15`. The reviewed evaluator identity
+is `sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`.
 The checked-in current no-deadline database task-set identity is
-`sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72`,
+`sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`,
 and its task-commitment manifest identity is
-`sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`.
-They are public pre-seal bindings, not release authority. Fresh independent
-Core and Contrast A/B seals and the calibration gate still must pass.
+`sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b`.
+They are public bindings derived from the reviewed seal, not model-run or
+production authority. The calibration, Official, and cutover gates still apply.
 
 Each task score uses the executable weighted-check contract. A private,
 content-addressed evaluator configuration binds each binary check, its
@@ -89,9 +89,9 @@ exact match before publication. Elapsed time, steps, tool calls by type, tokens,
 independent efficiency evidence and never enter task score, Rasch
 ability, quality, strict pass, ranking, or intervals.
 
-## AIQ Core 1.0.7 public authority
+## AIQ Core 1.0.7 frozen predecessor authority
 
-These files own the active catalog authority:
+These files retain the frozen predecessor catalog and legacy Contrast authority:
 
 - `candidates/aiq-core-1.0.7/catalog.json`;
 - `candidates/aiq-core-1.0.7/catalog.schema.json`;
@@ -147,11 +147,11 @@ node --test --experimental-strip-types \
   scripts/candidates/aiq-core-1.0.7/generate-benchmark-catalog.test.ts
 ```
 
-## AIQ Core 1.1.0 candidate source
+## AIQ Core 1.1.0 adopted source
 
-`candidates/aiq-core-1.1.0/` contains the public source for
-`aiq-core/1.1.0-candidate.15`. It does not replace the active 1.0.7 public
-authority. Its `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
+`candidates/aiq-core-1.1.0/` retains the reviewed public source identity
+`aiq-core/1.1.0-candidate.15` and supplies the active 1.1.0 task authority. Its
+`aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
@@ -371,7 +371,7 @@ private benchmark corpus.
 
 `fixtures/aiq-2.0-test-generated-public.json` is a deterministic browser
 fixture, not benchmark evidence. The runner builds its 17-by-72 matrix from
-the frozen 1.0.7 public task shape and derives every latent field, Wilson
+the frozen 1.1.0 public task shape and derives every latent field, Wilson
 bound, quality score, and task-mix sensitivity value through the normal Rust
 scorer. Its outer object has `test_generated: true`, `synthetic: true`, and
 `production_publishable: false`; production and Official cutover must reject

@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 
-import activeCatalog from '../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json' with { type: 'json' };
+import activeCatalog from '../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json' with { type: 'json' };
 import generatedPublicFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
 import {
   AIQ_CORE_BENCHMARK_VERSION,
@@ -350,11 +350,11 @@ const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcome
     runner_commit: 'b76148cd419ab4ebb491cdb9f6a00555059eab67',
     region: 'test-generated',
     synthetic: false,
-    corpus_release_id: 'corpus_test-generated-aiq-core-1.0.7',
+    corpus_release_id: 'corpus_test-generated-aiq-core-1.1.0',
     corpus_commitment_sha256:
       'sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612',
-    catalog_digest: 'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1',
-    task_set_digest: 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72',
+    catalog_digest: 'sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796',
+    task_set_digest: 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a',
     preflight_digest: `sha256:${'6'.repeat(64)}`,
     runtime_digest: `sha256:${'7'.repeat(64)}`,
     run_class: 'official',

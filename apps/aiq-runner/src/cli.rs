@@ -45,55 +45,7 @@ use crate::{
 	},
 	candidate_catalog,
 };
-use aiq_runner::{
-	adapter::{
-		self, ArtifactSink, CapabilityValidationReport, CapabilityValidationStatus,
-		ChatgptCredentialObservation, CodexAdapter, CodexExecutionConfig, ConfigurationProbeStatus,
-		Executor, LocalArtifactSink, ManagedPermissionProfileEvidence, ProbeStatus, SystemExecutor,
-	},
-	calibration_verification::{
-		CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
-	},
-	capacity::{self, CapacityAdmission},
-	corpus_commitment::{
-		self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, RunProvenanceCommitment,
-		ValidatedCorpusCommitment, ValidatedModelToolchain,
-	},
-	corpus_seal::{self, CorpusKind, SealOptions},
-	isolation::{self, ProtectedBenchmarkPath},
-	model::{CapabilityManifest, MODEL_MATRIX, ModelConfig},
-	normalization::{
-		self, AttestedDeploymentMetadata, ReplayStatus, VerifiedPackageIdentity,
-		VerifierSigningIdentity,
-	},
-	protocol::{
-		self, CALIBRATION_RUN_PAYLOAD_TYPE, ProtocolError, RUN_PAYLOAD_TYPE, SigningIdentity,
-		SubmissionEnvelope, TrustTier,
-	},
-	public_fixture,
-	resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments},
-	run_validation::CalibrationValidationContext,
-	runner::{
-		self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord,
-		LocalDirectoryWorkspaceProvider, LocalRunExecution, MAX_RUN_JOBS, RUN_SCHEMA_VERSION,
-		RunRecord, SelectedRun,
-	},
-	schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot},
-	scoring::{
-		self, AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION,
-		CalibrationScoreReport, FalseOnly, FrozenCalibrationBankV2, ScoreContext, ScoreOptions,
-		ScoreReport,
-	},
-	speed_observation::{self, SpeedObservationBatch, SpeedObservationOptions},
-	submission::{
-		self, DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY, HttpsTransport, MAX_ARTIFACT_UPLOAD_CONCURRENCY,
-		MAX_SUBMISSION_BYTES, SecretToken, SubmissionBundleOutcome,
-	},
-	task::{
-		self, DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskLoadIssue, TaskLoadReport,
-		TaskSource, ValidationIssue, Visibility,
-	},
-};
+use aiq_runner::{adapter::{self, ArtifactSink, CapabilityValidationReport, CapabilityValidationStatus, ChatgptCredentialObservation, CodexAdapter, CodexExecutionConfig, ConfigurationProbeStatus, Executor, LocalArtifactSink, ManagedPermissionProfileEvidence, ProbeStatus, SystemExecutor}, calibration_verification::{CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1}, capacity::{self, CapacityAdmission}, corpus_commitment::{self, CorpusCommitmentError, ExecutionToolPolicy, RunClass, RunProvenanceCommitment, ValidatedCorpusCommitment, ValidatedModelToolchain}, corpus_seal::{self, CorpusKind, SealOptions}, isolation::{self, ProtectedBenchmarkPath}, model::{CapabilityManifest, MODEL_MATRIX, ModelConfig}, normalization::{self, AttestedDeploymentMetadata, ReplayStatus, VerifiedPackageIdentity, VerifierSigningIdentity}, protocol::{self, CALIBRATION_RUN_PAYLOAD_TYPE, ProtocolError, RUN_PAYLOAD_TYPE, SigningIdentity, SubmissionEnvelope, TrustTier}, public_fixture, resume::{self, PreflightAttempt, PreflightCache, RunCheckpoint, RunCommitments}, run_validation::CalibrationValidationContext, runner::{self, CALIBRATION_RUN_SCHEMA_VERSION, CalibrationRunRecord, LocalDirectoryWorkspaceProvider, LocalRunExecution, MAX_RUN_JOBS, RUN_SCHEMA_VERSION, RunRecord, SelectedRun}, schedule::{ScheduleConfig, ScheduleOccurrence, ScheduleSlot}, scoring::{self, AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID, CalibrationScoreReport, FalseOnly, FrozenCalibrationBankV2, ScoreContext, ScoreOptions, ScoreReport}, speed_observation::{self, SpeedObservationBatch, SpeedObservationOptions}, submission::{self, DEFAULT_ARTIFACT_UPLOAD_CONCURRENCY, HttpsTransport, MAX_ARTIFACT_UPLOAD_CONCURRENCY, MAX_SUBMISSION_BYTES, SecretToken, SubmissionBundleOutcome}, task::{self, DirectoryTaskSource, EvaluatorRuntime, TaskDefinition, TaskLoadIssue, TaskLoadReport, TaskSource, ValidationIssue, Visibility}};
 
 const MAX_CORPUS_COMMITMENT_BYTES: usize = 4 * 1_024 * 1_024;
 const MAX_CAPABILITY_MANIFEST_BYTES: usize = 512 * 1_024;
@@ -1610,7 +1562,7 @@ enum Command {
 		#[arg(long)]
 		output: PathBuf,
 	},
-	/// Generate a browser-only 1.0.7 public projection from deterministic test observations.
+	/// Generate a browser-only 1.1.0 public projection from deterministic test observations.
 	///
 	/// The output is explicitly test-generated and cannot be submitted, normalized, or
 	/// published as Official evidence.
@@ -3162,7 +3114,7 @@ fn run_validation(options: ValidationOptions) -> Result<(), Box<dyn std::error::
 			)?,
 			CorpusValidationMode::Core => {
 				if !scoring::task_bindings_match_core_catalog(&task_report.tasks) {
-					return Err("tasks do not match the immutable AIQ Core 1.0.7 catalog".into());
+					return Err("tasks do not match the immutable AIQ Core 1.1.0 catalog".into());
 				}
 
 				corpus_commitment::validate_core_corpus_commitment(
@@ -5851,7 +5803,7 @@ fn run_demo(
 			path,
 			&AttestedDeploymentMetadata {
 				task_set_id: AIQ_TASK_SET_ID.to_owned(),
-				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
+				task_set_version: aiq_runner::scoring::AIQ_TASK_SET_VERSION.to_owned(),
 				benchmark_version: AIQ_BENCHMARK_VERSION.to_owned(),
 				prompt_set_digest: run.task_set_hash.clone(),
 				runner_commit: "0000000000000000000000000000000000000000".to_owned(),
@@ -5902,6 +5854,12 @@ fn load_tasks(
 	combined.tasks.sort_by(|left, right| left.task_id.cmp(&right.task_id));
 
 	ensure_unique_task_ids(&mut combined);
+
+	if combined.tasks.len() == 72
+		&& combined.tasks.iter().all(|task| task.task_version == scoring::AIQ_TASK_SET_VERSION)
+	{
+		candidate_catalog::order_tasks_by_checked_candidate(&mut combined.tasks)?;
+	}
 
 	Ok(combined)
 }
@@ -7194,7 +7152,7 @@ mod tests {
 		let loaded = super::load_tasks(None, Some(&tasks_path)).expect("loaded candidate tasks");
 
 		assert_eq!(loaded.tasks.len(), 72);
-		assert_eq!(loaded.tasks[8].task_id, "data-processing-01");
+		assert_eq!(loaded.tasks[8].task_id, "debugging-01");
 		assert_eq!(fixture.candidate_tasks[8].task_id, "debugging-01");
 
 		let options = super::RunOptions {
@@ -7276,10 +7234,12 @@ mod tests {
 		current.candidate_qualification = false;
 		current.output = fixture.root.join("current-run.json");
 
-		assert!(
-			super::prepare_run_model_free(&current).is_err(),
-			"the active validator must continue to reject candidate inputs"
-		);
+		let active = super::prepare_run_model_free(&current)
+			.expect("the ordinary active route must accept adopted 1.1.0 inputs");
+
+		assert_eq!(active.report.tasks, prepared.report.tasks);
+		assert_eq!(active.task_set_hash, prepared.task_set_hash);
+		assert_eq!(active.corpus.canonical_sha256(), prepared.corpus.canonical_sha256());
 		assert!(!current.output.exists());
 
 		fs::remove_dir_all(fixture.root).expect("candidate preparation fixture cleanup");

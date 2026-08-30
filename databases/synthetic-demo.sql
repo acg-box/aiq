@@ -12,7 +12,7 @@ insert into aiq_private.aiq_scoring_versions (
 values (
   '1.0.6',
   'aiq.task-score.v1',
-  'aiq-core@1.0.7',
+  'aiq-core@1.1.0',
   'AIQ reproducible task evaluator score 1.0.6',
   'The task-level reproducible evaluator score in [0, 1]; this registry row is not an aggregate score method.',
   array[
@@ -39,7 +39,7 @@ insert into aiq_private.aiq_scoring_versions (
 values (
   '1.0.8',
   'aiq.score-snapshot.v2',
-  'aiq-core@1.0.7',
+  'aiq-core@1.1.0',
   'AIQ calibrated latent score 2.0',
   'The raw criterion-referenced mean of ten equally weighted domain means over the frozen 72-task fixture; it is a diagnostic and is not the Official ranking score.',
   array[
@@ -95,12 +95,12 @@ insert into aiq_private.aiq_task_sets (
 )
 values (
   'aiq-core',
-  '1.0.7',
+  '1.1.0',
   'AIQ Core 72',
   72,
   10,
-  encode(extensions.digest('aiq-core-catalog-1.0.7', 'sha256'), 'hex'),
-  encode(extensions.digest('aiq-core-hidden-payload-1.0.7', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core-catalog-1.1.0', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core-hidden-payload-1.1.0', 'sha256'), 'hex'),
   'committed',
   true,
   '2026-07-22T16:00:00Z',
@@ -157,9 +157,9 @@ insert into aiq_private.aiq_task_catalog (
 )
 select
   'aiq-core',
-  '1.0.7',
+  '1.1.0',
   replace(domain, '_', '-') || '-' || lpad(domain_number::text, 2, '0'),
-  '1.0.7',
+  '1.1.0',
   initcap(replace(domain, '_', ' ')) || ' task ' || domain_number,
   domain,
   difficulty,
@@ -170,7 +170,7 @@ select
   '{"wall_seconds":null,"max_steps":null,"max_tool_calls":null}'::jsonb,
   array['synthetic', domain, difficulty],
   encode(extensions.digest(domain || ':' || domain_number || ':fixture', 'sha256'), 'hex'),
-  'supabase-private://benchmark-tasks/aiq-core/1.0.7/'
+  'supabase-private://benchmark-tasks/aiq-core/1.1.0/'
     || replace(domain, '_', '-') || '-' || lpad(domain_number::text, 2, '0') || '.json',
   'The hidden fixture is commitment-addressed and is not in a public view.',
   true
@@ -313,8 +313,8 @@ select
   run.scheduled_for,
   'UTC',
   'aiq-core',
-  '1.0.7',
-  'aiq-core@1.0.7',
+  '1.1.0',
+  'aiq-core@1.1.0',
   '1.0.8',
   run.model_config_id,
   node.node_id,
@@ -325,7 +325,7 @@ select
   false,
   run.scheduled_for,
   run.scheduled_for + interval '18 minutes',
-  encode(extensions.digest('aiq-core:prompt-set:1.0.7', 'sha256'), 'hex'),
+  encode(extensions.digest('aiq-core:prompt-set:1.1.0', 'sha256'), 'hex'),
   'a7d91f4',
   'us-east-1',
   '{"synthetic":true,"trust_layer":"unverified","source":"deterministic_seed"}'::jsonb
@@ -337,7 +337,7 @@ with ordered_tasks as (
     catalog.*,
     row_number() over (order by catalog.domain, catalog.task_id) as task_number
   from aiq_private.aiq_task_catalog catalog
-  where catalog.task_set_id = 'aiq-core' and catalog.task_set_version = '1.0.7'
+  where catalog.task_set_id = 'aiq-core' and catalog.task_set_version = '1.1.0'
 )
 insert into aiq_private.aiq_task_results (
   result_id, source_result_id, run_id, task_id, task_version, domain,
@@ -626,7 +626,7 @@ cross join signed_results
 cross join terminal_attempt_lineage
 cross join evaluator_bundle_identity
 cross join aiq_private.aiq_task_sets task_set
-where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.7';
+where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.1.0';
 
 with artifact as (
   select
@@ -671,17 +671,17 @@ insert into aiq_private.aiq_matrix_batches (
 )
 select
   package.matrix_batch_id, package.package_sha256, package.content_hash,
-  package.normalization_digest, package.node_id, 'aiq-core', '1.0.7', '1.0.8',
+  package.normalization_digest, package.node_id, 'aiq-core', '1.1.0', '1.0.8',
   true, null, null,
-  'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.0.7',
+  'sha256:' || task_set.catalog_sha256, null, 'aiq-core@1.1.0',
   'sha256:' || encode(
-    extensions.digest('aiq-core:prompt-set:1.0.7', 'sha256'), 'hex'
+    extensions.digest('aiq-core:prompt-set:1.1.0', 'sha256'), 'hex'
   ),
   '1.0.6', 'a7d91f4', 'us-east-1',
   1784894400000, 1784894400000, 1784895480000, 1
 from aiq_private.aiq_result_packages package
 cross join aiq_private.aiq_task_sets task_set
-where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.0.7';
+where task_set.task_set_id = 'aiq-core' and task_set.task_set_version = '1.1.0';
 
 insert into aiq_private.aiq_package_runs (
   package_sha256, run_id, model_config_id, matrix_order
@@ -922,7 +922,7 @@ begin
     created_at, expires_at
   ) values (
     package_id, 1, 'aiq.distributed-task-package.v1', package_id || ':1',
-    package_hash, atlas_node, 'aiq-core', '1.0.7', 4, 2048,
+    package_hash, atlas_node, 'aiq-core', '1.1.0', 4, 2048,
     'ed25519', repeat('9', 128), 'unverified', true,
     '2026-07-24T14:00:00Z', '2026-07-25T14:00:00Z'
   );

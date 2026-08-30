@@ -280,7 +280,7 @@
         "required": ["task_id", "task_version", "model", "terminal_result_ids", "selected_result_id"],
         "properties": {
           "task_id": { "type": "string", "minLength": 1 },
-          "task_version": { "const": "1.0.7" },
+          "task_version": { "const": "1.1.0" },
           "model": { "$ref": "#/$defs/model" },
           "terminal_result_ids": {
             "type": "array",
@@ -304,7 +304,7 @@
         "source_package_sha256": { "$ref": "#/$defs/sha256" },
         "source_scoring_version": { "const": "1.0.6" },
         "task_set_id": { "const": "aiq-core" },
-        "task_set_version": { "const": "1.0.7" },
+        "task_set_version": { "const": "1.1.0" },
         "task_set_digest": { "$ref": "#/$defs/sha256" },
         "catalog_digest": { "$ref": "#/$defs/sha256" },
         "evaluator_digest": { "$ref": "#/$defs/sha256" },
@@ -321,7 +321,7 @@
             "required": ["task_id", "task_version", "domain", "facility", "difficulty", "mean_item_information"],
             "properties": {
               "task_id": { "type": "string", "minLength": 1 },
-              "task_version": { "const": "1.0.7" },
+              "task_version": { "const": "1.1.0" },
               "domain": { "type": "string" },
               "facility": { "type": "number", "minimum": 0, "maximum": 1 },
               "difficulty": { "type": "number" },
@@ -1499,7 +1499,7 @@
           "$ref": "#/$defs/sha256"
         },
         "catalog_digest": {
-          "const": "sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1"
+          "const": "sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796"
         },
         "task_set_digest": {
           "$ref": "#/$defs/sha256"
@@ -1585,7 +1585,7 @@
           "$ref": "#/$defs/taskId"
         },
         "task_version": {
-          "const": "1.0.7"
+          "const": "1.1.0"
         },
         "task_hash": {
           "$ref": "#/$defs/sha256"

@@ -44,12 +44,12 @@ pub const CALIBRATION_BANK_SCHEMA_VERSION: &str = "aiq.calibration-bank.v2";
 /// Current controlled AIQ Core task-set identifier.
 pub const AIQ_TASK_SET_ID: &str = "aiq-core";
 /// Current controlled AIQ Core task-set release.
-pub const AIQ_TASK_SET_VERSION: &str = "1.0.7";
+pub const AIQ_TASK_SET_VERSION: &str = "1.1.0";
 /// Current benchmark release identifier.
-pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.0.7";
+pub const AIQ_BENCHMARK_VERSION: &str = "aiq-core@1.1.0";
 /// Frozen full-metadata commitment for the current AIQ Core release.
 pub const AIQ_CORE_TASK_IDENTITY_SHA256: &str =
-	"sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1";
+	"sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796";
 /// Default production resampling replicate count.
 pub const DEFAULT_BOOTSTRAP_SAMPLES: usize = 10_000;
 /// Default deterministic bootstrap seed.
@@ -2341,7 +2341,7 @@ fn publication_tier(
 }
 
 fn frozen_catalog() -> Result<FrozenCatalog, serde_json::Error> {
-	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json"))
+	serde_json::from_str(include_str!("../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"))
 }
 
 fn catalog_identity_is_frozen(tasks: &[TaskDefinition]) -> bool {
@@ -3248,8 +3248,8 @@ mod tests {
 		let interval =
 			first.task_resampling_sensitivity_interval.expect("synthetic descriptive interval");
 
-		assert_eq!(interval.lower, 44.071_428_571_428_57);
-		assert_eq!(interval.upper, 66.078_571_428_571_42);
+		assert_eq!(interval.lower, 39.583_333_333_333_336);
+		assert_eq!(interval.upper, 69.916_666_666_666_69);
 		assert_eq!(interval.method, TASK_RESAMPLING_SENSITIVITY_METHOD);
 		assert_eq!(first.rule, SCORE_RULE);
 	}

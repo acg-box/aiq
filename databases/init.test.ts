@@ -18,19 +18,19 @@ import {
 type JsonObject = Record<string, unknown>;
 const execFileAsync = promisify(execFile);
 const repositoryRoot = resolve(import.meta.dirname, '..');
-const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.0.7/catalog.json');
+const catalogPath = resolve(repositoryRoot, 'benchmarks/candidates/aiq-core-1.1.0/catalog.json');
 const corpusSchemaPath = resolve(
   repositoryRoot,
-  'benchmarks/schema/corpus-commitment-v2.schema.json',
+  'benchmarks/schema/corpus-commitment-v3.schema.json',
 );
 const schemaPath = resolve(repositoryRoot, 'databases/schema.sql');
 const initPath = resolve(repositoryRoot, 'databases/init.ts');
 const taskCommitmentsPath = resolve(
   repositoryRoot,
-  'databases/aiq-core-1.0.7-task-commitments.json',
+  'databases/aiq-core-1.1.0-task-commitments.json',
 );
-const taskSetIdentity = 'sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72';
-const evaluatorIdentity = 'sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c';
+const taskSetIdentity = 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a';
+const evaluatorIdentity = 'sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809';
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -265,14 +265,14 @@ async function referenceFixture(): Promise<JsonObject> {
     schema_version: 'aiq.production-reference.v1',
     published_at: '2026-08-03T12:00:00.000Z',
     corpus_commitment: {
-      schema_version: 'aiq.corpus-commitment.v2',
+      schema_version: 'aiq.corpus-commitment.v3',
       release_id: 'corpus_initial_greenfield',
       controlled: true,
       synthetic: false,
       catalog: {
-        schema_version: 'aiq.catalog.v1',
+        schema_version: 'aiq.catalog.v2',
         task_set_id: 'aiq-core',
-        task_set_version: '1.0.7',
+        task_set_version: '1.1.0',
         identity_sha256: object(catalog.task_metadata_identity).digest,
         identity_scope: 'ordered_full_task_metadata',
       },
@@ -421,7 +421,7 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   );
   assert.match(
     prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.0\.7', '1\.0\.8'\)/,
+    /frozen_catalog_identity_is_valid\('aiq-core', '1\.1\.0', '1\.0\.8'\)/,
   );
   assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
   const referencePhase = prepared.sql.slice(
@@ -464,11 +464,11 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   strictEqual(prepared.receipt.measurement_version, '2.0.0');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,
-    'sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1',
+    'sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796',
   );
   strictEqual(
     prepared.receipt.catalog_release_identity_sha256,
-    'sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae',
+    'sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5',
   );
   strictEqual(prepared.receipt.task_set_identity_sha256, taskSetIdentity);
   strictEqual(prepared.receipt.evaluator_identity_sha256, evaluatorIdentity);

@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-retrieval-verification-01",
-  "task_version": "1.0.7",
+  "task_version": "1.1.0",
   "title": "Select the first-party evidence class",
   "domain": "retrieval_verification",
   "difficulty": "easy",

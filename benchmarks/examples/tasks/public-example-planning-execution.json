@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-planning-execution-01",
-  "task_version": "1.0.7",
+  "task_version": "1.1.0",
   "title": "Choose the first validation step",
   "domain": "planning_execution",
   "difficulty": "easy",

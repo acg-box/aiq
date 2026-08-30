@@ -34,43 +34,26 @@ use ureq::{
 };
 
 use crate::replay::PRODUCTION_REPLAY_SCOPE;
-use aiq_runner::{
-	benchmark_qualification::{
+use aiq_runner::{benchmark_qualification::{
 		self, BenchmarkQualificationArtifact, BenchmarkQualificationManifest,
-	},
-	calibration_verification::{
+	}, calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
 		CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
-	},
-	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
-	corpus_commitment::{
+	}, candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION}, corpus_commitment::{
 		self, RunClass, RunProvenanceCommitment, ValidatedCorpusCommitment, ValidatedModelToolchain,
-	},
-	model::{MODEL_MATRIX, ModelConfig},
-	normalization::{
+	}, model::{MODEL_MATRIX, ModelConfig}, normalization::{
 		self, AttestedDeploymentMetadata, MAX_VERIFICATION_REQUEST_BYTES, NormalizedBatchStage,
 		ReplayStatus, VerifiedPackageIdentity, VerifierAttestationV2, VerifierSigningIdentity,
-	},
-	protocol::{
+	}, protocol::{
 		self, CALIBRATION_RUN_PAYLOAD_TYPE, NodeIdentity, RUN_PAYLOAD_TYPE, SubmissionEnvelope,
 		TrustTier, VerifiedSubmission,
-	},
-	run_validation,
-	runner::{
+	}, run_validation, runner::{
 		self, CalibrationRunRecord, FailureKind, ProviderTokenUsage, ResultStatus, RunRecord,
 		TaskResult,
-	},
-	scoring::{
-		self, AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION,
-		AIQ_TASK_SET_ID, FalseOnly, OfficialCalibrationDiagnostic, OfficialCalibrationPolicy,
-		OfficialCalibrationSummary, ScoreContext, ScoreOptions, ScoreReport,
-	},
-	submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES},
-	task::{
+	}, scoring::{self, AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION, AIQ_TASK_SET_ID, FalseOnly, OfficialCalibrationDiagnostic, OfficialCalibrationPolicy, OfficialCalibrationSummary, ScoreContext, ScoreOptions, ScoreReport, AIQ_TASK_SET_VERSION}, submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES}, task::{
 		self, DirectoryTaskSource, EvaluationResult, EvaluatorOutcome, EvaluatorRuntime,
 		TaskDefinition, TaskSource, Visibility,
-	},
-};
+	}};
 
 const MAX_GATEWAY_RESPONSE_BYTES: usize = 64 * 1_024;
 const MAX_OBJECT_RESPONSE_BYTES: usize = MAX_SUBMISSION_BYTES + 1;
@@ -3791,7 +3774,16 @@ fn load_local_tasks(root: &Path) -> Result<Vec<TaskDefinition>, WorkerError> {
 		}
 	}
 
-	load_tasks(root)
+	let mut tasks = load_tasks(root)?;
+
+	if tasks.len() == 72
+		&& tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION)
+	{
+		candidate_catalog::order_tasks_by_checked_candidate(&mut tasks)
+			.map_err(|error| WorkerError::configuration(error.to_string()))?;
+	}
+
+	Ok(tasks)
 }
 
 fn roots_overlap(left: &Path, right: &Path) -> bool {
@@ -8084,7 +8076,7 @@ mod tests {
 	#[cfg(unix)]
 	fn operational_source_tasks() -> (Vec<task::TaskDefinition>, serde_json::Value) {
 		let catalog: serde_json::Value = serde_json::from_str(include_str!(
-			"../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json"
+			"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
 		))
 		.expect("fixture Core catalog");
 		let catalog_tasks = catalog["tasks"].as_array().expect("fixture catalog tasks");
@@ -8259,12 +8251,12 @@ mod tests {
 		});
 
 		serde_json::json!({
-			"schema_version": "aiq.corpus-commitment.v2",
+			"schema_version": "aiq.corpus-commitment.v3",
 			"release_id": "corpus_operational_source_fixture",
 			"controlled": true,
 			"synthetic": false,
 			"catalog": {
-				"schema_version": "aiq.catalog.v1",
+				"schema_version": "aiq.catalog.v2",
 				"task_set_id": AIQ_TASK_SET_ID,
 				"task_set_version": AIQ_TASK_SET_VERSION,
 				"identity_sha256": scoring::AIQ_CORE_TASK_IDENTITY_SHA256,
@@ -8782,15 +8774,11 @@ mod tests {
 		let mut loaded = crate::load_local_tasks(&tasks_root).expect("real candidate task load");
 		let catalog_ids =
 			catalog.tasks.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
-		let lexical_ids = loaded.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
+		let loaded_ids = loaded.iter().map(|task| task.task_id.as_str()).collect::<Vec<_>>();
 
+		assert_eq!(loaded_ids, catalog_ids, "the active loader must apply catalog order");
 		assert_eq!(
-			lexical_ids.iter().zip(&catalog_ids).position(|(left, right)| left != right),
-			Some(8),
-			"ordinary filenames must reproduce the verifier lexical/catalog mismatch"
-		);
-		assert_ne!(
-			corpus_commitment::evaluator_digest(&loaded).expect("lexical evaluator digest"),
+			corpus_commitment::evaluator_digest(&loaded).expect("active evaluator digest"),
 			expected_evaluator_digest
 		);
 
@@ -8824,12 +8812,7 @@ mod tests {
 
 		write_tasks(&unrelated_root, &unrelated);
 
-		let mut unrelated_loaded =
-			crate::load_local_tasks(&unrelated_root).expect("unrelated task load");
-
-		assert!(
-			candidate_catalog::order_tasks_by_checked_candidate(&mut unrelated_loaded).is_err()
-		);
+		assert!(crate::load_local_tasks(&unrelated_root).is_err());
 
 		let mut stale = file_tasks;
 
