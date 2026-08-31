@@ -83,7 +83,7 @@
       ],
       "properties": {
         "release_identity": {
-          "const": "aiq-core/1.1.0-candidate.19"
+          "const": "aiq-core/1.1.0-candidate.20"
         },
         "scoring_version": {
           "const": "1.0.6"
@@ -192,7 +192,7 @@
       ],
       "properties": {
         "candidate_id": {
-          "const": "aiq-core/1.1.0-candidate.19"
+          "const": "aiq-core/1.1.0-candidate.20"
         },
         "task_metadata_digest": {
           "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
@@ -221,7 +221,7 @@
           "const": "benchmarks/candidates/aiq-core-1.1.0/task-response-authority.json"
         },
         "digest": {
-          "const": "sha256:23f5a1721a681f2dfc75ce3b557d94b6c82c548d6c2811af3ce20e40df418eb3"
+          "const": "sha256:d4c7b98a70c5308521acf230665d21f009334f8603195b540271ae881a619ab5"
         },
         "scope": {
           "const": "ordered_task_response_modes_and_locations"
@@ -272,18 +272,18 @@
         },
         "predecessor_candidate": {
           "const": {
-            "candidate_id": "aiq-core/1.1.0-candidate.18",
-            "disposition": "rejected_calibration_model_capacity_misclassified_authentication",
-            "source_commit": "8cdc3c2051d62bccdcff5a4dcb40188258780120",
-            "source_tree": "3e90cda1217e3aa08e1cb8d586ecd821dda461ba",
-            "catalog_canonical_sha256": "sha256:18a2425b36901ef17e6d6227eca78194025181b02b64b48817a439f18b9aed84",
+            "candidate_id": "aiq-core/1.1.0-candidate.19",
+            "disposition": "rejected_calibration_tool_use_domain_facility_above_policy_ceiling",
+            "source_commit": "d33d92000d032957dbd14024291cc7266bee243b",
+            "source_tree": "f587996b58b2b34eea5f278240d17d0c2eecd937",
+            "catalog_canonical_sha256": "sha256:7bbb59699bfde0171098a4e711c48311fae6989348057e5acce3fa87061e675e",
             "catalog_entry_bindings_sha256": "sha256:04ec64d2250351cb861c9fdb10b9b1e2b2deef6eeb62df5d256579d564da0254",
-            "task_metadata_sha256": "sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb",
+            "task_metadata_sha256": "sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105",
             "public_contract_projection_sha256": "sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5",
             "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
-            "task_semantics": "public_contract_and_private_semantics_retained_72",
+            "task_semantics": "candidate_19_complete_calibration_preserved_as_rejected_evidence",
             "task_issue_closure_entries": 42,
-            "semantic_retention_rule": "candidate_18_public_and_private_task_semantics_retained_72"
+            "semantic_retention_rule": "candidate_19_preserved_immutable; only tool-use-02 response semantics advance"
           }
         },
         "immutable_rejected_predecessors": {
@@ -305,13 +305,14 @@
             "aiq-core/1.1.0-candidate.15",
             "aiq-core/1.1.0-candidate.16",
             "aiq-core/1.1.0-candidate.17",
-            "aiq-core/1.1.0-candidate.18"
+            "aiq-core/1.1.0-candidate.18",
+            "aiq-core/1.1.0-candidate.19"
           ]
         },
         "retained_candidate_5_task_issue_closures": {
           "const": {
             "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-            "successor_candidate_id": "aiq-core/1.1.0-candidate.19",
+            "successor_candidate_id": "aiq-core/1.1.0-candidate.20",
             "disposition": "preserved_unchanged_and_revalidated",
             "closure_entries": 42,
             "issue_code_counts": {
@@ -409,7 +410,7 @@
         "task_response_authority": {
           "const": {
             "source": "benchmarks/candidates/aiq-core-1.1.0/task-response-authority.json",
-            "digest": "sha256:23f5a1721a681f2dfc75ce3b557d94b6c82c548d6c2811af3ce20e40df418eb3"
+            "digest": "sha256:d4c7b98a70c5308521acf230665d21f009334f8603195b540271ae881a619ab5"
           }
         },
         "decision_record": {
@@ -585,6 +586,7 @@
             "task_specific_delta",
             "candidate_4_review",
             "candidate_5_contract",
+            "candidate_20_response_contract",
             "task_response_authority",
             "controlled_corpus_requirements"
           ],
@@ -593,10 +595,13 @@
               "const": "1.1.0"
             },
             "supersedes_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.18"
+              "const": "aiq-core/1.1.0-candidate.19"
             },
             "decision": {
-              "const": "retained"
+              "enum": [
+                "retained",
+                "revised"
+              ]
             },
             "predecessor_decision": {
               "enum": [
@@ -1414,6 +1419,12 @@
                 }
               }
             },
+            "candidate_20_response_contract": {
+              "type": [
+                "object",
+                "null"
+              ]
+            },
             "controlled_corpus_requirements": {
               "type": "array",
               "minItems": 4,
@@ -1753,7 +1764,7 @@
               "const": "1.1.0"
             },
             "predecessor_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.18"
+              "const": "aiq-core/1.1.0-candidate.19"
             },
             "source": {
               "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"

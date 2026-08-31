@@ -353,7 +353,7 @@ const runRows = runEvidence.map(({ entry, runId, startedAt, completedAt, outcome
     corpus_release_id: 'corpus_test-generated-aiq-core-1.1.0',
     corpus_commitment_sha256:
       'sha256:f196b67599a7305473dba1054d8511c9bf60011c67fb2f58bb0f8706d04db612',
-    catalog_digest: 'sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105',
+    catalog_digest: 'sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708',
     task_set_digest: 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a',
     preflight_digest: `sha256:${'6'.repeat(64)}`,
     runtime_digest: `sha256:${'7'.repeat(64)}`,

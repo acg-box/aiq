@@ -140,11 +140,11 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105
+sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708
 ```
 
 This is the active public `1.1.0` metadata identity. Its retained source-release
-digest is `sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6`.
+digest is `sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`.
 The catalog is deterministic. Candidate.19 still requires fresh review and a
 Core seal before database task commitments can derive from it. A complete calibration,
 policy-v2 admission, separate Official run, and release acceptance remain

@@ -42,7 +42,7 @@ under the active tuple.
   `max_tool_calls: null`. Controlled evaluator configuration uses
   `aiq.evaluator-config.v2` with `completion_policy: natural_completion` and no
   aggregate or per-check deadline.
-- The candidate.19 catalog is the deterministic source candidate for the
+- The candidate.20 catalog is the deterministic source candidate for the
   `1.1.0` task set. A fresh independent review and seal, complete 17-by-72 calibration,
   policy-v2 fixed-bank admission, separate complete Official run, publication,
   and deployment are required. No earlier publication is a fallback.
@@ -101,13 +101,13 @@ under the active tuple.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105
+sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708
 ```
 
 Its public source-release digest is
-`sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6`.
+`sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`.
 The production task-set identity is `aiq-core/1.1.0`; the retained catalog source
-identity is `aiq-core/1.1.0-candidate.19`. Do not infer any controlled
+identity is `aiq-core/1.1.0-candidate.20`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`.
 The current no-deadline public-safe database task-set identity is
@@ -151,27 +151,30 @@ or legacy data.
 
 ## AIQ Core 1.1.0 source authority
 
-The `1.1.0` source candidate is candidate.19 at
-`benchmarks/candidates/aiq-core-1.1.0/`. It preserves every candidate.18 public
-and private task semantic and changes only source identity plus provider-failure
-classification: temporary selected-model capacity uses the existing resumable
-backpressure path, and task output cannot invent authentication failures. It still requires fresh
-independent review and sealing. Checked-in source does not substitute for
-calibration, admission, Official execution, or production readback.
+The `1.1.0` source candidate is candidate.20 at
+`benchmarks/candidates/aiq-core-1.1.0/`. It preserves candidate.19 except for one
+scored, digest-bound final-response reconciliation decision in `tool-use-02`.
+Candidate.19 completed all 1,224 calibration cells but failed policy v2 because
+the Tool Use domain mean facility was `0.949580`, above the `0.90` ceiling.
+Candidate.20 keeps the policy, 72 tasks, 17-model matrix, supplied tool, and
+workspace receipt semantics unchanged. It still requires fresh independent
+review, sealing, calibration, admission, and Official evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.19 keeps all 72 public response contracts and the
+`aiq.catalog.v2`. Candidate.20 keeps 71 response contracts and advances only
+`tool-use-02` from workspace-only scoring to a final-response reconciliation
+decision while retaining its workspace and receipt checks. It keeps the
 seven distinct tool-use constructs. It records 29 private tasks as retained and
 43 as repaired after candidate.15 calibration. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:7bbb59699bfde0171098a4e711c48311fae6989348057e5acce3fa87061e675e`.
+`sha256:00e555904daa023f0f7731a0e7e66e12d833641f62eb4aaa59447be6417807d7`.
 Its ordered task-metadata digest is
-`sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105`.
+`sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708`.
 Its public release digest is
-`sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6`.
+`sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`.
 
 Candidates.1 through .18 are immutable predecessor evidence. Candidate.5
 remains the durable source for the seven distinct disclosed scenario, operation,
@@ -246,6 +249,8 @@ the adapter to misclassify that temporary capacity event as terminal authenticat
 Candidate.19 routes the exact structured capacity event through existing resumable
 backpressure and limits provider-failure classification to stderr or structured
 `error` and `turn.failed` messages.
+Its complete calibration then failed only the Tool Use domain facility ceiling;
+candidate.20 adds the bounded `tool-use-02` response decision described above.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one

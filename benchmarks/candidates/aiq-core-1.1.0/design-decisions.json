@@ -1,22 +1,22 @@
 {
-  "schema_version": "aiq.candidate-design-decisions.v19",
-  "candidate_id": "aiq-core/1.1.0-candidate.19",
+  "schema_version": "aiq.candidate-design-decisions.v20",
+  "candidate_id": "aiq-core/1.1.0-candidate.20",
   "candidate_task_set_version": "1.1.0",
   "recorded_date": "2026-08-31",
   "authority": "candidate_18_model_capacity_backpressure_repair",
   "predecessor_candidate": {
-    "candidate_id": "aiq-core/1.1.0-candidate.18",
-    "disposition": "rejected_calibration_model_capacity_misclassified_authentication",
-    "source_commit": "8cdc3c2051d62bccdcff5a4dcb40188258780120",
-    "source_tree": "3e90cda1217e3aa08e1cb8d586ecd821dda461ba",
-    "catalog_canonical_sha256": "sha256:18a2425b36901ef17e6d6227eca78194025181b02b64b48817a439f18b9aed84",
+    "candidate_id": "aiq-core/1.1.0-candidate.19",
+    "disposition": "rejected_calibration_tool_use_domain_facility_above_policy_ceiling",
+    "source_commit": "d33d92000d032957dbd14024291cc7266bee243b",
+    "source_tree": "f587996b58b2b34eea5f278240d17d0c2eecd937",
+    "catalog_canonical_sha256": "sha256:7bbb59699bfde0171098a4e711c48311fae6989348057e5acce3fa87061e675e",
     "catalog_entry_bindings_sha256": "sha256:04ec64d2250351cb861c9fdb10b9b1e2b2deef6eeb62df5d256579d564da0254",
-    "task_metadata_sha256": "sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb",
+    "task_metadata_sha256": "sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105",
     "public_contract_projection_sha256": "sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5",
     "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
-    "task_semantics": "public_contract_and_private_semantics_retained_72",
+    "task_semantics": "candidate_19_complete_calibration_preserved_as_rejected_evidence",
     "task_issue_closure_entries": 42,
-    "semantic_retention_rule": "candidate_18_public_and_private_task_semantics_retained_72"
+    "semantic_retention_rule": "candidate_19_preserved_immutable; only tool-use-02 response semantics advance"
   },
   "immutable_rejected_predecessors": [
     "aiq-core/1.1.0-candidate.1",
@@ -36,11 +36,12 @@
     "aiq-core/1.1.0-candidate.15",
     "aiq-core/1.1.0-candidate.16",
     "aiq-core/1.1.0-candidate.17",
-    "aiq-core/1.1.0-candidate.18"
+    "aiq-core/1.1.0-candidate.18",
+    "aiq-core/1.1.0-candidate.19"
   ],
   "retained_candidate_5_task_issue_closures": {
     "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-    "successor_candidate_id": "aiq-core/1.1.0-candidate.19",
+    "successor_candidate_id": "aiq-core/1.1.0-candidate.20",
     "disposition": "preserved_unchanged_and_revalidated",
     "closure_entries": 42,
     "issue_code_counts": {
@@ -138,7 +139,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Implement a strict duration expression parser",
         "summary": "Implement a small parser that normalizes compound duration expressions while rejecting duplicate units, ambiguous signs, overflow, and trailing data without changing the supplied contract fixtures.",
@@ -326,7 +327,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Implement a stable mutable priority queue",
         "summary": "Implement enqueue, reprioritize, cancel, and pop operations with stable tie ordering, idempotent cancellation, and deterministic behavior when an item is updated while already queued.",
@@ -514,7 +515,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Implement deterministic circuit-breaker transitions",
         "summary": "Implement a pure circuit-breaker transition function for closed, open, and half-open states with exact failure thresholds, one probe lease, monotonic epochs, and stale-result rejection.",
@@ -702,7 +703,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Implement a byte-budget LRU cache",
         "summary": "Implement a byte-budget cache with replacement accounting, deterministic least-recent eviction, oversized-item rejection, and read promotion without evicting more entries than necessary.",
@@ -890,7 +891,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Implement an incremental line decoder",
         "summary": "Implement a chunked UTF-8 line decoder that normalizes CRLF, preserves intentional empty records, reports byte offsets for malformed input, and flushes a final unterminated line exactly once. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1095,7 +1096,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -1270,7 +1271,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Implement dependency execution batches",
         "summary": "Implement deterministic topological execution batches with stable source ordering, missing-dependency diagnostics, and one concrete cycle witness without mutating the supplied graph. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1475,7 +1476,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "coding-08 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "coding-08 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -1650,7 +1651,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Repair a fragmented frame decoder",
         "summary": "Repair a length-prefixed frame decoder that currently corrupts split headers, accepts oversized frames, and loses buffered bytes after a recoverable malformed frame. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -1857,7 +1858,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -2032,7 +2033,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Repair aborted refresh generation handling",
         "summary": "Repair a cache refresh path where an aborted generation can overwrite a newer committed value, while preserving independent-key concurrency and read-through hits. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -2235,7 +2236,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -2410,7 +2411,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Repair a lease-renewal race",
         "summary": "Repair a worker lease state machine that can acknowledge work after losing ownership or schedule two renewals for one epoch under a deterministic interleaving.",
@@ -2598,7 +2599,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Repair a DST recurrence cutoff",
         "summary": "Repair a local-time recurrence calculation across spring-forward and fall-back transitions while preserving the configured IANA zone, exclusive cutoff, and stable occurrence identity. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -2803,7 +2804,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Repair cancellation-safe permit transfer",
         "summary": "Repair a bounded semaphore queue where cancellation between selection and delivery leaks capacity, while retaining FIFO eligibility and idempotent release.",
@@ -2991,7 +2992,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "debugging-08 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "debugging-08 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Repair archive path identity checks",
         "summary": "Repair archive-entry normalization so Windows separators and Unicode-normalized aliases cannot bypass traversal, duplicate-path, or symlink-target protections. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3196,7 +3197,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "repository-understanding-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Locate a CLI policy owner",
         "summary": "Trace one CLI policy from parser declaration through configuration merge, runtime enforcement, focused tests, and operator documentation, then record the exact owning files and evidence roles. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3437,7 +3438,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "repository-understanding-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Trace request authorization and persistence",
         "summary": "Trace a request through routing, authentication, authorization, validation, transaction persistence, and error translation using only the bounded repository snapshot. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3678,7 +3679,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "repository-understanding-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Explain a generated client pipeline",
         "summary": "Identify the schema source, generator configuration, generated client outputs, supported regeneration command, validation owner, and files that must never be edited directly. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -3919,7 +3920,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "repository-understanding-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Assess an event schema rename",
         "summary": "Determine the exact producer, consumer, generated type, migration, compatibility, test, and documentation changes required for a named event-field rename. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4160,7 +4161,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "repository-understanding-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Reconstruct an artifact promotion graph",
         "summary": "Reconstruct which build, attest, stage, promote, and publish jobs can run after each supplied failure edge, including the identity of every retained artifact. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4401,7 +4402,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "repository-understanding-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Recover a configuration precedence contract",
         "summary": "Recover defaults, file, environment, and CLI precedence plus normalization, disable sentinels, provenance, startup enforcement, and the tests that own each branch. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4642,7 +4643,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "repository-understanding-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "repository-understanding-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Map a package split boundary",
         "summary": "Map the callers, exports, build metadata, tests, local commands, and release inputs needed to split one package without adding a compatibility facade that owns no behavior. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -4883,7 +4884,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -5091,7 +5092,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Reconcile a weighted many-to-many join",
         "summary": "Join allocation and event rows under an explicit many-to-many policy, normalize weights, preserve unmatched keys, and emit deterministic duplicate and conservation diagnostics. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5330,7 +5331,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -5526,7 +5527,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Reconcile inventory movements",
         "summary": "Reconcile receipts, shipments, transfers, reversals, and duplicate references into per-location balances and a deterministic exception report without treating missing rows as zero. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -5765,7 +5766,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Aggregate a funnel with late duplicates",
         "summary": "Build ordered funnel counts from nested events while deduplicating late arrivals, preserving unknown valid attributes, and separating malformed records from out-of-order valid activity. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -6004,7 +6005,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -6227,7 +6228,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -6444,7 +6445,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "data-processing-08 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "data-processing-08 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Build bitemporal price intervals",
         "summary": "Construct non-overlapping valid-time and system-time price intervals from out-of-order updates, late corrections, and exact duplicate events. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -6685,7 +6686,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "retrieval-verification-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Verify a scoped request limit",
         "summary": "Apply captured first-party limits, exclusions, and amendment dates to a concrete request plan, showing the exact arithmetic and rejecting an out-of-scope draft source. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -6926,7 +6927,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "retrieval-verification-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Reconcile a capability-default timeline",
         "summary": "Reconstruct preview availability, general availability, default activation, and one later exception from bounded first-party release artifacts. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -7167,7 +7168,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "retrieval-verification-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Interpret a normative exception chain",
         "summary": "Determine whether a concrete implementation satisfies a captured MUST, its explicit exception, and an informative note while preserving the authority level of each source clause. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -7408,7 +7409,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "retrieval-verification-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Verify a signed local policy snapshot",
         "summary": "Use only a bounded local evidence bundle to select the signed policy snapshot, reject superseded drafts, and map each conclusion to a content-addressed source anchor.",
@@ -7653,7 +7654,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "retrieval-verification-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Resolve a versioned local data dictionary",
         "summary": "Resolve a disputed field definition from a bounded versioned data dictionary, distinguish current authority from commentary, and record exact source evidence and uncertainty.",
@@ -7898,7 +7899,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "retrieval-verification-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Confirm a local protocol compatibility claim",
         "summary": "Check a compatibility claim against bounded local protocol records, separate normative and informative evidence, and return supported, contradicted, and unresolved conclusions.",
@@ -8143,7 +8144,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "retrieval-verification-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "retrieval-verification-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Audit a multi-claim security brief",
         "summary": "Classify a bounded technical brief claim by claim against captured advisories, migration guidance, and version metadata, including unsupported and partially supported claims. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -8384,7 +8385,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "documentation-communication-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Write an uncertainty-aware incident update",
         "summary": "Write a concise operator update from frozen facts that separates confirmed impact, current mitigation, explicit unknowns, owner, and the next timestamped update. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -8623,7 +8624,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "documentation-communication-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -8798,7 +8799,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "documentation-communication-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Produce a cutover handoff",
         "summary": "Produce a migration handoff that separates completed source work from pending environment inputs, names verification and rollback commands, and states the exact next owner. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9037,7 +9038,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "documentation-communication-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Explain an interval to two audiences",
         "summary": "Create a short executive explanation and a technical appendix for a supplied interval method without calling it a universal confidence interval or hiding its conditional assumptions. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9278,7 +9279,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "documentation-communication-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Repair a scoped release note",
         "summary": "Replace an overstated release note with precise shipped behavior, a compatibility condition, rollback guidance, and a clear statement of what remains pending. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9517,7 +9518,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "documentation-communication-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Draft a decision with replacement triggers",
         "summary": "Turn supplied constraints and evidence into a decision record with rejected alternatives, consequences, verification, and explicit conditions that require replacement or review. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9756,7 +9757,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "documentation-communication-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "documentation-communication-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Consolidate runbook authority",
         "summary": "Create one canonical operational runbook from two drifting sources, preserving valid divergence as scoped notes and replacing duplicate procedures with owner links. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -9995,7 +9996,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "planning-execution-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Schedule a failover rehearsal",
         "summary": "Produce a feasible rehearsal schedule from dependencies, exclusive roles, maintenance windows, rollback reserve, and a required post-event validation buffer. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10234,7 +10235,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "planning-execution-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Plan an expand-contract migration",
         "summary": "Plan a multi-version contract migration whose checkpoints remain deployable, with exact producer and consumer ordering, observation gates, and the last safe rollback boundary. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10473,7 +10474,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "planning-execution-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Build a qualified coverage roster",
         "summary": "Allocate qualified people to interval demand under availability, rest, continuity, and no-double-booking constraints, then report any provably uncovered interval. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10712,7 +10713,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "planning-execution-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Plan a metric-guarded rollout",
         "summary": "Execute eligible rollout stages from frozen metrics, stop at the first failed guard, and record the evidence, rollback action, and prohibited later stages. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -10951,7 +10952,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "planning-execution-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Plan a checkpointed backfill",
         "summary": "Plan a bounded data backfill with dry-run sampling, monotonic checkpoints, invariants, pause conditions, idempotent resume, and rollback before source retirement. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11190,7 +11191,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "planning-execution-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Plan a dependency API migration",
         "summary": "Plan one direct dependency update with supported API edits, lockfile provenance, transitive graph review, focused tests, and a rollback point before publication. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11429,7 +11430,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "planning-execution-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "planning-execution-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Plan a platform package matrix repair",
         "summary": "Plan platform-specific package paths and archive formats across a frozen build matrix while preserving action pins, signing boundaries, and artifact identity checks. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -11668,7 +11669,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "tool-use-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Use an owner map before editing",
         "summary": "Run the supplied owner-map tool once. It resolves the source owner for a bounded requested path, validates the proposed edits, preserves generated outputs, and emits a digest-bound semantic result and receipt.",
@@ -12378,7 +12379,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "Candidate.20 adds one scored, digest-bound final-response release decision to tool-use-02 after candidate.19 proved the Tool Use domain facility exceeded the policy-v2 ceiling; the supplied tool and workspace receipt semantics remain unchanged.",
       "public_task_revision": {
         "title": "Cross-check a package manifest with a checksum tool",
         "summary": "Run the supplied package reconciliation tool once. It hashes bounded package files, compares them with the declared manifest, classifies verified, missing, and mismatched entries, and emits a digest-bound report and receipt.",
@@ -12395,7 +12396,9 @@
           "Runner command evidence and the content-addressed supplied-tool receipt are required and cross-checked independently.",
           "Invoke exactly node bin/task-tool.mjs once.",
           "Use exactly one total tool call and exactly one command_execution call.",
-          "Produce exactly one completed command-line digest sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319."
+          "Produce exactly one completed command-line digest sha256:6763cc80f8294b52c6494f1c9891e41a8e3cd1c466ca622377c59643a0466319.",
+          "Return one exact JSON release decision bound to the complete reconciliation partition and report digest.",
+          "Block incomplete reconciliation and order preservation, restoration, replacement, and revalidation actions."
         ],
         "allowed_tools": [
           "filesystem_read",
@@ -12412,7 +12415,9 @@
           "candidate5_remediation",
           "reconcile_manifest_checksums",
           "metamorphic_behavior",
-          "cross_task_substitution"
+          "cross_task_substitution",
+          "final_response_reconciliation",
+          "calibration_policy_repair"
         ]
       },
       "candidate_2_review": {
@@ -13089,7 +13094,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "tool-use-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Complete a validator repair cycle",
         "summary": "Run the supplied validator-cycle tool once. It evaluates the initial configuration, applies only permitted deterministic repairs, evaluates the repaired configuration, preserves the protected identity, and emits a digest-bound result and receipt.",
@@ -13799,7 +13804,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "tool-use-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Navigate a captured evidence index",
         "summary": "Run the supplied evidence-index tool once. It filters releases for the bounded query, selects the authoritative approved release under the declared policy, opens a bounded anchor set, rejects drafts, and emits a digest-bound result and receipt.",
@@ -14506,7 +14511,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "tool-use-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Apply a structured patch through its gate",
         "summary": "Run the supplied structured-patch tool once. It applies bounded pointer updates only to allowed documents, preserves forbidden documents, evaluates the focused gate, proves a seeded regression is rejected, and emits a digest-bound result and receipt.",
@@ -15229,7 +15234,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "tool-use-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Probe and normalize a local capability matrix",
         "summary": "Run the supplied capability-matrix tool once. It consumes bounded probe records, normalizes versions and capabilities, classifies required capability support, redacts declared diagnostic fields, and emits a digest-bound matrix and receipt.",
@@ -15945,7 +15950,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "tool-use-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "tool-use-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Recover from an index-tool failure",
         "summary": "Run the supplied fallback tool once. It verifies the captured preferred-index failure, searches the bounded fallback corpus under the disclosed policy, filters citations to trusted roots, and emits a digest-bound fallback result and receipt.",
@@ -16662,7 +16667,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "instruction-following-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Return a computed exact JSON schema",
         "summary": "Compute derived values from supplied facts and return exactly the required nested JSON keys, types, ordering-insensitive values, and no surrounding prose.",
@@ -16868,7 +16873,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "instruction-following-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Honor a protected file scope",
         "summary": "Complete a local change while modifying exactly two allowed files, preserving digest-bound protected paths, and reporting the focused validation result. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17100,7 +17105,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "instruction-following-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Apply a constraint precedence matrix",
         "summary": "Produce one artifact under nested global, section, exception, terminology, and length rules, resolving conflicts by the supplied precedence matrix. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17330,7 +17335,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "instruction-following-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Prepare migration inputs without external effects",
         "summary": "Create validated local migration inputs and a dry-run receipt while avoiding the explicitly prohibited resource creation, message, database write, or deployment. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17562,7 +17567,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "instruction-following-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -17752,7 +17757,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "instruction-following-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "instruction-following-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Complete a dense compatibility edit",
         "summary": "Apply exact naming, backward compatibility, validation, documentation, secret-handling, and file-boundary constraints to one local contract change. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -17984,7 +17989,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-01 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "reliability-recovery-01 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Resume an incomplete capability probe",
         "summary": "Classify incomplete capability evidence, preserve every completed probe, retry only eligible missing work, and avoid inventing a semantic result for the interrupted cell. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -18223,7 +18228,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-02 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "reliability-recovery-02 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Recover a split-lease queue ledger",
         "summary": "Reconcile a local queue whose durable lease ledger and completed-effect receipts disagree, preserve one current owner, resume only uncommitted items, and prove idempotent recovery.",
@@ -18464,7 +18469,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-03 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "reliability-recovery-03 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Recover a partial chunk manifest",
         "summary": "Reconcile a partial artifact against a chunk manifest, retain verified chunks, quarantine corrupt bytes, and produce a resumable missing-range plan. Candidate.3 binds the private scenario, declared structural contract, evaluator, and acceptance cases to this single construct.",
@@ -18703,7 +18708,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-04 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "reliability-recovery-04 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
@@ -18881,7 +18886,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-05 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "reliability-recovery-05 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Reconcile an orphaned artifact promotion",
         "summary": "Classify a staged artifact whose promotion marker is missing, validate its content identity, promote or quarantine it once, and retire temporary state with monotonic evidence.",
@@ -19122,7 +19127,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-06 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "reliability-recovery-06 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": {
         "title": "Isolate malformed batch entries",
         "summary": "Validate a mixed batch, reject malformed entries with stable reasons, continue independent valid entries, and emit an exact processed, rejected, and pending summary.",
@@ -19337,7 +19342,7 @@
         "empty": "required",
         "timeout": "not_applicable"
       },
-      "rationale": "reliability-recovery-07 retains the exact candidate.18 public and private task semantics; candidate.19 changes only source identity and provider-capacity failure classification.",
+      "rationale": "reliability-recovery-07 retains exact candidate.19 public and private task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.",
       "public_task_revision": null,
       "candidate_2_review": {
         "verdict": "approved",
