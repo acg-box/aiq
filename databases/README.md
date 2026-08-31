@@ -66,9 +66,9 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:11a21ab99e67bd5d941e7b46c266aaa53529ac11311d5be20f02ef3d025805ab`;
+  `sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb`;
 - catalog release identity
-  `sha256:3ce238197c66ade96b2f5c528fa04bec9cc18bdd59a422c0074a431fddb8db9a`;
+  `sha256:5fa9fa2bda0e12a9a296729a5c9a7604f2ac33549fb417b30dec8a5b0d0294cb`;
 - current no-deadline runtime task-set identity,
   `sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`;
 - current no-deadline task-commitment manifest identity,
@@ -211,7 +211,7 @@ expected outputs, signing keys, tokens, or database credentials.
 ## Security model
 
 The schema stores AIQ tables in `aiq_private`, enables and forces RLS, and
-exposes 12 security-invoker public views plus narrow RPCs. Browser roles have
+exposes 13 security-invoker public views plus narrow RPCs. Browser roles have
 read-only access. Server gateways control submission, verification, publication,
 and private Storage operations.
 
