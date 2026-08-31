@@ -30,7 +30,7 @@ creates `aiq-submission-packages` and `aiq-runner-artifacts` in
 rejects either exact bucket ID or name if it already exists. Do not create either
 bucket before initialization.
 
-The model-free preflight checks every one of the 12 canonical AIQ public view
+The model-free preflight checks every one of the 13 canonical AIQ public view
 names and every public RPC name created by `databases/schema.sql`. Any overload
 with one of those exact names rejects initialization. It does not use a broad
 `public`-schema or prefix match, so unrelated views and functions remain
@@ -66,9 +66,9 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:c36bdd9246f5c56f8cf5df83c690618da1a32e3f5023aba29343c54594d10fd1`;
+  `sha256:11a21ab99e67bd5d941e7b46c266aaa53529ac11311d5be20f02ef3d025805ab`;
 - catalog release identity
-  `sha256:0fdff2e892f5770c1aee068f658ee9f7814accf2a23f38e0c5a45cea501223d1`;
+  `sha256:3ce238197c66ade96b2f5c528fa04bec9cc18bdd59a422c0074a431fddb8db9a`;
 - current no-deadline runtime task-set identity,
   `sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`;
 - current no-deadline task-commitment manifest identity,
@@ -193,7 +193,7 @@ skips an absent bucket and resumes with an existing bucket.
 
 The command verifies that both buckets are absent before it changes PostgreSQL.
 It then removes the
-canonical public RPC overloads, the 12 canonical public views, `aiq_private`,
+canonical public RPC overloads, the 13 canonical public views, `aiq_private`,
 `aiq_publisher`, and `aiq_verifier` in one PostgreSQL transaction. It reads the
 database boundary again inside that transaction after it acquires the reset
 advisory lock, dependency-catalog locks, role-membership locks, and exclusive

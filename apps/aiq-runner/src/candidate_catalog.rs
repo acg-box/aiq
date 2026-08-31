@@ -19,7 +19,7 @@ pub const CANDIDATE_CATALOG_SCHEMA_VERSION: &str = "aiq.catalog.v2";
 /// Exact source-foundation task-set version.
 pub const CANDIDATE_TASK_SET_VERSION: &str = "1.1.0";
 /// Exact source-only candidate identity accepted by the checked candidate boundary.
-pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.16";
+pub const CANDIDATE_ID: &str = "aiq-core/1.1.0-candidate.17";
 /// Exact retained candidate catalog path promoted as the active 1.1.0 task authority.
 pub const CANDIDATE_CATALOG_PATH: &str = "benchmarks/candidates/aiq-core-1.1.0/catalog.json";
 /// Exact candidate task schema path.
@@ -256,6 +256,7 @@ pub fn validate_candidate_catalog(
 			| "aiq-core/1.1.0-candidate.14"
 			| "aiq-core/1.1.0-candidate.15"
 			| "aiq-core/1.1.0-candidate.16"
+			| "aiq-core/1.1.0-candidate.17"
 	) {
 		"1.1.0"
 	} else {
@@ -560,7 +561,7 @@ mod tests {
 
 		assert_eq!(catalog.tasks.len(), 72);
 		assert_eq!(catalog.status, candidate_catalog::CandidateCatalogStatus::FrozenCandidate);
-		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.16");
+		assert_eq!(catalog.candidate_id, "aiq-core/1.1.0-candidate.17");
 
 		catalog.require_frozen_candidate().expect("frozen candidate");
 
