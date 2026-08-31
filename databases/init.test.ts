@@ -464,11 +464,11 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
   strictEqual(prepared.receipt.measurement_version, '2.0.0');
   strictEqual(
     prepared.receipt.catalog_identity_sha256,
-    'sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105',
+    'sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708',
   );
   strictEqual(
     prepared.receipt.catalog_release_identity_sha256,
-    'sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6',
+    'sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69',
   );
   strictEqual(prepared.receipt.task_set_identity_sha256, taskSetIdentity);
   strictEqual(prepared.receipt.evaluator_identity_sha256, evaluatorIdentity);

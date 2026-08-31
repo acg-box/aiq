@@ -51,13 +51,13 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105
+sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708
 ```
 
 Its release identity is:
 
 ```text
-sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6
+sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69
 ```
 
 The production task-set identity is `aiq-core/1.1.0`, derived from retained source
@@ -161,9 +161,9 @@ The candidate.19 public identities are:
 - canonical catalog:
   `sha256:7bbb59699bfde0171098a4e711c48311fae6989348057e5acce3fa87061e675e`;
 - ordered task metadata:
-  `sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105`;
+  `sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708`;
 - public release:
-  `sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6`.
+  `sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`.
 
 Candidates.1 through .18 are immutable predecessor evidence.
 Candidate.5 retains its model-free authoring evidence and all task semantics,

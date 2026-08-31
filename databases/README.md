@@ -66,9 +66,9 @@ A successful receipt reports:
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105`;
+  `sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708`;
 - catalog release identity
-  `sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6`;
+  `sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`;
 - current no-deadline runtime task-set identity,
   `sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`;
 - current no-deadline task-commitment manifest identity,
