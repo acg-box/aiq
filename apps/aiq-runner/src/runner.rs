@@ -4952,8 +4952,16 @@ mod tests {
 
 			Ok(ExecutionCapture {
 				exit_code: Some(1),
-				stdout: Vec::new(),
-				stderr: b"You have 0 weighted tokens left".to_vec(),
+				stdout: concat!(
+					r#"{"type":"item.completed","item":{"id":"message-1","type":"agent_message","text":"Trace authentication and authorization before persistence."}}"#,
+					"\n",
+					r#"{"type":"error","message":"Selected model is at capacity. Please try a different model."}"#,
+					"\n",
+					r#"{"type":"turn.failed","error":{"message":"Selected model is at capacity. Please try a different model."}}"#,
+				)
+				.as_bytes()
+				.to_vec(),
+				stderr: Vec::new(),
 				timed_out: false,
 				budget_exceeded: None,
 				stdout_truncated: false,

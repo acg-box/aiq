@@ -511,7 +511,7 @@ function privateResponseContract(sourceCase: PrivateSourceCase): JsonObject {
   };
 }
 
-await test('the generated candidate.18 public source is deterministic', async () => {
+await test('the generated candidate.19 public source is deterministic', async () => {
   const catalog = buildCatalog();
   deepStrictEqual(
     JSON.parse(await readFile(new URL('catalog.json', candidateRoot), 'utf8')),
@@ -523,15 +523,15 @@ await test('the generated candidate.18 public source is deterministic', async ()
   strictEqual(catalog.status, 'frozen_candidate');
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').candidate_id,
-    'aiq-core/1.1.0-candidate.18',
+    'aiq-core/1.1.0-candidate.19',
   );
   strictEqual(
     jsonObject(catalog.candidate_identity, 'candidate identity').task_metadata_digest,
-    'sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb',
+    'sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105',
   );
 });
 
-await test('candidate.18 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
+await test('candidate.19 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
   const rootPackage = jsonObject(
     JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')),
     'root package',
@@ -568,7 +568,7 @@ await test('candidate.18 uses the exact checked-in Node, npm, and TypeScript ide
   );
 });
 
-await test('candidate.18 active delivery runbooks match the 1.1.0 v3 and 13-view owners', async () => {
+await test('candidate.19 active delivery runbooks match the 1.1.0 v3 and 13-view owners', async () => {
   const rootReadme = await readFile(join(repositoryRoot, 'README.md'), 'utf8');
   const benchmarkReadme = await readFile(join(repositoryRoot, 'benchmarks/README.md'), 'utf8');
   const databaseReadme = await readFile(join(repositoryRoot, 'databases/README.md'), 'utf8');
@@ -592,25 +592,25 @@ await test('candidate.18 active delivery runbooks match the 1.1.0 v3 and 13-view
   strictEqual(databaseReadme.includes('12 security-invoker public views'), false);
 });
 
-await test('candidate.17 is exact rejected source-review evidence and candidate.1 through .17 stay immutable', async () => {
+await test('candidate.18 is exact rejected calibration evidence and candidate.1 through .18 stay immutable', async () => {
   const manifest = await decisions();
   deepStrictEqual(manifest.predecessor_candidate, {
-    candidate_id: 'aiq-core/1.1.0-candidate.17',
-    disposition: 'rejected_independent_source_review_security_view_runbook_drift',
-    source_commit: 'ae040ae544e9f9dced1b46875b0f3b62225a796e',
-    source_tree: 'b2f3e3e58e95114fc7e82dbdd4d2106475820a53',
+    candidate_id: 'aiq-core/1.1.0-candidate.18',
+    disposition: 'rejected_calibration_model_capacity_misclassified_authentication',
+    source_commit: '8cdc3c2051d62bccdcff5a4dcb40188258780120',
+    source_tree: '3e90cda1217e3aa08e1cb8d586ecd821dda461ba',
     catalog_canonical_sha256:
-      'sha256:e9818ee761b69b060e077b82a85a443a4ff8fe1f8acf39e1e8ca5bf7c8aaf05d',
+      'sha256:18a2425b36901ef17e6d6227eca78194025181b02b64b48817a439f18b9aed84',
     catalog_entry_bindings_sha256:
-      'sha256:21aecabaac681f13b96c75043464e6d2bc159571036d1c20561a7b435cc45c19',
-    task_metadata_sha256: 'sha256:11a21ab99e67bd5d941e7b46c266aaa53529ac11311d5be20f02ef3d025805ab',
+      'sha256:04ec64d2250351cb861c9fdb10b9b1e2b2deef6eeb62df5d256579d564da0254',
+    task_metadata_sha256: 'sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb',
     public_contract_projection_sha256:
       'sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5',
     task_facing_semantics_sha256:
       'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54',
     task_semantics: 'public_contract_and_private_semantics_retained_72',
     task_issue_closure_entries: 42,
-    semantic_retention_rule: 'candidate_17_public_and_private_task_semantics_retained_72',
+    semantic_retention_rule: 'candidate_18_public_and_private_task_semantics_retained_72',
   });
   deepStrictEqual(manifest.immutable_rejected_predecessors, [
     'aiq-core/1.1.0-candidate.1',
@@ -630,6 +630,7 @@ await test('candidate.17 is exact rejected source-review evidence and candidate.
     'aiq-core/1.1.0-candidate.15',
     'aiq-core/1.1.0-candidate.16',
     'aiq-core/1.1.0-candidate.17',
+    'aiq-core/1.1.0-candidate.18',
   ]);
 });
 
@@ -671,7 +672,7 @@ await test('all exact candidate.4 task-review records remain bound as historical
   }
 });
 
-await test('candidate.18 retains public tasks while preserving candidate.5 design history', async () => {
+await test('candidate.19 retains public tasks while preserving candidate.5 design history', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   const expected = {
@@ -699,7 +700,7 @@ await test('candidate.18 retains public tasks while preserving candidate.5 desig
   deepStrictEqual(observed, expected);
 });
 
-await test('every task has one candidate.18 identity and exact candidate.17 public semantics', async () => {
+await test('every task has one candidate.19 identity and exact candidate.18 public semantics', async () => {
   const manifest = await decisions();
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   assertDecisionManifest(manifest, taskIds());
@@ -714,7 +715,7 @@ await test('every task has one candidate.18 identity and exact candidate.17 publ
     strictEqual(task.task_id, decision.task_id);
     strictEqual(task.cluster_id, decision.cluster_id);
     strictEqual(/^[a-z_]+-cluster-[0-9]{2}$/u.test(decision.cluster_id), true);
-    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.17');
+    strictEqual(design.supersedes_candidate_id, 'aiq-core/1.1.0-candidate.18');
     strictEqual(design.decision, 'retained');
     strictEqual(design.predecessor_decision, decision.predecessor_decision);
     deepStrictEqual(design.candidate_4_review, decision.candidate_4_review);
@@ -791,7 +792,7 @@ await test('candidate.9 to candidate.10 changes only the two rejected public con
   ]);
 });
 
-await test('candidate.17 to candidate.18 preserves public task, response, evaluator, fixture, and tool semantics', () => {
+await test('candidate.18 to candidate.19 preserves public task, response, evaluator, fixture, and tool semantics', () => {
   const tasks = objectArray(buildCatalog().tasks, 'candidate tasks');
   strictEqual(
     digestValue(publicContractProjection(tasks)),
@@ -1435,7 +1436,7 @@ await test('fixture authority and frozen pending lifecycle remain exact with no 
   deepStrictEqual(state.semantic_decision_counts, { retained: 72, revised: 0 });
   deepStrictEqual(state.predecessor_design_decision_counts, { retained: 65, revised: 7 });
   deepStrictEqual(state.task_issue_closure_counts, issueCounts);
-  strictEqual(state.predecessor_review_status, 'not_completed_source_rejected');
+  strictEqual(state.predecessor_review_status, 'completed_approved_but_calibration_rejected');
   for (const status of [
     'independent_review_status',
     'seal_status',
@@ -1523,7 +1524,7 @@ await test('missing, duplicate, reordered, or review-incompatible decisions fail
   );
 });
 
-await test('candidate schemas bind candidate.18 identity and independent source authority', async () => {
+await test('candidate schemas bind candidate.19 identity and independent source authority', async () => {
   const catalogSchema = jsonObject(
     JSON.parse(await readFile(new URL('catalog.schema.json', candidateRoot), 'utf8')),
     'catalog schema',
@@ -1740,7 +1741,7 @@ await test('qualification schemas bind predeclaration to replay-verified candida
   );
   const projectionProperties = jsonObject(projection.properties, 'projection properties');
   deepStrictEqual(projectionProperties.candidate_id, {
-    const: 'aiq-core/1.1.0-candidate.18',
+    const: 'aiq-core/1.1.0-candidate.19',
   });
   deepStrictEqual(projectionProperties.disposition, { const: 'accepted' });
   deepStrictEqual(projectionProperties.synthetic, { const: false });
