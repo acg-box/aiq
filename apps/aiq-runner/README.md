@@ -41,7 +41,7 @@ active task authority. It requires
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
 declaration exactly. Candidate.15 is immutable failed-calibration evidence; its
-review and seal records are not transferable, and an empty candidate.17 review
+review and seal records are not transferable, and an empty candidate.18 review
 directory blocks sealing without creating output.
 The tracked private-authoring validator checks response types against the
 schema-owned enum and response locations against authority derived from the
@@ -140,11 +140,11 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:11a21ab99e67bd5d941e7b46c266aaa53529ac11311d5be20f02ef3d025805ab
+sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb
 ```
 
 This is the active public `1.1.0` metadata identity. Its retained source-release
-digest is `sha256:3ce238197c66ade96b2f5c528fa04bec9cc18bdd59a422c0074a431fddb8db9a`.
+digest is `sha256:5fa9fa2bda0e12a9a296729a5c9a7604f2ac33549fb417b30dec8a5b0d0294cb`.
 The catalog is deterministic. Candidate.16 still requires fresh review and a
 Core seal before database task commitments can derive from it. A complete calibration,
 policy-v2 admission, separate Official run, and release acceptance remain

@@ -272,8 +272,8 @@ function checkWorkspaceIntegrityFailureClassification(schema: string): void {
 }
 
 function checkCurrentReleaseAndPricing(schema: string, syntheticDemo: string): void {
-  const catalogDigest = '11a21ab99e67bd5d941e7b46c266aaa53529ac11311d5be20f02ef3d025805ab';
-  const catalogReleaseDigest = '3ce238197c66ade96b2f5c528fa04bec9cc18bdd59a422c0074a431fddb8db9a';
+  const catalogDigest = 'c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb';
+  const catalogReleaseDigest = '5fa9fa2bda0e12a9a296729a5c9a7604f2ac33549fb417b30dec8a5b0d0294cb';
   const evaluatorDigest = '748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809';
   const controlledTaskTreeDigest =
     '94a0796721f4c79a37206933e3e246249acc89759f700035899d10bcd8384e15';
