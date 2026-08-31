@@ -8725,7 +8725,7 @@ mod tests {
 		let projection =
 			stage.qualification_projection.as_ref().expect("candidate qualification projection");
 
-		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.16");
+		assert_eq!(projection.candidate_id, "aiq-core/1.1.0-candidate.17");
 		assert_eq!(projection.cells.len(), 216);
 		assert_eq!(stage.models, CANDIDATE_QUALIFICATION_MODEL_MATRIX);
 		assert_eq!(stage.result_efficiency.len(), 216);

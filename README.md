@@ -42,7 +42,7 @@ under the active tuple.
   `max_tool_calls: null`. Controlled evaluator configuration uses
   `aiq.evaluator-config.v2` with `completion_policy: natural_completion` and no
   aggregate or per-check deadline.
-- The candidate.16 catalog is the deterministic source candidate for the
+- The candidate.17 catalog is the deterministic source candidate for the
   `1.1.0` task set. A fresh independent review and seal, complete 17-by-72 calibration,
   policy-v2 fixed-bank admission, separate complete Official run, publication,
   and deployment are required. No earlier publication is a fallback.
@@ -101,13 +101,13 @@ under the active tuple.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:c36bdd9246f5c56f8cf5df83c690618da1a32e3f5023aba29343c54594d10fd1
+sha256:11a21ab99e67bd5d941e7b46c266aaa53529ac11311d5be20f02ef3d025805ab
 ```
 
 Its public source-release digest is
-`sha256:0fdff2e892f5770c1aee068f658ee9f7814accf2a23f38e0c5a45cea501223d1`.
+`sha256:3ce238197c66ade96b2f5c528fa04bec9cc18bdd59a422c0074a431fddb8db9a`.
 The production task-set identity is `aiq-core/1.1.0`; the retained catalog source
-identity is `aiq-core/1.1.0-candidate.16`. Do not infer any controlled
+identity is `aiq-core/1.1.0-candidate.17`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`.
 The current no-deadline public-safe database task-set identity is
@@ -151,27 +151,27 @@ or legacy data.
 
 ## AIQ Core 1.1.0 source authority
 
-The `1.1.0` source candidate is candidate.16 at
-`benchmarks/candidates/aiq-core-1.1.0/`. It preserves candidate.15 public
-contracts, replaces 36 calibration-degenerate private structured scenarios with
-task-specific domain derivations, and repairs the seven ToolUse command-evidence
-bindings. It still requires fresh independent review and sealing. Checked-in
-source does not substitute for calibration, admission, Official execution, or
-production readback.
+The `1.1.0` source candidate is candidate.17 at
+`benchmarks/candidates/aiq-core-1.1.0/`. It preserves candidate.16 public
+contracts and measured bank repair while making all 43 revised private
+evaluators honor declared optional fields. It also aligns active runbooks with
+the executable 1.1.0/v3/13-view production contract. It still requires fresh
+independent review and sealing. Checked-in source does not substitute for
+calibration, admission, Official execution, or production readback.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.16 keeps all 72 public response contracts and the
+`aiq.catalog.v2`. Candidate.17 keeps all 72 public response contracts and the
 seven distinct tool-use constructs. It records 29 private tasks as retained and
 43 as repaired after candidate.15 calibration. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:c0d2ec225ba50b1cbc7c95e8d98f94c59f13e27561a448f645779e1bea5085cb`.
+`sha256:e9818ee761b69b060e077b82a85a443a4ff8fe1f8acf39e1e8ca5bf7c8aaf05d`.
 Its ordered task-metadata digest is
-`sha256:c36bdd9246f5c56f8cf5df83c690618da1a32e3f5023aba29343c54594d10fd1`.
+`sha256:11a21ab99e67bd5d941e7b46c266aaa53529ac11311d5be20f02ef3d025805ab`.
 Its public release digest is
-`sha256:0fdff2e892f5770c1aee068f658ee9f7814accf2a23f38e0c5a45cea501223d1`.
+`sha256:3ce238197c66ade96b2f5c528fa04bec9cc18bdd59a422c0074a431fddb8db9a`.
 
 Candidates.1 through .15 are immutable predecessor evidence. Candidate.5
 remains the durable source for the seven distinct disclosed scenario, operation,
@@ -233,6 +233,10 @@ rejected 38 universal full-credit tasks, ten universal semantic-zero tasks, only
 22 non-uniform tasks, and six degenerate domains. Candidate.16 keeps policy v2,
 repairs those task-bank failures, and normalizes only the exact Codex zsh
 transport before hashing the logical ToolUse command.
+Independent review rejects candidate.16 because all 43 revised tasks reject a
+publicly declared optional field; six Documentation tasks also score optional
+`next_steps` as required. Candidate.17 repairs that existing evaluator owner and
+the independently identified 1.1.0/v3/13-view runbook drift.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
@@ -253,8 +257,8 @@ extra calls. One three-configuration qualification matrix can contain at most
 21 declared digest entries. The runner removes command text from provider
 stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidates.14 and .15 remain inactive and not production-publishable.
-Candidate.16 is the current source candidate; production cutover requires its
+redaction. Candidates.14 through .16 remain inactive and not production-publishable.
+Candidate.17 is the current source candidate; production cutover requires its
 fresh review, seal, complete calibration, admission, and Official evidence.
 
 AIQ Core 1.1.0 sealing also requires one independently supplied
@@ -389,7 +393,7 @@ objects. This cleanup is a deployment prerequisite, not a migration or
 compatibility path. The schema creates the `aiq-submission-packages` and
 `aiq-runner-artifacts` Storage buckets as private. The preflight rejects either
 existing bucket identity. Do not create the buckets in a separate operator step.
-The preflight enumerates the 12 canonical public view names and all public RPC
+The preflight enumerates the 13 canonical public view names and all public RPC
 names from the desired state. It rejects every overload of those exact RPC
 names without matching unrelated public objects.
 
@@ -400,7 +404,7 @@ cargo make init-database
 ```
 
 For an empty AIQ namespace, the production reference must contain the real
-controlled, non-synthetic AIQ Core `1.0.7` corpus commitment, its real canonical
+controlled, non-synthetic AIQ Core `1.1.0` v3 corpus commitment, its real canonical
 `published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
 only after the controlled corpus passes model-free validation, the operator
@@ -456,7 +460,7 @@ or to production.
 8. Public security-invoker views supply the Web application.
 
 Official means a complete, non-synthetic 17-by-72 run with valid task-set
-`1.0.7`, task-scorer `1.0.6`, aggregate-scorer `1.0.8`, and measurement `2.0.0`
+`1.1.0`, task-scorer `1.0.6`, aggregate-scorer `1.0.8`, and measurement `2.0.0`
 bindings that completed this flow and was published as
 `trusted_verified`. A complete synthetic fixture uses the
 `synthetic_complete` classification, has no Official AIQ value, and is never

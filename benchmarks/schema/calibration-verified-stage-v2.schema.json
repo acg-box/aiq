@@ -168,7 +168,7 @@
       "required": ["schema_version", "candidate_id", "disposition", "synthetic", "cells"],
       "properties": {
         "schema_version": { "const": "aiq.benchmark-qualification-projection.v2" },
-        "candidate_id": { "const": "aiq-core/1.1.0-candidate.16" },
+        "candidate_id": { "const": "aiq-core/1.1.0-candidate.17" },
         "disposition": { "const": "accepted" },
         "synthetic": { "const": false },
         "cells": {
