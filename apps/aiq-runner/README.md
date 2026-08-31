@@ -40,8 +40,8 @@ active task authority. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. Candidate.15 is immutable failed-calibration evidence; its
-review and seal records are not transferable, and an empty candidate.18 review
+declaration exactly. Candidate.18 is immutable failed-calibration evidence; its
+review and seal records are not transferable, and an empty candidate.19 review
 directory blocks sealing without creating output.
 The tracked private-authoring validator checks response types against the
 schema-owned enum and response locations against authority derived from the
@@ -140,12 +140,12 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb
+sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105
 ```
 
 This is the active public `1.1.0` metadata identity. Its retained source-release
-digest is `sha256:5fa9fa2bda0e12a9a296729a5c9a7604f2ac33549fb417b30dec8a5b0d0294cb`.
-The catalog is deterministic. Candidate.16 still requires fresh review and a
+digest is `sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6`.
+The catalog is deterministic. Candidate.19 still requires fresh review and a
 Core seal before database task commitments can derive from it. A complete calibration,
 policy-v2 admission, separate Official run, and release acceptance remain
 required before production cutover.
@@ -236,10 +236,10 @@ an incorrect answer, is final and is never retried. Checkpoint resume does not
 retry a committed or indeterminate model cell. A retryable evaluator process
 failure stays pending and does not produce terminal evidence. Resume reruns only
 the evaluator against the unchanged response and workspace. A semantic result
-is final; the runner never retries it to obtain a match. A provider-declared subscription
-limit is not a terminal task result: the checkpoint preserves completed cells,
-marks the rejected cell as pending capacity backpressure, and resumes it after
-capacity returns. Legacy v8 terminal subscription-limit entries migrate into
+is final; the runner never retries it to obtain a match. Provider-declared temporary model
+capacity, subscription quota, usage, and rate limits are not terminal task results: the
+checkpoint preserves completed cells, marks the rejected cell as pending capacity
+backpressure, and resumes it after capacity returns. Legacy v8 terminal subscription-limit entries migrate into
 that pending state without replacing already completed work. Checkpoint v9
 migrates to v10 with an empty pending-evaluator list.
 

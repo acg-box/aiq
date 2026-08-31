@@ -51,17 +51,17 @@ The catalog contains 17 model configurations and 72 ordered tasks. Its identity
 digest is:
 
 ```text
-sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb
+sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105
 ```
 
 Its release identity is:
 
 ```text
-sha256:5fa9fa2bda0e12a9a296729a5c9a7604f2ac33549fb417b30dec8a5b0d0294cb
+sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6
 ```
 
 The production task-set identity is `aiq-core/1.1.0`, derived from retained source
-identity `aiq-core/1.1.0-candidate.18`. The reviewed evaluator identity
+identity `aiq-core/1.1.0-candidate.19`. The reviewed evaluator identity
 is `sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`.
 The checked-in current no-deadline database task-set identity is
 `sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`,
@@ -150,22 +150,22 @@ node --test --experimental-strip-types \
 ## AIQ Core 1.1.0 source candidate
 
 `candidates/aiq-core-1.1.0/` carries public source identity
-`aiq-core/1.1.0-candidate.18`. It is not active until its fresh review, seal,
+`aiq-core/1.1.0-candidate.19`. It is not active until its fresh review, seal,
 calibration, admission, Official run, and cutover complete. Its
 `aiq.catalog.v2` document binds 72 explicit decisions, 72 unique
 within-domain clusters, and the unchanged task scorer and weighted binary
 formula at `1.0.6`.
 
-The candidate.18 public identities are:
+The candidate.19 public identities are:
 
 - canonical catalog:
-  `sha256:18a2425b36901ef17e6d6227eca78194025181b02b64b48817a439f18b9aed84`;
+  `sha256:7bbb59699bfde0171098a4e711c48311fae6989348057e5acce3fa87061e675e`;
 - ordered task metadata:
-  `sha256:c00b278d0edbdcd3c45cd0d4f21bd9a1b31a40d97acc47253373cd4228c953fb`;
+  `sha256:459e1608a51d2a35286d6480df83e69cb4395d6e1a1062aa4410c2e0fdb92105`;
 - public release:
-  `sha256:5fa9fa2bda0e12a9a296729a5c9a7604f2ac33549fb417b30dec8a5b0d0294cb`.
+  `sha256:fb69438f9317e79515e99886d072c7540371ffd4a0732c4ab1286b36752597a6`.
 
-Candidates.1 through .15 are immutable predecessor evidence.
+Candidates.1 through .18 are immutable predecessor evidence.
 Candidate.5 retains its model-free authoring evidence and all task semantics,
 but its source integration is rejected. Its catalog declared task-metadata
 identity
@@ -253,7 +253,12 @@ also score optional `next_steps` as required. Candidate.17 corrects only that
 evaluator parity and the active delivery runbook drift.
 Independent source review rejects candidate.17 because one active Security
 model sentence still says 12 public views and the focused regression missed
-that wording. Candidate.18 corrects that final documentation owner only.
+that wording. Candidate.18 corrects that final documentation owner only. Its
+isolated Morgan calibration reached 288 checkpoint results before a structured
+`Selected model is at capacity` event was misclassified as terminal authentication
+because ordinary task output contained that word. Candidate.19 preserves all task
+semantics and routes exact temporary model-capacity events through the existing
+resumable backpressure owner.
 
 Each revised task discloses a distinct `input.json` scenario contract, one
 deterministic domain operation, and one task-specific semantic result contract.
@@ -317,7 +322,7 @@ The v2 leakage review binds reviewer identity, reviewer task or thread, review
 time, source commit, source tree, source manifest, task and catalog digests,
 verdict, method, scope, and notes. Candidate.17 review records are not transferable
 evidence. The sealer requires one fresh matching record for each exact
-candidate.18 task and catalog entry. It does not infer review completion from
+candidate.19 task and catalog entry. It does not infer review completion from
 task-authored notes.
 
 Qualification consumes one complete replay-verified stage and attestation pair.
@@ -330,7 +335,7 @@ prediction-interval, Spearman-correlation, run-variance, or precise-rank claim.
 The v3 policy and artifact contain no stability thresholds or synthetic zero
 values for removed claims.
 
-Regenerate and test the candidate.18 public source without private inputs:
+Regenerate and test the candidate.19 public source without private inputs:
 
 ```sh
 node scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts
