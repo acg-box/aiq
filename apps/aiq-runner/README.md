@@ -40,8 +40,8 @@ active task authority. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. Candidate.14 is immutable rejected verifier-loader evidence;
-its review and seal records are not transferable, and an empty candidate.15 review
+declaration exactly. Candidate.15 is immutable failed-calibration evidence; its
+review and seal records are not transferable, and an empty candidate.16 review
 directory blocks sealing without creating output.
 The tracked private-authoring validator checks response types against the
 schema-owned enum and response locations against authority derived from the
@@ -140,13 +140,13 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796
+sha256:c36bdd9246f5c56f8cf5df83c690618da1a32e3f5023aba29343c54594d10fd1
 ```
 
 This is the active public `1.1.0` metadata identity. Its retained source-release
-digest is `sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5`.
-The catalog and reviewed Core seal are deterministic and identity-frozen. The
-database task commitments derive from that seal. A complete calibration,
+digest is `sha256:0fdff2e892f5770c1aee068f658ee9f7814accf2a23f38e0c5a45cea501223d1`.
+The catalog is deterministic. Candidate.16 still requires fresh review and a
+Core seal before database task commitments can derive from it. A complete calibration,
 policy-v2 admission, separate Official run, and release acceptance remain
 required before production cutover.
 

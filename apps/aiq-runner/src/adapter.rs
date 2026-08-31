@@ -3256,6 +3256,22 @@ fn redact_stdout_text_occurrences(stdout: &[u8], redactions: &BTreeMap<String, S
 	output
 }
 
+fn command_evidence_preimage(command: &str) -> &str {
+	const ZSH_LOGIN_PREFIX: &str = "/bin/zsh -lc '";
+
+	let Some(inner) =
+		command.strip_prefix(ZSH_LOGIN_PREFIX).and_then(|value| value.strip_suffix('\''))
+	else {
+		return command;
+	};
+
+	if inner.is_empty() || inner.bytes().any(|byte| matches!(byte, b'\'' | b'\n' | b'\r' | 0)) {
+		command
+	} else {
+		inner
+	}
+}
+
 fn redact_codex_command_text(stdout: &[u8]) -> Vec<u8> {
 	let mut redacted = Vec::with_capacity(stdout.len());
 
@@ -3317,7 +3333,10 @@ fn redact_codex_command_text(stdout: &[u8]) -> Vec<u8> {
 			&& command_status_supported(item, CodexItemPhase::Started)
 			&& let Some(command) = command.and_then(|value| value.as_str().map(ToOwned::to_owned))
 		{
-			let digest = format!("sha256:{}", hex::encode(Sha256::digest(command.as_bytes())));
+			let digest = format!(
+				"sha256:{}",
+				hex::encode(Sha256::digest(command_evidence_preimage(&command).as_bytes()))
+			);
 
 			item.insert("command_sha256".to_owned(), Value::String(digest));
 		}
@@ -8758,6 +8777,36 @@ mod tests {
 
 		assert!(super::redact_json_text_values(&mut short_text, Some("text"), &short_redactions,));
 		assert_eq!(short_text, Value::String("data sha256:short remains".to_owned()));
+	}
+
+	#[test]
+	fn command_capture_binds_the_logical_command_inside_the_exact_zsh_transport() {
+		let transport_command = format!("/bin/zsh -lc '{PUBLIC_REQUIRED_COMMAND}'");
+		let raw = command_event(
+			"item.started",
+			Some("command-1"),
+			Some(Value::String(transport_command.clone())),
+		);
+		let completed = command_event("item.completed", Some("command-1"), None);
+		let redacted = String::from_utf8(sanitize_stdout(raw.as_bytes()))
+			.expect("wrapped command event remains UTF-8");
+		let value: Value = serde_json::from_str(&redacted).expect("redacted JSON");
+
+		assert_eq!(
+			value["item"]["command_sha256"],
+			Value::String(PUBLIC_REQUIRED_COMMAND_SHA256.to_owned())
+		);
+		assert!(!redacted.contains(&transport_command));
+		assert_eq!(
+			runner::parse_codex_tool_usage(&format!("{redacted}\n{completed}"))
+				.expect("wrapped command lifecycle evidence")
+				.completed_command_sha256,
+			BTreeMap::from([(PUBLIC_REQUIRED_COMMAND_SHA256.to_owned(), 1)])
+		);
+
+		let ambiguous = "/bin/zsh -lc 'printf 'x''";
+
+		assert_eq!(super::command_evidence_preimage(ambiguous), ambiguous);
 	}
 
 	#[test]
