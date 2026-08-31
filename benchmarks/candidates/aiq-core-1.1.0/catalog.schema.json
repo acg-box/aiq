@@ -83,7 +83,7 @@
       ],
       "properties": {
         "release_identity": {
-          "const": "aiq-core/1.1.0-candidate.15"
+          "const": "aiq-core/1.1.0-candidate.16"
         },
         "scoring_version": {
           "const": "1.0.6"
@@ -192,7 +192,7 @@
       ],
       "properties": {
         "candidate_id": {
-          "const": "aiq-core/1.1.0-candidate.15"
+          "const": "aiq-core/1.1.0-candidate.16"
         },
         "task_metadata_digest": {
           "pattern": "^sha256:[0-9a-f]{64}(?![\\s\\S])",
@@ -272,18 +272,18 @@
         },
         "predecessor_candidate": {
           "const": {
-            "candidate_id": "aiq-core/1.1.0-candidate.14",
-            "disposition": "rejected_verifier_loader_catalog_order_mismatch",
-            "source_commit": "38ae06828dd71080007ea7e36c8e1a729ab0d360",
-            "source_tree": "a8232a39f2cc57b4cd94094a84a4043aa027c0f4",
-            "catalog_canonical_sha256": "sha256:1b1b11a80a6221fde444f269eeab37a936bda8d5b4962bcb33f0a55a341546df",
-            "catalog_entry_bindings_sha256": "sha256:a05d7430e927cc11d0a78e53226a6d1cab34c7f0ac529b870883073b94359197",
-            "task_metadata_sha256": "sha256:7ea2202e1ac3efee9a83a33c4323487bdb1f5d32cdf46ee4c60aaac53471c927",
+            "candidate_id": "aiq-core/1.1.0-candidate.15",
+            "disposition": "rejected_full_calibration_policy_failure",
+            "source_commit": "49343a7816cbcaddac25bbc2bb5ea8deafc606e0",
+            "source_tree": "d051b0a8d3f1b765e08b73bd5cd7b302891970db",
+            "catalog_canonical_sha256": "sha256:3414c7f4aa9683ad89d3ca97afad94c57d49858a1e7ac38e81a479fbd4c77a79",
+            "catalog_entry_bindings_sha256": "sha256:38715f68f178273d71dcfaeb677940fe7077a7911004be1f2eeec82c105fcdb8",
+            "task_metadata_sha256": "sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796",
             "public_contract_projection_sha256": "sha256:0a374048519db653e99f3bef5eb691cc7a5c1923aa2c21640ebbcf70aa321df5",
             "task_facing_semantics_sha256": "sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54",
-            "task_semantics": "accepted_unchanged_72",
+            "task_semantics": "public_contract_retained_private_bank_reauthored_43",
             "task_issue_closure_entries": 42,
-            "semantic_retention_rule": "candidate_14_task_facing_evaluator_fixture_tool_semantics_unchanged"
+            "semantic_retention_rule": "candidate_15_public_contract_retained_private_task_semantics_reauthored_43"
           }
         },
         "immutable_rejected_predecessors": {
@@ -301,13 +301,14 @@
             "aiq-core/1.1.0-candidate.11",
             "aiq-core/1.1.0-candidate.12",
             "aiq-core/1.1.0-candidate.13",
-            "aiq-core/1.1.0-candidate.14"
+            "aiq-core/1.1.0-candidate.14",
+            "aiq-core/1.1.0-candidate.15"
           ]
         },
         "retained_candidate_5_task_issue_closures": {
           "const": {
             "predecessor_candidate_id": "aiq-core/1.1.0-candidate.5",
-            "successor_candidate_id": "aiq-core/1.1.0-candidate.15",
+            "successor_candidate_id": "aiq-core/1.1.0-candidate.16",
             "disposition": "preserved_unchanged_and_revalidated",
             "closure_entries": 42,
             "issue_code_counts": {
@@ -589,7 +590,7 @@
               "const": "1.1.0"
             },
             "supersedes_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.14"
+              "const": "aiq-core/1.1.0-candidate.15"
             },
             "decision": {
               "const": "retained"
@@ -1737,7 +1738,7 @@
           ],
           "properties": {
             "origin": {
-              "const": "candidate_14_verifier_loader_catalog_order_repair_authoring"
+              "const": "candidate_15_full_calibration_policy_repair_authoring"
             },
             "owner": {
               "const": "AIQ benchmark maintainers"
@@ -1749,7 +1750,7 @@
               "const": "1.1.0"
             },
             "predecessor_candidate_id": {
-              "const": "aiq-core/1.1.0-candidate.14"
+              "const": "aiq-core/1.1.0-candidate.15"
             },
             "source": {
               "const": "scripts/candidates/aiq-core-1.1.0/generate-benchmark-catalog.ts"

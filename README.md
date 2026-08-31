@@ -42,8 +42,8 @@ under the active tuple.
   `max_tool_calls: null`. Controlled evaluator configuration uses
   `aiq.evaluator-config.v2` with `completion_policy: natural_completion` and no
   aggregate or per-check deadline.
-- The retained candidate.15 catalog is the deterministic, identity-frozen
-  source for the active `1.1.0` task set. A fresh complete 17-by-72 calibration,
+- The candidate.16 catalog is the deterministic source candidate for the
+  `1.1.0` task set. A fresh independent review and seal, complete 17-by-72 calibration,
   policy-v2 fixed-bank admission, separate complete Official run, publication,
   and deployment are required. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
@@ -101,13 +101,13 @@ under the active tuple.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796
+sha256:c36bdd9246f5c56f8cf5df83c690618da1a32e3f5023aba29343c54594d10fd1
 ```
 
 Its public source-release digest is
-`sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5`.
+`sha256:0fdff2e892f5770c1aee068f658ee9f7814accf2a23f38e0c5a45cea501223d1`.
 The production task-set identity is `aiq-core/1.1.0`; the retained catalog source
-identity is `aiq-core/1.1.0-candidate.15`. Do not infer any controlled
+identity is `aiq-core/1.1.0-candidate.16`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
 `sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`.
 The current no-deadline public-safe database task-set identity is
@@ -151,28 +151,29 @@ or legacy data.
 
 ## AIQ Core 1.1.0 source authority
 
-The active `1.1.0` task authority is the frozen, reviewed candidate.15 source at
-`benchmarks/candidates/aiq-core-1.1.0/`. The repository retains its candidate
-identity so the already reviewed task and catalog bytes do not change during
-adoption. The ordinary runner, verifier, schemas, database desired state, and
-Web contract all use those same bytes. Checked-in source does not substitute for
-the private calibration, admission, Official execution, or production readback.
+The `1.1.0` source candidate is candidate.16 at
+`benchmarks/candidates/aiq-core-1.1.0/`. It preserves candidate.15 public
+contracts, replaces 36 calibration-degenerate private structured scenarios with
+task-specific domain derivations, and repairs the seven ToolUse command-evidence
+bindings. It still requires fresh independent review and sealing. Checked-in
+source does not substitute for calibration, admission, Official execution, or
+production readback.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.15 retains all 72 candidate.14 task-facing semantics,
-including the seven distinct tool-use constructs, and records their candidate.5
-design history as 65 retained and seven revised tasks. It has 72 distinct
+`aiq.catalog.v2`. Candidate.16 keeps all 72 public response contracts and the
+seven distinct tool-use constructs. It records 29 private tasks as retained and
+43 as repaired after candidate.15 calibration. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:3414c7f4aa9683ad89d3ca97afad94c57d49858a1e7ac38e81a479fbd4c77a79`.
+`sha256:c0d2ec225ba50b1cbc7c95e8d98f94c59f13e27561a448f645779e1bea5085cb`.
 Its ordered task-metadata digest is
-`sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796`.
+`sha256:c36bdd9246f5c56f8cf5df83c690618da1a32e3f5023aba29343c54594d10fd1`.
 Its public release digest is
-`sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5`.
+`sha256:0fdff2e892f5770c1aee068f658ee9f7814accf2a23f38e0c5a45cea501223d1`.
 
-Candidates.1 through .14 are immutable predecessor evidence. Candidate.5
+Candidates.1 through .15 are immutable predecessor evidence. Candidate.5
 remains the durable source for the seven distinct disclosed scenario, operation,
 result, evaluator, metamorphic, and cross-task substitution contracts. Its
 source integration was rejected because
@@ -227,6 +228,11 @@ and package completed, but the real candidate verifier loaded ordinary filenames
 lexically and rejected the catalog-ordered evaluator identity before replay. No
 stage, attestation, or qualification artifact exists. Candidate.15 reuses the
 existing checked-catalog ordering owner in that candidate-only verifier load path.
+Its complete 1,224-cell calibration had no runtime failures, but policy v2
+rejected 38 universal full-credit tasks, ten universal semantic-zero tasks, only
+22 non-uniform tasks, and six degenerate domains. Candidate.16 keeps policy v2,
+repairs those task-bank failures, and normalizes only the exact Codex zsh
+transport before hashing the logical ToolUse command.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
@@ -247,9 +253,9 @@ extra calls. One three-configuration qualification matrix can contain at most
 21 declared digest entries. The runner removes command text from provider
 stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.14 remains inactive and not production-publishable.
-Candidate.15 is the adopted source; production cutover requires the complete
-calibration and Official release evidence described above.
+redaction. Candidates.14 and .15 remain inactive and not production-publishable.
+Candidate.16 is the current source candidate; production cutover requires its
+fresh review, seal, complete calibration, admission, and Official evidence.
 
 AIQ Core 1.1.0 sealing also requires one independently supplied
 `aiq.leakage-review.v2` record for every task. Each record binds the reviewer,
