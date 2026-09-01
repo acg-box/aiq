@@ -384,7 +384,7 @@ impl TaskDefinition {
 			));
 		}
 		if self.visibility == Visibility::Hidden
-			&& self.task_version == "1.0.7"
+			&& matches!(self.task_version.as_str(), "1.0.7" | "1.1.0")
 			&& (self.budgets.wall_seconds.is_some()
 				|| self.budgets.max_steps.is_some()
 				|| self.budgets.max_tool_calls.is_some())
@@ -392,7 +392,7 @@ impl TaskDefinition {
 			issues.push(ValidationIssue::field(
 				"budgets",
 				"formal_usage_limit",
-				"AIQ Core 1.0.7 formal tasks must measure wall time, steps, and tool calls without benchmark termination limits",
+				"AIQ Core formal tasks must measure wall time, steps, and tool calls without benchmark termination limits",
 			));
 		}
 

@@ -95,8 +95,8 @@
     },
     "pricing": { "$ref": "#/$defs/pricing" },
     "task_set_id": { "const": "aiq-core" },
-    "task_set_version": { "enum": ["1.0.7", "1.1.0"] },
-    "benchmark_version": { "enum": ["aiq-core@1.0.7", "aiq-core@1.1.0"] },
+    "task_set_version": { "const": "1.1.0" },
+    "benchmark_version": { "const": "aiq-core@1.1.0" },
     "prompt_set_digest": { "$ref": "#/$defs/hash" },
     "runner_commit": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },
     "region": { "type": "string", "pattern": "^[A-Za-z0-9._-]{1,160}(?![\\s\\S])" },
@@ -151,8 +151,8 @@
       },
       "else": {
         "properties": {
-          "task_set_version": { "const": "1.0.7" },
-          "benchmark_version": { "const": "aiq-core@1.0.7" }
+          "task_set_version": { "const": "1.1.0" },
+          "benchmark_version": { "const": "aiq-core@1.1.0" }
         }
       }
     }
@@ -168,7 +168,7 @@
       "required": ["schema_version", "candidate_id", "disposition", "synthetic", "cells"],
       "properties": {
         "schema_version": { "const": "aiq.benchmark-qualification-projection.v2" },
-        "candidate_id": { "const": "aiq-core/1.1.0-candidate.15" },
+        "candidate_id": { "const": "aiq-core/1.1.0-candidate.20" },
         "disposition": { "const": "accepted" },
         "synthetic": { "const": false },
         "cells": {

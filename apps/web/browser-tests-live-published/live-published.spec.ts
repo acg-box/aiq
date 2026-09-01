@@ -869,7 +869,7 @@ test('the published run exposes complete task and provenance evidence', async ({
     page.locator('.run-stats').getByText('Runtime issue', { exact: true }).locator('..'),
   ).toContainText('0');
   const provenance = page.getByRole('heading', { name: 'Run provenance' }).locator('..');
-  await expect(provenance).toContainText('corpus_test-generated-aiq-core-1.0.7');
+  await expect(provenance).toContainText('corpus_test-generated-aiq-core-1.1.0');
   await expect(provenance).toContainText(`sha256:${'9'.repeat(64)}`);
   await expect(provenance.getByText('Not published', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Time, token coverage, and cost' })).toBeVisible();
@@ -905,7 +905,7 @@ test('the published run exposes complete task and provenance evidence', async ({
 
 test('the published method and radar retain versioned, signed provenance', async ({ page }) => {
   await page.goto('/method');
-  await expect(page.getByText('aiq-core@1.0.7', { exact: true })).toBeVisible();
+  await expect(page.getByText('aiq-core@1.1.0', { exact: true })).toBeVisible();
   await expect(page.getByText(AIQ_CORE_SCORING_VERSION, { exact: true })).toBeVisible();
   await expect(
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),

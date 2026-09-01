@@ -30,7 +30,7 @@ creates `aiq-submission-packages` and `aiq-runner-artifacts` in
 rejects either exact bucket ID or name if it already exists. Do not create either
 bucket before initialization.
 
-The model-free preflight checks every one of the 12 canonical AIQ public view
+The model-free preflight checks every one of the 13 canonical AIQ public view
 names and every public RPC name created by `databases/schema.sql`. Any overload
 with one of those exact names rejects initialization. It does not use a broad
 `public`-schema or prefix match, so unrelated views and functions remain
@@ -44,8 +44,8 @@ cargo make init-database
 
 The Supabase database must already provide `anon`, `authenticated`,
 `authenticator`, and `service_role`. The production reference contains one real,
-controlled, non-synthetic `aiq.corpus-commitment.v2` document for AIQ Core
-`1.0.7`, its real `published_at` timestamp, and exactly three public identities:
+controlled, non-synthetic `aiq.corpus-commitment.v3` document for AIQ Core
+`1.1.0`, its real `published_at` timestamp, and exactly three public identities:
 runner, verifier, and publisher. Prepare it only after the controlled corpus and
 final native binaries pass validation. The controlled production reference is
 still pending. The checked-in runtime task-set and task-commitment identities
@@ -56,27 +56,27 @@ the controlled production reference separately.
 
 A successful receipt reports:
 
-- AIQ Core task release `1.0.7` with benchmark identifier `aiq-core@1.0.7`;
+- AIQ Core task release `1.1.0` with benchmark identifier `aiq-core@1.1.0`;
 - aggregate scoring version `1.0.8`;
 - 72 catalog tasks;
 - 17 model configurations;
 - three distinct production nodes;
-- 40 private tables with enabled and forced RLS;
-- 12 canonical AIQ-owned security-invoker public views. Unrelated `public`
+- 42 private tables with enabled and forced RLS;
+- 13 canonical AIQ-owned security-invoker public views. Unrelated `public`
   views are preserved and stay outside the AIQ readiness inventory;
 - two hardened, non-login gateway roles;
 - ordered task-metadata catalog digest
-  `sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1`;
+  `sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708`;
 - catalog release identity
-  `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`;
+  `sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`;
 - current no-deadline runtime task-set identity,
-  `sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72`;
+  `sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`;
 - current no-deadline task-commitment manifest identity,
-  `sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`;
+  `sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b`;
 - reviewed evaluator identity
-  `sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`;
+  `sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`;
 - ordered selected-evaluator provenance commitment
-  `sha256:ed1e38d4ffb3a39e64a83d65b6d115b691857b37b41ad9413acedcba33c949f8`;
+  `sha256:4ea7463e7762aa498f1b314919cd0dc2eb07144e374f8ea743a59c3973c31ce0`;
 - reviewed controlled generated-task tree, scorer-manifest, Core corpus, and
   Contrast corpus identities from the final controlled production reference.
 
@@ -93,15 +93,15 @@ The native corpus commitment owns the scorer-manifest identity. The
 database binds its output through aggregate scoring version `1.0.8` and recomputes
 the score from normalized result evidence.
 
-The current public-safe `1.0.7` 72-task database binding manifest is
-`aiq-core-1.0.7-task-commitments.json`. Its canonical JCS identity is
-`sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`.
+The current public-safe `1.1.0` 72-task database binding manifest is
+`aiq-core-1.1.0-task-commitments.json`. Its canonical JCS identity is
+`sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b`.
 It is a checked-in pre-seal binding, not authorization for database action.
 Fresh Core and Contrast A/B seals, calibration admission, and a real signed
 17-by-72 Official package
 must still pass native verifier replay first.
 
-The desired state targets the sole production tuple: AIQ Core `1.0.7`, task
+The desired state targets the sole production tuple: AIQ Core `1.1.0`, task
 scorer `1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0`. Do not reset
 or initialize production until
 the controlled commitments are complete and one real non-synthetic signed
@@ -109,7 +109,7 @@ the controlled commitments are complete and one real non-synthetic signed
 
 ## AIQ 2.0 cutover order
 
-Create the new `1.0.7` package from the current controlled 72-task set, then
+Create the new `1.1.0` package from the current controlled 72-task set, then
 replay-verify it with the native verifier before any destructive database
 action. Do not preserve, migrate, recompute, or relabel a legacy publication.
 It is not a fallback.
@@ -134,7 +134,7 @@ archive or validate old private evidence. Submit the already verified new
 package to the fresh database, run the controlled verifier and distinct
 publisher, and publish only after all 17 Official scores are accepted.
 Finally run `cargo make check-aiq-2-cutover`. It must report exactly one
-non-synthetic `1.0.7` matrix, 17 runs, 17 Official scores, 1,224 task results,
+non-synthetic `1.1.0` matrix, 17 runs, 17 Official scores, 1,224 task results,
 one calibration digest, and zero synthetic Official/public rows. If either
 hard gate fails, do not publish or deploy the new Web build. Do not fall back to
 a legacy publication.
@@ -193,7 +193,7 @@ skips an absent bucket and resumes with an existing bucket.
 
 The command verifies that both buckets are absent before it changes PostgreSQL.
 It then removes the
-canonical public RPC overloads, the 12 canonical public views, `aiq_private`,
+canonical public RPC overloads, the 13 canonical public views, `aiq_private`,
 `aiq_publisher`, and `aiq_verifier` in one PostgreSQL transaction. It reads the
 database boundary again inside that transaction after it acquires the reset
 advisory lock, dependency-catalog locks, role-membership locks, and exclusive
@@ -211,7 +211,7 @@ expected outputs, signing keys, tokens, or database credentials.
 ## Security model
 
 The schema stores AIQ tables in `aiq_private`, enables and forces RLS, and
-exposes 12 security-invoker public views plus narrow RPCs. Browser roles have
+exposes 13 security-invoker public views plus narrow RPCs. Browser roles have
 read-only access. Server gateways control submission, verification, publication,
 and private Storage operations.
 

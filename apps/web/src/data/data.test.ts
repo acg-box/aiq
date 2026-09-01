@@ -219,7 +219,7 @@ function runSummaryRow(index = 0): RunRow {
     matrix_id: 'sol-low',
     started_at: '2026-08-04T12:00:00.000Z',
     completed_at: '2026-08-04T12:30:00.000Z',
-    benchmark_version: 'aiq-core@1.0.7',
+    benchmark_version: 'aiq-core@1.1.0',
     scoring_version: '1.0.8',
     prompt_set_digest: `sha256:${'1'.repeat(64)}`,
     runner_commit: 'abcdef0',
@@ -852,8 +852,8 @@ void describe('presentation aggregates', () => {
     assert.ok(firstRun);
     assert.ok(coverageOnlyRun);
     assert.equal(firstRun.tasks.length, 72);
-    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.0.7');
-    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.0.7');
+    assert.equal(firstRun.benchmarkVersion, 'aiq-core@1.1.0');
+    assert.equal(seedMethodology.benchmarkVersion, 'aiq-core@1.1.0');
     for (const run of seedRuns.filter(
       (candidate) =>
         candidate.synthetic &&
@@ -1183,7 +1183,7 @@ void describe('presentation aggregates', () => {
       modelFamily: 'sol',
       reasoningEffort: 'low',
     });
-    assert.equal(detail?.results[0]?.taskVersion, '1.0.7');
+    assert.equal(detail?.results[0]?.taskVersion, '1.1.0');
     const scores = await repository.listCalibrationScores(seed.id);
     assert.deepEqual(
       scores.map((score) => ({
@@ -1914,7 +1914,7 @@ void describe('presentation aggregates', () => {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
           run_id: runId,
           task_id: `task-${String(taskIndex).padStart(2, '0')}`,
-          task_version: '1.0.7',
+          task_version: '1.1.0',
           domain: 'coding',
           model_family: configuration.modelFamily,
           reasoning_effort: configuration.reasoningEffort,
@@ -2786,7 +2786,7 @@ void describe('presentation aggregates', () => {
       matrix_id: 'sol-ultra',
       started_at: '2026-07-26T12:00:00.000Z',
       completed_at: '2026-07-26T12:10:00.000Z',
-      benchmark_version: 'aiq-core@1.0.7',
+      benchmark_version: 'aiq-core@1.1.0',
       scoring_version: '1.0.8',
       prompt_set_digest: 'sha256:prompt',
       runner_commit: 'abc1234',

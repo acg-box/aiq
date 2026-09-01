@@ -1,8 +1,8 @@
 {
   "schema_version": "aiq.verifier-environment.v2",
   "task_set_id": "aiq-core",
-  "task_set_version": "1.0.7",
-  "benchmark_version": "aiq-core@1.0.7",
+  "task_set_version": "1.1.0",
+  "benchmark_version": "aiq-core@1.1.0",
   "prompt_set_digest": "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
   "expected_provenance": null,
   "runner_commit": "0123456789abcdef0123456789abcdef01234567",

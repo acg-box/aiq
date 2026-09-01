@@ -19,13 +19,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
 
+#[cfg(test)]
+use crate::scoring::AIQ_TASK_SET_VERSION;
 use crate::{
 	candidate_catalog::{
 		self, CANDIDATE_CATALOG_SCHEMA_VERSION, CANDIDATE_TASK_SET_VERSION,
 		CandidateCatalogAuthority,
 	},
 	protocol,
-	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
+	scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID},
 	task::{
 		EvaluatorRuntime, EvaluatorRuntimeKind, TaskBudgets, TaskDefinition, Visibility, evaluator,
 	},
@@ -40,7 +42,7 @@ const CODEX_MAIN_EXECUTABLE_NAME: &str = if cfg!(windows) { "codex.exe" } else {
 const CODEX_CODE_MODE_HOST_EXECUTABLE_NAME: &str =
 	if cfg!(windows) { "codex-code-mode-host.exe" } else { "codex-code-mode-host" };
 const CORE_CATALOG_JSON: &str =
-	include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json");
+	include_str!("../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json");
 const CANDIDATE_CORE_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json");
 #[cfg(test)]
@@ -50,10 +52,10 @@ const CANDIDATE_CORE_COMMITMENT_SCHEMA_JSON: &str =
 const CONTRAST_PUBLIC_CATALOG_JSON: &str =
 	include_str!("../../../benchmarks/candidates/aiq-core-1.0.7/contrast-catalog.json");
 const CORE_CATALOG: CatalogContract<'static> = CatalogContract {
-	commitment_schema_version: "aiq.corpus-commitment.v2",
-	catalog_schema_version: "aiq.catalog.v1",
+	commitment_schema_version: "aiq.corpus-commitment.v3",
+	catalog_schema_version: CANDIDATE_CATALOG_SCHEMA_VERSION,
 	task_set_id: AIQ_TASK_SET_ID,
-	task_set_version: AIQ_TASK_SET_VERSION,
+	task_set_version: CANDIDATE_TASK_SET_VERSION,
 	identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256,
 	identity_scope: "ordered_full_task_metadata",
 	tasks: CatalogTaskAuthority::Embedded(CORE_CATALOG_JSON),
@@ -631,7 +633,7 @@ pub fn validate_evaluator_runtime_commitment(
 
 	if observed != expected_canonical_sha256
 		|| value.pointer("/schema_version").and_then(Value::as_str)
-			!= Some("aiq.corpus-commitment.v2")
+			!= Some("aiq.corpus-commitment.v3")
 		|| value
 			.pointer("/execution/runtime_provenance/node_runtime/executable_sha256")
 			.and_then(Value::as_str)
@@ -654,7 +656,7 @@ pub fn validate_evaluator_runtime_commitment(
 	)
 	.map_err(|_| CorpusCommitmentError::new("corpus model toolchain policy is invalid"))?;
 	let commitment: CorpusCommitment = serde_json::from_value(value.clone())
-		.map_err(|_| CorpusCommitmentError::new("corpus commitment v2 shape is invalid"))?;
+		.map_err(|_| CorpusCommitmentError::new("corpus commitment v3 shape is invalid"))?;
 	let catalog_contract = catalog_contract(&commitment.catalog)?;
 	let runner_provenance =
 		validate_runner_runtime_provenance(&commitment.execution.runtime_provenance)?;
@@ -674,7 +676,7 @@ pub fn validate_evaluator_runtime_commitment(
 /// Reads the strict execution tool policy from the schema selected by the isolated run route.
 pub fn read_execution_tool_policy(
 	path: &Path,
-	candidate_qualification: bool,
+	_candidate_qualification: bool,
 ) -> Result<ExecutionToolPolicy, CorpusCommitmentError> {
 	let metadata = fs::symlink_metadata(path)
 		.map_err(|_| CorpusCommitmentError::new("corpus commitment is unavailable"))?;
@@ -691,18 +693,10 @@ pub fn read_execution_tool_policy(
 		CorpusCommitmentError::new(format!("cannot read corpus commitment: {error}"))
 	})?)
 	.map_err(|error| CorpusCommitmentError::new(format!("invalid corpus commitment: {error}")))?;
-	let expected_schema = if candidate_qualification {
-		"aiq.corpus-commitment.v3"
-	} else {
-		"aiq.corpus-commitment.v2"
-	};
 
-	if value.pointer("/schema_version").and_then(Value::as_str) != Some(expected_schema) {
-		return Err(CorpusCommitmentError::new(if candidate_qualification {
-			"candidate corpus commitment schema is not v3"
-		} else {
-			"corpus commitment schema is not v2"
-		}));
+	if value.pointer("/schema_version").and_then(Value::as_str) != Some("aiq.corpus-commitment.v3")
+	{
+		return Err(CorpusCommitmentError::new("corpus commitment schema is not v3"));
 	}
 
 	serde_json::from_value(
@@ -738,22 +732,22 @@ pub fn validate_corpus_commitment(
 	tasks: &[TaskDefinition],
 	source_root: &Path,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
-	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
+	validate_candidate_core_corpus_commitment_v1_1_0(path, tasks, source_root)
 }
 
-/// Loads and validates the immutable 72-task AIQ Core 1.0.7 corpus.
+/// Loads and validates the immutable 72-task AIQ Core 1.1.0 corpus.
 pub fn validate_core_corpus_commitment(
 	path: &Path,
 	tasks: &[TaskDefinition],
 	source_root: &Path,
 ) -> Result<ValidatedCorpusCommitment, CorpusCommitmentError> {
-	validate_corpus_commitment_inner(path, tasks, source_root, CORE_CATALOG)
+	validate_candidate_core_corpus_commitment_v1_1_0(path, tasks, source_root)
 }
 
 /// Loads and validates an isolated AIQ Core 1.1.0 candidate commitment.
 ///
-/// This path does not change the active production catalog or accept the
-/// candidate in any Official scoring or publication path.
+/// The retained name keeps candidate qualification evidence readable. The same
+/// checked authority is now the active AIQ Core 1.1.0 production corpus.
 pub fn validate_candidate_core_corpus_commitment_v1_1_0(
 	path: &Path,
 	tasks: &[TaskDefinition],
@@ -831,8 +825,8 @@ pub fn validate_historical_calibration_provenance(
 
 /// Validates the isolated AIQ Core 1.1.0 candidate qualification provenance.
 ///
-/// This boundary accepts only Calibration evidence for the exact embedded candidate. It is not
-/// used by Official execution, active 1.0.7 validation, or production verification.
+/// This boundary accepts only Calibration evidence for the exact embedded candidate. Active
+/// production uses the same task authority through the ordinary run-provenance validator.
 pub fn validate_candidate_qualification_provenance_v1_1_0(
 	provenance: &RunProvenanceCommitment,
 	task_set_hash: &str,
@@ -2269,7 +2263,7 @@ pub(crate) mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn execution_tool_policy_schema_is_selected_by_candidate_route() {
+	fn execution_tool_policy_uses_the_active_v3_schema_on_both_routes() {
 		let fixture = RunnerProvenancePathFixture::new("execution-policy-route");
 		let candidate = fixture.write("candidate", &fixture.candidate_commitment);
 		let current = fixture.write("current", &fixture.core_commitment);
@@ -2282,21 +2276,21 @@ pub(crate) mod tests {
 		);
 		assert_eq!(
 			super::read_execution_tool_policy(&candidate, false)
-				.expect_err("candidate commitment on the active route")
-				.to_string(),
-			"corpus commitment schema is not v2"
+				.expect("candidate commitment on the active route")
+				.schema_version,
+			"aiq.execution-tool-policy.v1"
 		);
 		assert_eq!(
 			super::read_execution_tool_policy(&current, false)
-				.expect("active v2 execution policy")
+				.expect("active v3 execution policy")
 				.schema_version,
 			"aiq.execution-tool-policy.v1"
 		);
 		assert_eq!(
 			super::read_execution_tool_policy(&current, true)
-				.expect_err("active commitment on the candidate route")
-				.to_string(),
-			"candidate corpus commitment schema is not v3"
+				.expect("active commitment on the retained candidate route")
+				.schema_version,
+			"aiq.execution-tool-policy.v1"
 		);
 
 		fs::remove_dir_all(fixture.root).expect("execution-policy route fixture cleanup");
@@ -2524,19 +2518,14 @@ pub(crate) mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn candidate_commitment_uses_only_the_explicit_model_free_route() {
+	fn adopted_candidate_commitment_is_the_active_core_authority() {
 		let fixture = RunnerProvenancePathFixture::new("candidate-route");
 		let path = fixture.write("candidate", &fixture.candidate_commitment);
 
 		cli::validate_run_corpus(true, &path, &fixture.candidate_tasks, &fixture.source_root)
 			.expect("explicit candidate preparation route");
-
-		assert!(
-			cli::validate_run_corpus(false, &path, &fixture.candidate_tasks, &fixture.source_root,)
-				.is_err(),
-			"the unflagged active 1.0.7 validator must reject candidate input"
-		);
-
+		cli::validate_run_corpus(false, &path, &fixture.candidate_tasks, &fixture.source_root)
+			.expect("the ordinary active validator must accept the adopted candidate corpus");
 		fs::remove_dir_all(&fixture.root).expect("fixture cleanup");
 	}
 
@@ -2765,7 +2754,7 @@ pub(crate) mod tests {
 			"model_toolchain": policy,
 		});
 		let catalog: super::FrozenCatalog = serde_json::from_str(include_str!(
-			"../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json"
+			"../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json"
 		))
 		.expect("embedded catalog");
 		let tool_digest = protocol::canonical_hash(&serde_json::json!({
@@ -2915,12 +2904,12 @@ pub(crate) mod tests {
 		let digest = format!("sha256:{}", "a".repeat(64));
 
 		CorpusCommitment {
-			schema_version: "aiq.corpus-commitment.v2".to_owned(),
+			schema_version: "aiq.corpus-commitment.v3".to_owned(),
 			release_id: "corpus_2026.07.30".to_owned(),
 			controlled: true,
 			synthetic: false,
 			catalog: CorpusCatalog {
-				schema_version: "aiq.catalog.v1".to_owned(),
+				schema_version: "aiq.catalog.v2".to_owned(),
 				task_set_id: AIQ_TASK_SET_ID.to_owned(),
 				task_set_version: AIQ_TASK_SET_VERSION.to_owned(),
 				identity_sha256: AIQ_CORE_TASK_IDENTITY_SHA256.to_owned(),
@@ -2963,8 +2952,8 @@ pub(crate) mod tests {
 		candidate.catalog.identity_sha256 = candidate_authority.task_metadata_digest.clone();
 
 		assert!(corpus_commitment::validate_header(&candidate, candidate_contract).is_ok());
-		assert!(corpus_commitment::validate_header(&candidate, super::CORE_CATALOG).is_err());
-		assert!(super::catalog_contract(&candidate.catalog).is_err());
+		assert!(corpus_commitment::validate_header(&candidate, super::CORE_CATALOG).is_ok());
+		assert!(super::catalog_contract(&candidate.catalog).is_ok());
 
 		for stale_identity in [
 			"sha256:e613b92fe5fc8847b883a3ea3e7acaafaf0e3cca953bdbc8f29910a1ad75654c",
@@ -2997,6 +2986,7 @@ pub(crate) mod tests {
 
 		let mut contrast = commitment();
 
+		contrast.schema_version = super::CONTRAST_CATALOG.commitment_schema_version.to_owned();
 		contrast.catalog.schema_version = super::CONTRAST_CATALOG.catalog_schema_version.to_owned();
 		contrast.catalog.task_set_id = super::CONTRAST_CATALOG.task_set_id.to_owned();
 		contrast.catalog.task_set_version = super::CONTRAST_CATALOG.task_set_version.to_owned();

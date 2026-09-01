@@ -3256,6 +3256,22 @@ fn redact_stdout_text_occurrences(stdout: &[u8], redactions: &BTreeMap<String, S
 	output
 }
 
+fn command_evidence_preimage(command: &str) -> &str {
+	const ZSH_LOGIN_PREFIX: &str = "/bin/zsh -lc '";
+
+	let Some(inner) =
+		command.strip_prefix(ZSH_LOGIN_PREFIX).and_then(|value| value.strip_suffix('\''))
+	else {
+		return command;
+	};
+
+	if inner.is_empty() || inner.bytes().any(|byte| matches!(byte, b'\'' | b'\n' | b'\r' | 0)) {
+		command
+	} else {
+		inner
+	}
+}
+
 fn redact_codex_command_text(stdout: &[u8]) -> Vec<u8> {
 	let mut redacted = Vec::with_capacity(stdout.len());
 
@@ -3317,7 +3333,10 @@ fn redact_codex_command_text(stdout: &[u8]) -> Vec<u8> {
 			&& command_status_supported(item, CodexItemPhase::Started)
 			&& let Some(command) = command.and_then(|value| value.as_str().map(ToOwned::to_owned))
 		{
-			let digest = format!("sha256:{}", hex::encode(Sha256::digest(command.as_bytes())));
+			let digest = format!(
+				"sha256:{}",
+				hex::encode(Sha256::digest(command_evidence_preimage(&command).as_bytes()))
+			);
 
 			item.insert("command_sha256".to_owned(), Value::String(digest));
 		}
@@ -5837,27 +5856,51 @@ where
 }
 
 fn classify_nonzero_exit(stdout: &str, stderr: &str) -> (AdapterFailureKind, &'static str) {
-	let diagnostic = format!("{stdout}\n{stderr}").to_lowercase();
-
-	if ["unsupported model", "model is not supported", "unknown model", "invalid reasoning effort"]
-		.iter()
-		.any(|needle| diagnostic.contains(needle))
-	{
-		(AdapterFailureKind::Unsupported, "Codex CLI exited unsuccessfully")
+	if let Some(message) = unsupported_failure_message(stdout, stderr) {
+		(AdapterFailureKind::Unsupported, message)
 	} else if let Some(message) = subscription_limit_message(stdout, stderr) {
 		(AdapterFailureKind::UsageLimit, message)
-	} else if ["not logged in", "authentication", "unauthorized", "please login", "please log in"]
-		.iter()
-		.any(|needle| diagnostic.contains(needle))
-	{
-		(AdapterFailureKind::Authentication, "Codex CLI exited unsuccessfully")
+	} else if let Some(message) = authentication_failure_message(stdout, stderr) {
+		(AdapterFailureKind::Authentication, message)
 	} else {
 		(AdapterFailureKind::NonZeroExit, "Codex CLI exited unsuccessfully")
 	}
 }
 
 fn subscription_limit_message(stdout: &str, stderr: &str) -> Option<&'static str> {
-	let mut selected = classify_subscription_limit_text(stderr);
+	classify_failure_diagnostics(
+		stdout,
+		stderr,
+		classify_subscription_limit_text,
+		preferred_subscription_limit_message,
+	)
+}
+
+fn unsupported_failure_message(stdout: &str, stderr: &str) -> Option<&'static str> {
+	classify_failure_diagnostics(
+		stdout,
+		stderr,
+		classify_unsupported_text,
+		prefer_first_failure_message,
+	)
+}
+
+fn authentication_failure_message(stdout: &str, stderr: &str) -> Option<&'static str> {
+	classify_failure_diagnostics(
+		stdout,
+		stderr,
+		classify_authentication_text,
+		prefer_first_failure_message,
+	)
+}
+
+fn classify_failure_diagnostics(
+	stdout: &str,
+	stderr: &str,
+	classify: fn(&str) -> Option<&'static str>,
+	select: fn(Option<&'static str>, Option<&'static str>) -> Option<&'static str>,
+) -> Option<&'static str> {
+	let mut selected = classify(stderr);
 	let mut saw_json = false;
 
 	for line in stdout.lines() {
@@ -5873,26 +5916,43 @@ fn subscription_limit_message(stdout: &str, stderr: &str) -> Option<&'static str
 			_ => None,
 		};
 
-		selected = preferred_subscription_limit_message(
-			selected,
-			message.and_then(classify_subscription_limit_text),
-		);
+		selected = select(selected, message.and_then(classify));
 	}
 
 	if !saw_json {
-		selected = preferred_subscription_limit_message(
-			selected,
-			classify_subscription_limit_text(stdout),
-		);
+		selected = select(selected, classify(stdout));
 	}
 
 	selected
 }
 
+fn classify_unsupported_text(value: &str) -> Option<&'static str> {
+	let diagnostic = value.to_ascii_lowercase();
+
+	["unsupported model", "model is not supported", "unknown model", "invalid reasoning effort"]
+		.iter()
+		.any(|needle| diagnostic.contains(needle))
+		.then_some("Codex CLI exited unsuccessfully")
+}
+
+fn classify_authentication_text(value: &str) -> Option<&'static str> {
+	let diagnostic = value.to_ascii_lowercase();
+
+	["not logged in", "authentication", "unauthorized", "please login", "please log in"]
+		.iter()
+		.any(|needle| diagnostic.contains(needle))
+		.then_some("Codex CLI exited unsuccessfully")
+}
+
 fn classify_subscription_limit_text(value: &str) -> Option<&'static str> {
 	let diagnostic = value.to_ascii_lowercase();
 
-	if diagnostic.contains("rate limit") {
+	if ["selected model is at capacity", "model is at capacity"]
+		.iter()
+		.any(|needle| diagnostic.contains(needle))
+	{
+		Some("Codex model capacity was unavailable")
+	} else if diagnostic.contains("rate limit") {
 		Some("Codex subscription rate limit was reached")
 	} else if ["quota exceeded", "insufficient quota"]
 		.iter()
@@ -5907,6 +5967,13 @@ fn classify_subscription_limit_text(value: &str) -> Option<&'static str> {
 	} else {
 		None
 	}
+}
+
+fn prefer_first_failure_message(
+	left: Option<&'static str>,
+	right: Option<&'static str>,
+) -> Option<&'static str> {
+	left.or(right)
 }
 
 fn preferred_subscription_limit_message(
@@ -8034,6 +8101,80 @@ mod tests {
 	}
 
 	#[test]
+	fn structured_model_capacity_uses_existing_backpressure_despite_task_authentication_text() {
+		let structured = [
+			serde_json::json!({
+				"type": "item.completed",
+				"item": {
+					"id": "message-1",
+					"type": "agent_message",
+					"text": "Trace authentication and authorization before persistence.",
+				},
+			})
+			.to_string(),
+			serde_json::json!({
+				"type": "error",
+				"message": "Selected model is at capacity. Please try a different model.",
+			})
+			.to_string(),
+			serde_json::json!({
+				"type": "turn.failed",
+				"error": {
+					"message": "Selected model is at capacity. Please try a different model.",
+				},
+			})
+			.to_string(),
+		]
+		.join("\n");
+		let failure = adapter(vec![Ok(capture(1, structured.into_bytes(), Vec::new()))])
+			.invoke(&invocation())
+			.expect_err("temporary model capacity must remain resumable");
+
+		assert_eq!(failure.kind, AdapterFailureKind::UsageLimit);
+		assert_eq!(failure.message, "Codex model capacity was unavailable");
+	}
+
+	#[test]
+	fn ordinary_task_authentication_text_cannot_invent_an_authentication_failure() {
+		let structured = [
+			serde_json::json!({
+				"type": "item.completed",
+				"item": {
+					"id": "message-1",
+					"type": "agent_message",
+					"text": "The task documents authentication and unauthorized responses.",
+				},
+			})
+			.to_string(),
+			serde_json::json!({
+				"type": "turn.failed",
+				"error": {"message": "provider process failed"},
+			})
+			.to_string(),
+		]
+		.join("\n");
+		let failure = adapter(vec![Ok(capture(1, structured.into_bytes(), Vec::new()))])
+			.invoke(&invocation())
+			.expect_err("ordinary nonzero exit must stay generic");
+
+		assert_eq!(failure.kind, AdapterFailureKind::NonZeroExit);
+	}
+
+	#[test]
+	fn structured_authentication_failure_remains_terminal() {
+		let structured = serde_json::json!({
+			"type": "turn.failed",
+			"error": {"message": "Not logged in. Please login."},
+		})
+		.to_string();
+		let failure = adapter(vec![Ok(capture(1, structured.into_bytes(), Vec::new()))])
+			.invoke(&invocation())
+			.expect_err("authentication failure must remain distinct");
+
+		assert_eq!(failure.kind, AdapterFailureKind::Authentication);
+	}
+
+	#[test]
 	fn preflight_failure_report_removes_inline_provider_text() {
 		let secret = "usage limit for /private/operator prompt=do-not-persist";
 		let mut captures = vec![
@@ -8758,6 +8899,36 @@ mod tests {
 
 		assert!(super::redact_json_text_values(&mut short_text, Some("text"), &short_redactions,));
 		assert_eq!(short_text, Value::String("data sha256:short remains".to_owned()));
+	}
+
+	#[test]
+	fn command_capture_binds_the_logical_command_inside_the_exact_zsh_transport() {
+		let transport_command = format!("/bin/zsh -lc '{PUBLIC_REQUIRED_COMMAND}'");
+		let raw = command_event(
+			"item.started",
+			Some("command-1"),
+			Some(Value::String(transport_command.clone())),
+		);
+		let completed = command_event("item.completed", Some("command-1"), None);
+		let redacted = String::from_utf8(sanitize_stdout(raw.as_bytes()))
+			.expect("wrapped command event remains UTF-8");
+		let value: Value = serde_json::from_str(&redacted).expect("redacted JSON");
+
+		assert_eq!(
+			value["item"]["command_sha256"],
+			Value::String(PUBLIC_REQUIRED_COMMAND_SHA256.to_owned())
+		);
+		assert!(!redacted.contains(&transport_command));
+		assert_eq!(
+			runner::parse_codex_tool_usage(&format!("{redacted}\n{completed}"))
+				.expect("wrapped command lifecycle evidence")
+				.completed_command_sha256,
+			BTreeMap::from([(PUBLIC_REQUIRED_COMMAND_SHA256.to_owned(), 1)])
+		);
+
+		let ambiguous = "/bin/zsh -lc 'printf 'x''";
+
+		assert_eq!(super::command_evidence_preimage(ambiguous), ambiguous);
 	}
 
 	#[test]
