@@ -34,6 +34,11 @@ replay, the verifier validates the approved verifier signature, issuance and
 build bindings, bundle digest, complete frozen bank, and the exact bank embedded
 in the Official run. Official replay never re-fits the item bank.
 
+For the active 1.1.0 release, replay one complete signed 17-by-72 Calibration
+package with ordinary `verify-local` plus `--admission-output` to create the new
+bank and admission. The isolated `--calibration-source-1-0-7` mode below remains
+historical compatibility only and cannot substitute for the 1.1.0 calibration.
+
 The isolated `--calibration-source-1-0-7` mode accepts only the retained signed
 1.0.7 calibration package. It replays every result without model calls and
 issues calibration admission v3 under aggregate scoring 1.0.8 and policy v2.
@@ -108,16 +113,14 @@ qualification artifact, invoke a model, publish evidence, or change an already
 rejected child.
 
 Use `verify-local --candidate-qualification --candidate-source-root ...` only
-for one complete signed candidate Calibration package. This mode selects the
-same candidate commitment boundary as runner preparation and writes create-new
-candidate stage and attestation files. It rejects Official, partial, synthetic,
-runtime-invalid, or active-1.0.7 evidence. The production worker has no candidate
-mode and continues to accept only its active 1.0.7 environment.
-After the ordinary controlled task loader returns, candidate mode alone reuses
-the checked candidate-catalog owner to establish exact catalog order before
-corpus, evaluator, package, or replay validation. Candidate.14 is rejected
-evidence because its verifier retained lexical filename order at that boundary;
-normal and production-worker task loading remains unchanged.
+for one complete signed candidate Calibration package. This retained mode writes
+the candidate qualification stage and attestation and rejects Official, partial,
+synthetic, runtime-invalid, or ordinary calibration evidence without the exact
+qualification projection. The production worker uses the active 1.1.0 route and
+does not expose candidate qualification mode. All active 72-task loading applies
+the checked catalog order before corpus, evaluator, package, or replay validation.
+Candidate.14 remains rejected evidence because its verifier retained lexical
+filename order at that boundary.
 
 The artifact proves exact end-to-end identities and complete execution of Sol
 medium, Terra medium, and Luna medium over all 72 catalog-ordered tasks. It

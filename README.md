@@ -11,10 +11,10 @@ hosts project `aiq` on PostgreSQL 17.6 with reference
 `aiq.wiki` zone owns DNS handoff. Production uses the private Storage buckets
 `aiq-submission-packages` and `aiq-runner-artifacts`.
 
-The only production tuple is AIQ Core `1.0.7`, task scorer `1.0.6`, aggregate
+The only supported production tuple is AIQ Core `1.1.0`, task scorer `1.0.6`, aggregate
 scoring `1.0.8`, and measurement `2.0.0`. Do not publish, preserve online,
 migrate, or display a legacy tuple as production evidence. Production must
-remain without an Official AIQ 2.0 publication until the retained complete,
+remain without an Official AIQ 2.0 publication until a fresh complete,
 non-synthetic, signed 17-by-72 calibration is replayed under policy v2 to
 establish the fixed item bank and admission v3, and
 a separate fresh 17-by-72 Official package passes native verifier replay and
@@ -35,17 +35,17 @@ under the active tuple.
 
 ## Product contract
 
-- Repository source targets AIQ Core `1.0.7`, with 72 private controlled tasks
+- Repository source targets AIQ Core `1.1.0`, with 72 private controlled tasks
   in ten domains. Task evaluation stays at `1.0.6`; aggregate scoring is
   `1.0.8`.
 - Every formal task encodes `wall_seconds: null`, `max_steps: null`, and
   `max_tool_calls: null`. Controlled evaluator configuration uses
   `aiq.evaluator-config.v2` with `completion_policy: natural_completion` and no
   aggregate or per-check deadline.
-- The public `1.0.7` catalog is deterministic and identity-frozen. Fresh Core
-  and Contrast seals, a policy-v2 fixed-bank admission from the unchanged
-  complete calibration package, a separate complete Official run, publication,
-  and deployment remain pending. No earlier publication is a fallback.
+- The candidate.20 catalog is the deterministic source candidate for the
+  `1.1.0` task set. A fresh independent review and seal, complete 17-by-72 calibration,
+  policy-v2 fixed-bank admission, separate complete Official run, publication,
+  and deployment are required. No earlier publication is a fallback.
 - The public catalog contains metadata and commitments, not private task content.
 - Task scores use committed weighted binary checks. A failed hard gate or
   structural check sets the score to zero; otherwise the evaluator divides
@@ -101,22 +101,22 @@ under the active tuple.
 The source-head ordered task-metadata catalog digest is:
 
 ```text
-sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1
+sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708
 ```
 
-Its public release digest is
-`sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
-The release-policy identity is `aiq-core/1.0.7`. Do not infer any controlled
+Its public source-release digest is
+`sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`.
+The production task-set identity is `aiq-core/1.1.0`; the retained catalog source
+identity is `aiq-core/1.1.0-candidate.20`. Do not infer any controlled
 identity from these public digests. The reviewed evaluator identity is
-`sha256:d4ffd4bc57a1e6d6cbea5f8c5bb830cd2448145668263b6fde6a41794084d60c`.
+`sha256:748e0a6c07eb7e3407cc22d50b65eb6d055305cb6e1d719ca3cfd3a109bec809`.
 The current no-deadline public-safe database task-set identity is
-`sha256:777dc72d782a274e654bc8fa61479908c244675b148755fb36bb2c28a89acd72`,
+`sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a`,
 and its task-commitment manifest identity is
-`sha256:e3ab152dedd0182750ab59bce83efdf85a2e7b71288f11f57d7530ea96f3e30d`.
-These are checked-in pre-seal bindings. Seal Core and Contrast twice from the
-final clean identity commit, then run both model-free validators. Final
-controlled corpus identities remain provisional until calibration accepts the
-candidate.
+`sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b`.
+These are checked-in bindings derived from the reviewed candidate.15 seal.
+Production activation still requires the exact private corpus, calibration,
+admission, Official package, and verifier evidence.
 The checked Core schema
 requires `runner.identity_kind` to remain `source_only` and
 `runner.built_binary_sha256` to remain null. The shared Rust validator now fails
@@ -149,28 +149,34 @@ descriptions. Users can select system, light, or dark color themes. Production
 views must use only real evidence for the sole production tuple, not synthetic
 or legacy data.
 
-## AIQ Core 1.1.0 source foundation
+## AIQ Core 1.1.0 source authority
 
-The repository also contains the side-by-side frozen source for
-`aiq-core/1.1.0-candidate.15`. It does not change the sole active production
-tuple above. It is not a sealed candidate, a qualification result, a release,
-or production-ready evidence.
+The `1.1.0` source candidate is candidate.20 at
+`benchmarks/candidates/aiq-core-1.1.0/`. It preserves candidate.19 except for one
+scored, digest-bound final-response reconciliation decision in `tool-use-02`.
+Candidate.19 completed all 1,224 calibration cells but failed policy v2 because
+the Tool Use domain mean facility was `0.949580`, above the `0.90` ceiling.
+Candidate.20 keeps the policy, 72 tasks, 17-model matrix, supplied tool, and
+workspace receipt semantics unchanged. It still requires fresh independent
+review, sealing, calibration, admission, and Official evidence.
 
 `benchmarks/candidates/aiq-core-1.1.0/catalog.json` uses
-`aiq.catalog.v2`. Candidate.15 retains all 72 candidate.14 task-facing semantics,
-including the seven distinct tool-use constructs, and records their candidate.5
-design history as 65 retained and seven revised tasks. It has 72 distinct
+`aiq.catalog.v2`. Candidate.20 keeps 71 response contracts and advances only
+`tool-use-02` from workspace-only scoring to a final-response reconciliation
+decision while retaining its workspace and receipt checks. It keeps the
+seven distinct tool-use constructs. It records 29 private tasks as retained and
+43 as repaired after candidate.15 calibration. It has 72 distinct
 within-domain clusters. Every task requires `gold`, `alternate_correct`, `partial`,
 `adversarial_format`, and `empty`; `timeout` is `not_applicable` under natural
 completion. The catalog is the sole expected-class authority.
 Its canonical catalog digest is
-`sha256:3414c7f4aa9683ad89d3ca97afad94c57d49858a1e7ac38e81a479fbd4c77a79`.
+`sha256:00e555904daa023f0f7731a0e7e66e12d833641f62eb4aaa59447be6417807d7`.
 Its ordered task-metadata digest is
-`sha256:85c2ba48929b1a8c4018e95a0506c8f6ad0c0b0e41b6ec2cbf6452520188f796`.
+`sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708`.
 Its public release digest is
-`sha256:e9d4ed6327ceb10ed14bd2d4a50f95b2561aade6586be59a8dee1ebb0f2b10f5`.
+`sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`.
 
-Candidates.1 through .14 are immutable predecessor evidence. Candidate.5
+Candidates.1 through .18 are immutable predecessor evidence. Candidate.5
 remains the durable source for the seven distinct disclosed scenario, operation,
 result, evaluator, metamorphic, and cross-task substitution contracts. Its
 source integration was rejected because
@@ -225,6 +231,26 @@ and package completed, but the real candidate verifier loaded ordinary filenames
 lexically and rejected the catalog-ordered evaluator identity before replay. No
 stage, attestation, or qualification artifact exists. Candidate.15 reuses the
 existing checked-catalog ordering owner in that candidate-only verifier load path.
+Its complete 1,224-cell calibration had no runtime failures, but policy v2
+rejected 38 universal full-credit tasks, ten universal semantic-zero tasks, only
+22 non-uniform tasks, and six degenerate domains. Candidate.16 keeps policy v2,
+repairs those task-bank failures, and normalizes only the exact Codex zsh
+transport before hashing the logical ToolUse command.
+Independent review rejects candidate.16 because all 43 revised tasks reject a
+publicly declared optional field; six Documentation tasks also score optional
+`next_steps` as required. Candidate.17 repairs that existing evaluator owner and
+the independently identified 1.1.0/v3/13-view runbook drift.
+Independent source review rejects candidate.17 because one Security model
+sentence still says 12 public views and the focused regression did not match
+that wording. Candidate.18 corrects that final documentation owner. Its isolated
+Morgan calibration reached 288 checkpoint results before Codex returned
+`Selected model is at capacity`; task output containing `authentication` caused
+the adapter to misclassify that temporary capacity event as terminal authentication.
+Candidate.19 routes the exact structured capacity event through existing resumable
+backpressure and limits provider-failure classification to stderr or structured
+`error` and `turn.failed` messages.
+Its complete calibration then failed only the Tool Use domain facility ceiling;
+candidate.20 adds the bounded `tool-use-02` response decision described above.
 
 The exact 42 task-issue closures remain unchanged. The catalog records the
 unauthenticated candidate execution and qualification-evidence bridge as one
@@ -245,9 +271,9 @@ extra calls. One three-configuration qualification matrix can contain at most
 21 declared digest entries. The runner removes command text from provider
 stdout and stderr evidence, but it
 extracts and preserves the exact semantic final response before that log
-redaction. Candidate.14 remains inactive and not production-publishable. Fresh
-independent review, double sealing, one qualification matrix,
-qualification, adoption, and cutover are pending.
+redaction. Candidates.14 through .17 remain inactive and not production-publishable.
+Candidate.18 is the current source candidate; production cutover requires its
+fresh review, seal, complete calibration, admission, and Official evidence.
 
 AIQ Core 1.1.0 sealing also requires one independently supplied
 `aiq.leakage-review.v2` record for every task. Each record binds the reviewer,
@@ -280,9 +306,9 @@ matrix digests.
 This is an end-to-end execution and identity qualification only. It makes no
 prediction-interval, Spearman-correlation, run-variance, or precise-rank claim.
 Those stability-only fields are absent from the v3 manifest and artifact. The
-active/default 17-configuration matrix and all AIQ Core 1.0.7 behavior remain
-unchanged. Any candidate task, evaluator, policy, or identity revision requires
-a new candidate identity and manifest.
+active/default production matrix remains all 17 configurations. Any task,
+evaluator, policy, or source-identity revision requires a new reviewed source
+identity and fresh release evidence.
 
 ## Repository map
 
@@ -381,7 +407,7 @@ objects. This cleanup is a deployment prerequisite, not a migration or
 compatibility path. The schema creates the `aiq-submission-packages` and
 `aiq-runner-artifacts` Storage buckets as private. The preflight rejects either
 existing bucket identity. Do not create the buckets in a separate operator step.
-The preflight enumerates the 12 canonical public view names and all public RPC
+The preflight enumerates the 13 canonical public view names and all public RPC
 names from the desired state. It rejects every overload of those exact RPC
 names without matching unrelated public objects.
 
@@ -392,7 +418,7 @@ cargo make init-database
 ```
 
 For an empty AIQ namespace, the production reference must contain the real
-controlled, non-synthetic AIQ Core `1.0.7` corpus commitment, its real canonical
+controlled, non-synthetic AIQ Core `1.1.0` v3 corpus commitment, its real canonical
 `published_at` timestamp, and
 exactly three public identities: runner, verifier, and publisher. Prepare it
 only after the controlled corpus passes model-free validation, the operator
@@ -448,7 +474,7 @@ or to production.
 8. Public security-invoker views supply the Web application.
 
 Official means a complete, non-synthetic 17-by-72 run with valid task-set
-`1.0.7`, task-scorer `1.0.6`, aggregate-scorer `1.0.8`, and measurement `2.0.0`
+`1.1.0`, task-scorer `1.0.6`, aggregate-scorer `1.0.8`, and measurement `2.0.0`
 bindings that completed this flow and was published as
 `trusted_verified`. A complete synthetic fixture uses the
 `synthetic_complete` classification, has no Official AIQ value, and is never
@@ -483,10 +509,10 @@ zone, the macOS `launchd` template wakes at 11:05, 11:35, 23:05, and 23:35 local
 time. The four wakes cover EST and EDT with one bounded retry for each UTC slot.
 Official task dispatch must begin during the first two hours of a slot, and the
 v2 configuration requires all 32 supported workers for the fixed 1,224-cell
-matrix. A late wake does not start a new matrix. Subscription quota, usage, or
-rate limits are persisted as non-terminal backpressure: completed cells stay in
-the same checkpoint, rejected cells remain pending, and later scheduled wakes
-resume the oldest blocked slot before they can start newer paid work. The
+matrix. A late wake does not start a new matrix. Temporary selected-model capacity and
+subscription quota, usage, or rate limits are persisted as non-terminal backpressure:
+completed cells stay in the same checkpoint, rejected cells remain pending, and later
+scheduled wakes resume the oldest blocked slot before they can start newer paid work. The
 scheduler starts Official and Speed as sibling publication paths for the same
 slot. Official keeps its two-hour model-dispatch grace. Speed has an independent
 12-hour slot window. After the scheduler grants dispatch, neither path waits for
@@ -494,8 +520,8 @@ the other path. A slow or failed path cannot block the other path's dispatch or
 publication. Each path writes retained status below its own slot directory, and
 `aiq status` composes both outcomes. A completed run
 with a non-semantic infrastructure result is retained as unpublished evidence.
-It is not retried or presented as an AIQ score. Subscription backpressure is not
-a completed result and is therefore the sole exception to that terminal rule.
+It is not retried or presented as an AIQ score. Provider-capacity backpressure is not a
+completed result and is therefore the sole exception to that terminal rule.
 The subscription runner uses a protected copy of `~/.codex/auth.json` in an
 isolated per-release `CODEX_HOME`; it does not reuse the interactive Codex home
 as its writable runtime directory. It also uses a private two-file copy of the
@@ -586,8 +612,8 @@ retains checkpoints and raw artifacts. Checkpoint v10 distinguishes
 indeterminate model work from sealed pending evaluator work. The latter resumes
 from the same model response and workspace without another model invocation. A
 retryable evaluator process failure stays in this pending state and cannot
-create a terminal run. Provider-declared subscription limits leave
-the affected cells pending under `aiq.subscription-backpressure.v1`; the runner
+create a terminal run. Provider-declared temporary model capacity and subscription limits
+leave the affected cells pending under `aiq.subscription-backpressure.v1`; the runner
 also migrates v9 checkpoints to the v10 evaluator-resume shape and legacy v8
 checkpoints that incorrectly committed those limits as terminal results. On resume, `aiq` revalidates the permission
 admission, complete Official run, submission receipts, and verifier receipt

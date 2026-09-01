@@ -654,7 +654,7 @@ pub fn read_evaluator_results_artifact(
 /// Serializes one signed calibration package for offline local verification.
 ///
 /// The caller supplies the same independent validation authority and exact tasks used to validate
-/// the saved run. The normal submission serializer remains on the active 1.0.7 and Contrast
+/// the saved run. The normal submission serializer uses the active 1.1.0 and legacy Contrast
 /// validator.
 pub(crate) fn serialize_calibration_package_for_local_verification(
 	envelope: &SubmissionEnvelope,
@@ -3037,10 +3037,10 @@ mod tests {
 		assert_eq!(run.execution_concurrency, Some(1));
 		assert_eq!(envelope.payload["models"].as_array().map(Vec::len), Some(17));
 		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
-		assert_eq!(AIQ_TASK_SET_VERSION, "1.0.7");
+		assert_eq!(AIQ_TASK_SET_VERSION, "1.1.0");
 		assert_eq!(
 			AIQ_CORE_TASK_IDENTITY_SHA256,
-			"sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1"
+			"sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708"
 		);
 		assert!(tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION));
 		assert!(scoring::task_bindings_match_frozen_catalog(&tasks));
@@ -3126,7 +3126,7 @@ mod tests {
 
 		assert_eq!(
 			local_calibration_bytes, calibration_bytes,
-			"active 1.0.7 calibration packaging must remain byte-semantically identical"
+			"active 1.1.0 calibration packaging must remain byte-semantically identical"
 		);
 
 		let transport = FakeTransport { status: 202, request: RefCell::new(None) };

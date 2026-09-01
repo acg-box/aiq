@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-documentation-communication-01",
-  "task_version": "1.0.7",
+  "task_version": "1.1.0",
   "title": "Use the required synthetic label",
   "domain": "documentation_communication",
   "difficulty": "easy",

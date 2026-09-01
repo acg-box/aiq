@@ -1,7 +1,7 @@
 {
   "schema_version": "aiq.task.v2",
   "task_id": "public-example-tool-use-01",
-  "task_version": "1.0.7",
+  "task_version": "1.1.0",
   "title": "Choose the repository search tool",
   "domain": "tool_use",
   "difficulty": "easy",

@@ -1,7 +1,7 @@
 //! Test-only public projections generated from the production scoring path.
 //!
 //! This module is intentionally not a result-package or database publication
-//! format. It gives browser contract tests a complete 1.0.7-shaped response
+//! format. It gives browser contract tests a complete 1.1.0-shaped response
 //! without allowing test observations to become Official evidence.
 
 use std::{
@@ -156,7 +156,7 @@ impl TestGeneratedPublicFixture {
 			.iter()
 			.any(|id| task_keys_per_matrix.get(id).is_none_or(|keys| keys != &expected_task_keys))
 		{
-			return Err(error("each generated model must cover the exact 1.0.7 task set"));
+			return Err(error("each generated model must cover the exact 1.1.0 task set"));
 		}
 
 		for row in &self.leaderboard {
@@ -312,7 +312,7 @@ pub fn generate_test_generated_public_fixture()
 	let tasks = runner::synthetic_demo_tasks();
 
 	if tasks.len() != 72 {
-		return Err(error("the frozen 1.0.7 fixture task shape is not 72 tasks"));
+		return Err(error("the frozen 1.1.0 fixture task shape is not 72 tasks"));
 	}
 
 	let results = generated_matrix_results(&tasks)?;

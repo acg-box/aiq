@@ -17,7 +17,7 @@ use crate::{
 	model::{ModelConfig, ModelFamily, ReasoningEffort},
 	protocol::{self, NodeIdentity},
 	runner::{EvaluationOutcome, ResultStatus, TaskResult},
-	scoring::{AIQ_BENCHMARK_VERSION, AIQ_SCORING_VERSION, AIQ_TASK_SET_ID},
+	scoring::{AIQ_SCORING_VERSION, AIQ_TASK_SET_ID},
 };
 
 /// Exact family-representative model matrix used only for candidate release qualification.
@@ -604,7 +604,6 @@ fn validate_stage_candidate_identity(
 		|| stage.task_set_version != CANDIDATE_TASK_SET_VERSION
 		|| stage.benchmark_version != format!("{}@{}", AIQ_TASK_SET_ID, CANDIDATE_TASK_SET_VERSION)
 		|| stage.scoring_version != AIQ_SCORING_VERSION
-		|| stage.benchmark_version == AIQ_BENCHMARK_VERSION
 	{
 		return Err(BenchmarkQualificationError::new(
 			"qualification stage does not bind the exact candidate identity",

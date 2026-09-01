@@ -24,7 +24,7 @@ void describe('AIQ Core source-head contract', () => {
   void it('matches the checked-in active public catalog', () => {
     const parsed: unknown = JSON.parse(
       readFileSync(
-        new URL('../../../benchmarks/candidates/aiq-core-1.0.7/catalog.json', import.meta.url),
+        new URL('../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json', import.meta.url),
         'utf8',
       ),
     );

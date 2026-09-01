@@ -35,13 +35,13 @@ second also requires the exact expected contrast-corpus commitment digest. Both
 commands validate fixtures, evaluators, the committed runtime, and toolchain.
 
 `seal-corpus` is the repository-owned create-new authoring boundary. The Core
-path targets only the side-by-side AIQ Core 1.1.0 candidate. It requires
+path retains the reviewed AIQ Core 1.1.0 candidate source that now supplies the
+active task authority. It requires
 `--leakage-reviews-root`, an exact `aiq.leakage-review.v2` record for every
 task, and a `frozen_candidate` catalog with no pending fixture applicability.
 The observed acceptance class set for each task must equal its catalog
-declaration exactly. The checked-in candidate.15 source is frozen for a fresh
-independent review. Candidate.14 is immutable rejected verifier-loader evidence;
-its review and seal records are not transferable, and an empty candidate.15 review
+declaration exactly. Candidate.18 is immutable failed-calibration evidence; its
+review and seal records are not transferable, and an empty candidate.19 review
 directory blocks sealing without creating output.
 The tracked private-authoring validator checks response types against the
 schema-owned enum and response locations against authority derived from the
@@ -104,7 +104,7 @@ cargo run -p aiq-runner -- normalize --help
 A live preflight requires:
 
 - the capability manifest;
-- the current `aiq.corpus-commitment.v2` document;
+- the current `aiq.corpus-commitment.v3` document;
 - an absolute committed Node.js runtime;
 - the controlled Node.js and ripgrep toolchain root;
 - the exact Codex runtime directory and Codex home;
@@ -140,16 +140,15 @@ The corpus binds all 72 private tasks to the public catalog. The public catalog
 digest is:
 
 ```text
-sha256:84f1d1a271e112c70f59bf7a2637f3b905b1a85d1ebee34172c63b922c9733d1
+sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708
 ```
 
-This is the active public `1.0.7` metadata identity. Its public release digest
-is `sha256:2e9f2efec15a66a67ce0cf236aaf3d0f5403e03e7de6063ffaf3c28f0eb07aae`.
-The public catalog is deterministic and identity-frozen. The unbounded formal-task
-identity requires fresh independent Core and Contrast seals. The database task
-commitment must then be regenerated before database cutover. Final clean-commit
-regeneration, policy-v2 replay and admission, and release acceptance
-remain pending.
+This is the active public `1.1.0` metadata identity. Its retained source-release
+digest is `sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69`.
+The catalog is deterministic. Candidate.19 still requires fresh review and a
+Core seal before database task commitments can derive from it. A complete calibration,
+policy-v2 admission, separate Official run, and release acceptance remain
+required before production cutover.
 
 ## Execution and evidence
 
@@ -157,16 +156,15 @@ The runner fixes the run class before execution. An Official run requires the
 complete 17-by-72 shape. A calibration can select a deterministic subset and is
 never Official.
 
-`run --candidate-qualification` is the only execution route that selects the
-AIQ Core 1.1.0 candidate commitment validator. It requires Calibration, all 72
-candidate tasks, exactly Sol medium, Terra medium, and Luna medium, and a new
-durable output. The capability manifest and preflight continue to cover the full
-17-configuration runtime authority. Combining
-it with Official fails before preflight or model work. Omitting the flag keeps
-the active 1.0.7 validator and rejects a candidate commitment.
+`run --candidate-qualification` retains the already reviewed three-family
+qualification contract. It requires Calibration, all 72 tasks, exactly Sol
+medium, Terra medium, and Luna medium, and a new durable output. Combining it
+with Official fails before preflight or model work. Omitting the flag uses the
+same adopted 1.1.0 corpus through the ordinary active validator and preserves
+the complete 17-configuration calibration and Official paths.
 
-The retained complete `1.0.7` calibration is replayed without model calls before
-the real Official publication path. Every formal model task has
+A fresh complete `1.1.0` calibration must be replayed to create the new fixed
+bank and admission before the separate Official publication path. Every formal model task has
 `wall_seconds: null`, `max_steps: null`, and `max_tool_calls: null`. The adapter
 waits for normal completion and records model and evaluator elapsed time, steps, tool calls, tokens,
 and estimated cost as auxiliary evidence. These measurements never affect
@@ -238,10 +236,10 @@ an incorrect answer, is final and is never retried. Checkpoint resume does not
 retry a committed or indeterminate model cell. A retryable evaluator process
 failure stays pending and does not produce terminal evidence. Resume reruns only
 the evaluator against the unchanged response and workspace. A semantic result
-is final; the runner never retries it to obtain a match. A provider-declared subscription
-limit is not a terminal task result: the checkpoint preserves completed cells,
-marks the rejected cell as pending capacity backpressure, and resumes it after
-capacity returns. Legacy v8 terminal subscription-limit entries migrate into
+is final; the runner never retries it to obtain a match. Provider-declared temporary model
+capacity, subscription quota, usage, and rate limits are not terminal task results: the
+checkpoint preserves completed cells, marks the rejected cell as pending capacity
+backpressure, and resumes it after capacity returns. Legacy v8 terminal subscription-limit entries migrate into
 that pending state without replacing already completed work. Checkpoint v9
 migrates to v10 with an empty pending-evaluator list.
 
@@ -258,7 +256,7 @@ both, plus `--corpus-commitment` and `--source-root`. The runner loads the exact
 tasks in checked catalog order and validates the supplied corpus and source before
 it reads the saved run. It uses the same complete context before and after
 concurrency binding and during signed-payload serialization. Omit all four inputs
-for the unchanged AIQ Core 1.0.7 calibration path. A partial candidate input group
+for the active AIQ Core 1.1.0 calibration path. A partial candidate input group
 fails without a package output.
 
 For an immutable historical pilot whose legacy runner JSON encoded a runtime

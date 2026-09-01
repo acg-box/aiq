@@ -78,7 +78,7 @@ pub(crate) struct CalibrationValidationContext {
 	kind: CalibrationValidationKind,
 }
 impl CalibrationValidationContext {
-	/// Uses the active AIQ Core 1.0.7 and Contrast calibration boundary.
+	/// Uses the active AIQ Core 1.1.0 and legacy Contrast calibration boundary.
 	#[must_use]
 	pub(crate) const fn current() -> Self {
 		Self { kind: CalibrationValidationKind::Current }
