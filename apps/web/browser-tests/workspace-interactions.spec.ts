@@ -215,19 +215,28 @@ test('mobile reference tabs keep an expanded result at its reading position', as
     .getByRole('link', { name: 'Open original metrics.json ↗', exact: true })
     .scrollIntoViewIfNeeded();
   const origin = await page.evaluate(() => ({ href: location.href, y: scrollY }));
-  // Tap the sticky tab without Playwright first scrolling its original flow box into view.
-  const tab = await page.getByRole('tab', { name: 'Records', exact: true }).boundingBox();
-  if (!tab) throw new Error('The Records tab must be visible.');
-  await page.mouse.click(tab.x + tab.width / 2, tab.y + tab.height / 2);
-  await page.getByRole('tab', { name: 'Leaderboard', exact: true }).click();
   const expected = new URL(origin.href);
   expected.searchParams.set('view', 'leaderboard');
-  await expect(page).toHaveURL(expected.href);
-  await expect(opened.content).toBeVisible();
-  await expect(
-    opened.content.locator('details').filter({ hasText: 'Configuration & original record' }),
-  ).toHaveAttribute('open', '');
-  await expect.poll(() => page.evaluate(() => scrollY)).toBeCloseTo(origin.y, 0);
+  async function visitRecords(waitForDestination: boolean) {
+    // Tap the sticky tab without scrolling its original flow box into view.
+    const records = page.getByRole('tab', { name: 'Records', exact: true });
+    const tab = await records.boundingBox();
+    if (!tab) throw new Error('The Records tab must be visible.');
+    await page.mouse.click(tab.x + tab.width / 2, tab.y + tab.height / 2);
+    if (waitForDestination) await expect(records).toHaveAttribute('aria-selected', 'true');
+    const back = await page.getByRole('tab', { name: 'Leaderboard', exact: true }).boundingBox();
+    if (!back) throw new Error('The Leaderboard tab must be visible.');
+    await page.mouse.click(back.x + back.width / 2, back.y + back.height / 2);
+    await expect(page).toHaveURL(expected.href);
+    await expect(page.locator('.board-tabs [data-pending]')).toHaveCount(0);
+    await expect(opened.content).toBeVisible();
+    await expect(
+      opened.content.locator('details').filter({ hasText: 'Configuration & original record' }),
+    ).toHaveAttribute('open', '');
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeCloseTo(origin.y, 0);
+  }
+  await visitRecords(false);
+  await visitRecords(true);
   await opened.content
     .getByRole('button', { name: 'Close details for Luna low', exact: true })
     .click();

@@ -50,6 +50,9 @@ and the shared row component's unnecessary dependency on the Next.js router.
 Data appears at full contrast during its entrance motion. Tests now open the
 same compact disclosures that readers use, while retaining checks for exact
 scores, units, source identity, and publication requirements.
+Cancelling a pending view change preserves the reading position. Ten repeated
+mobile checks cover both immediate cancellation and a completed round trip,
+using pointer taps without an automation-induced scroll.
 
 Source validation passed 699 Rust tests and 557 TypeScript tests. Type checks,
 lint, formatting, schema checks, and the study checker passed. The study checker
