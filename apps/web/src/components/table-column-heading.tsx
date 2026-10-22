@@ -3,7 +3,6 @@
 import { ArrowDownIcon } from '@phosphor-icons/react/dist/ssr/ArrowDown';
 import { ArrowUpIcon } from '@phosphor-icons/react/dist/ssr/ArrowUp';
 import { ArrowsDownUpIcon } from '@phosphor-icons/react/dist/ssr/ArrowsDownUp';
-import { useId } from 'react';
 
 export function TableColumnHeading({
   label,
@@ -20,15 +19,10 @@ export function TableColumnHeading({
   disabled?: boolean;
   onSort?: () => void;
 }) {
-  const unitId = useId();
   const copy = (
     <span className="table-heading-copy">
       <span className="table-heading-title">{label}</span>{' '}
-      {unit ? (
-        <span className="table-heading-unit" id={unitId}>
-          {unit}
-        </span>
-      ) : null}
+      {unit ? <span className="table-heading-unit">{unit}</span> : null}
     </span>
   );
   if (!onSort)
@@ -41,8 +35,6 @@ export function TableColumnHeading({
     <button
       className="table-column-heading"
       type="button"
-      aria-label={accessibleLabel}
-      aria-describedby={unit ? unitId : undefined}
       title={accessibleLabel}
       disabled={disabled}
       onClick={onSort}

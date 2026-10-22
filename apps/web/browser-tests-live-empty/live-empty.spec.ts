@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import {
   expect,
   test as base,
@@ -88,7 +88,7 @@ test('an empty published board keeps design counts separate from measurements', 
   await expect(page.getByRole('list', { name: 'Board coverage' })).toContainText(
     '72 tasks in design',
   );
-  await expect(page.getByRole('button', { name: /^Evidence for / })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^Details: Evidence for / })).toHaveCount(0);
   await expect(page.getByLabel('Model', { exact: true })).toBeDisabled();
 });
 

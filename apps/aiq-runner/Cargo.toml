@@ -31,11 +31,11 @@ ureq                     = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 # crates.io
-libc = "0.2"
+libc = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 # crates.io
-windows-sys = { version = "0.61.2", features = [
+windows-sys = { workspace = true, features = [
 	"Win32_Security_Authorization",
 	"Win32_Storage_FileSystem",
 ] }

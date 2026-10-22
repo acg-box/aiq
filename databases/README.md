@@ -327,15 +327,15 @@ payload has `schema_version: aiq.calibration-run.v4`. The database accepts only
 The verifier uses these calibration-only RPCs in order:
 
 1. `aiq_stage_calibration_verification(stage, target_inbox_id,
-supplied_lease_token, supplied_attempt)` records one
+   supplied_lease_token, supplied_attempt)` records one
    `aiq.calibration-verified-stage.v2` document.
 2. `aiq_record_calibration_attestation(attestation, target_inbox_id,
-supplied_lease_token, supplied_attempt)` records one
+   supplied_lease_token, supplied_attempt)` records one
    `aiq.calibration-verifier-attestation.v2` document. The replay status must be
    `evaluator_replayed`.
 3. The distinct publisher uses `aiq_publish_calibration_evidence(target_run_id,
-target_package_sha256, target_inbox_id, supplied_lease_token,
-supplied_attempt)`.
+   target_package_sha256, target_inbox_id, supplied_lease_token,
+   supplied_attempt)`.
 
 The RPCs return `recorded`, `published`, or `duplicate`. A different retry for
 the same identity is a conflict. Calibration evidence is append-only and uses

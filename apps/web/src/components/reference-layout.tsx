@@ -79,7 +79,7 @@ export function SourceDownload({
   actionLabel?: string;
 }) {
   return (
-    <a className="source-download" href={href} aria-label={label} download>
+    <a className="source-download" href={href} title={label} download>
       <DownloadSimpleIcon size={18} aria-hidden="true" />
       <span>
         <span className="source-download-name">{children}</span>

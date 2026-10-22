@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import { seedRuns } from '../src/data/seed.ts';
 
@@ -158,8 +158,8 @@ for (const [board, query, label, section] of [
 }
 
 for (const [board, label] of [
-  ['intelligence', 'Frozen Core task catalogue · JSON'],
-  ['harness', 'Download draft protocol · JSON'],
+  ['intelligence', /Task catalogue.*JSON/u],
+  ['harness', /Task set and protocol.*JSON/u],
 ] as const) {
   test(`${board} definition download serves the declared JSON file`, async ({ page, request }) => {
     await page.goto(`/benchmarks/${board}?view=data`);

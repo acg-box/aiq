@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
 import { expectProductionPageEvidence } from './production-page-evidence.ts';
@@ -49,7 +49,7 @@ async function expectNoHorizontalOverflow(page: Page, path: string) {
 async function getActualRunPath(page: Page): Promise<string> {
   await expectPublishedNonSyntheticPage(page, '/benchmarks/intelligence');
   const table = page.getByRole('region', { name: 'Core leaderboard' });
-  const evidence = table.getByRole('button', { name: /^Evidence for / }).first();
+  const evidence = table.getByRole('button', { name: /^Details: Evidence for / }).first();
   const desktop = await evidence.isVisible();
   if (desktop) await evidence.click();
   else

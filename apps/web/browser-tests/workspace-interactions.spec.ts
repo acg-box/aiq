@@ -1,5 +1,5 @@
 import { openStudyEvidence } from './workspace-helpers.ts';
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 test('top navigation keeps peer boards accessible and gives the workspace its full width', async ({
@@ -27,11 +27,12 @@ test('top navigation keeps peer boards accessible and gives the workspace its fu
   expect(geometry?.x).toBeLessThanOrEqual(32);
   expect(geometry?.width).toBeGreaterThanOrEqual(1056);
   await expect(
-    page.getByRole('button', { name: 'Open benchmark navigation', exact: true }),
+    page.getByRole('button', { name: 'More benchmark navigation', exact: true }),
   ).not.toBeVisible();
   await page.setViewportSize({ width: 320, height: 844 });
+  await expect(navigation.getByRole('link')).toHaveText(['Mem']);
   await expect(navigation.getByRole('link', { name: 'Mem', exact: true })).toBeVisible();
-  const menu = page.getByRole('button', { name: 'Open benchmark navigation', exact: true });
+  const menu = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
   const visible = await navigation.getByRole('link').allTextContents();
   await menu.click();
   const dialog = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
@@ -61,7 +62,7 @@ test('a slow board navigation has visible progress until the destination is read
     await route.continue();
   });
   await page.goto('/benchmarks/harness');
-  const menu = page.getByRole('button', { name: 'Open benchmark navigation', exact: true });
+  const menu = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
   const direct = page
     .getByRole('navigation', { name: 'Main navigation', exact: true })
     .getByRole('link', { name: 'AI Intelligence', exact: true });
@@ -105,7 +106,7 @@ test('workspace interactions preserve search, browser history, and light dismiss
   await expect(tasks).toContainText('Ledger refund accounting');
   await page.getByLabel('Task family', { exact: true }).selectOption('feature');
   await expect(tasks).toContainText('No task specifications match these filters.');
-  await page.getByRole('button', { name: 'Clear task filters', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset filters for tasks', exact: true }).click();
   await expect(tasks.locator('tbody tr')).toHaveCount(24);
   await expect(search).toHaveValue('');
   await page.goBack();
@@ -115,7 +116,7 @@ test('workspace interactions preserve search, browser history, and light dismiss
   await expect(page.getByLabel('Task family', { exact: true })).toHaveValue('all');
   await expect(tasks.locator('tbody tr')).toHaveCount(1);
   const trigger = page.getByRole('button', {
-    name: 'Review Ledger refund accounting',
+    name: 'Details: Review Ledger refund accounting',
     exact: true,
   });
   if (!(await trigger.isVisible()))
@@ -152,7 +153,7 @@ test('reduced motion keeps navigation, filters, and details usable', async ({ pa
     await opened.motionTarget.evaluate((element) => getComputedStyle(element).transitionDuration),
   ).toBe('0s');
   await opened.close();
-  const menu = page.getByRole('button', { name: 'Open benchmark navigation', exact: true });
+  const menu = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
   if (await menu.isVisible()) {
     await menu.click();
     const navigation = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
@@ -251,8 +252,7 @@ test('evidence requirements return restores the open task and its reading positi
   await page.goto('/benchmarks/harness?harness=codex&workload=repair');
   await page.locator('.comparison-filters > summary').click();
   const trigger = page.getByRole('button', {
-    name: 'Review Ledger refund accounting',
-    exact: true,
+    name: /Ledger refund accounting/u,
   });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Ledger refund accounting', exact: true });

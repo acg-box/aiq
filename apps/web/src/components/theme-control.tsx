@@ -11,7 +11,7 @@ type ResolvedTheme = Exclude<ThemeSetting, 'system'>;
 
 const settings: readonly ThemeSetting[] = ['system', 'light', 'dark'];
 const settingLabels: Readonly<Record<ThemeSetting, string>> = {
-  system: 'Use device theme',
+  system: 'Use system theme',
   light: 'Use light theme',
   dark: 'Use dark theme',
 };

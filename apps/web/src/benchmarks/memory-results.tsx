@@ -104,14 +104,13 @@ function MemoryOverview({
                   <SectionLink
                     href={detailHref}
                     targetId="memory-comparison"
-                    label={`Explore ${studyDisplayName(study.id, study.title)} · ${overviewLabels[group.id] ?? group.title}`}
                     current={current}
                     preserveVisibleTarget
                   >
-                    {overviewLabels[group.id] ?? group.title} →
+                    {overviewLabels[group.id] ?? group.title} →{' '}
                     <span>
                       {studyDisplayName(study.id, study.title)}
-                      {current ? <small className="overview-current">Viewing</small> : null}
+                      {current ? <small className="overview-current"> Viewing</small> : null}
                     </span>
                   </SectionLink>
                 </th>

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { test, expect, type Page } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { openStudyEvidence, selectTheme } from './workspace-helpers.ts';
 
 function monitorErrors(page: Page) {
@@ -24,7 +24,7 @@ async function intelligenceLink(page: Page) {
     .getByRole('navigation', { name: 'Main navigation', exact: true })
     .getByRole('link', { name: 'AI Intelligence', exact: true });
   if (await direct.isVisible()) return direct;
-  const menu = page.getByRole('button', { name: 'Open benchmark navigation', exact: true });
+  const menu = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
   await menu.click();
   return page
     .getByRole('dialog', { name: 'Benchmark navigation', exact: true })
@@ -59,7 +59,7 @@ test('peer boards share one navigation and the mobile menu restores focus', asyn
   await expect(page.getByRole('navigation', { name: 'Core navigation' })).toHaveCount(0);
   await expect(page.getByRole('link', { name: /Core workspace/ })).toHaveCount(0);
   if (testInfo.project.name === 'mobile-chromium') {
-    const opener = page.getByRole('button', { name: 'Open benchmark navigation' });
+    const opener = page.getByRole('button', { name: 'More benchmark navigation' });
     await opener.click();
     await expect(page.getByRole('dialog', { name: 'Benchmark navigation' })).toBeVisible();
     await page.keyboard.press('Escape');
@@ -89,7 +89,7 @@ test('Mem filters, result evidence, case records and originals keep the same wor
     exact: true,
   });
   await expect(native.getByRole('row')).toHaveCount(3);
-  await native.getByRole('button', { name: 'Settled cost', exact: true }).click();
+  await native.getByRole('button', { name: 'Cost USD total', exact: true }).click();
   await expect(native.locator('tbody tr').first()).toContainText('RAGFlow rc1');
   const opened = await openStudyEvidence(page, 'OpenViking');
   const evidence = opened.content;

@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 test('a homepage evidence shortcut shows progress without changing its button width', async ({
@@ -77,7 +77,7 @@ test('the homepage shows available comparisons and leads directly to their evide
   ).toContainText('Calibration records');
   await page.getByRole('tab', { name: 'Data', exact: true }).click();
   await expect(
-    page.getByRole('link', { name: 'Frozen Core task catalogue · JSON', exact: true }),
+    page.getByRole('link', { name: /Task catalogue.*JSON/u, exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole('navigation', { name: 'Evidence registers', exact: true }),

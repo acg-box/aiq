@@ -33,20 +33,20 @@
     "test:browser:workspace-production": "playwright test --config playwright.workspace-production.ts"
   },
   "dependencies": {
-    "@phosphor-icons/react": "2.1.10",
-    "@supabase/supabase-js": "2.110.8",
-    "echarts": "6.1.0",
-    "next": "~16.3.8",
-    "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "@phosphor-icons/react": "~2.1.10",
+    "@supabase/supabase-js": "~2.118.0",
+    "echarts": "~6.1.0",
+    "next": "~16.4.2",
+    "react": "~19.3.1",
+    "react-dom": "~19.3.1"
   },
   "devDependencies": {
-    "@axe-core/playwright": "4.12.1",
-    "@playwright/test": "1.62.0",
-    "@types/react": "19.2.14",
-    "@types/react-dom": "19.2.3",
-    "typescript": "5.9.3",
-    "typescript-compiler-api": "npm:typescript@~5.9.0"
+    "@axe-core/playwright": "~4.14.0",
+    "@playwright/test": "~1.64.1",
+    "@types/react": "~19.3.0",
+    "@types/react-dom": "~19.3.0",
+    "typescript": "~7.0.2",
+    "typescript-compiler-api": "npm:@typescript/typescript6@~6.0.2"
   },
   "engines": {
     "node": ">=24.15.0",

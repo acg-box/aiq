@@ -156,7 +156,7 @@ export function SiteHeader() {
     <>
       <header className="workspace-header">
         <div className="workspace-header-inner">
-          <Link className="research-brand" href="/" aria-label="AIQ home">
+          <Link className="research-brand" href="/" aria-label="AIQ Overview">
             AIQ <span className="workspace-home-label">Overview</span>
           </Link>
           <div className="workspace-desktop-navigation" ref={navigation}>
@@ -164,7 +164,7 @@ export function SiteHeader() {
             <button
               ref={menuTrigger}
               type="button"
-              aria-label="Open benchmark navigation"
+              aria-label="More benchmark navigation"
               aria-expanded={open}
               aria-controls="benchmark-menu"
               className="ui-action workspace-menu-trigger"

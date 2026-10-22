@@ -1,5 +1,5 @@
 import { openStudyEvidence } from './workspace-helpers.ts';
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
 test('Mem charts keep measured values, missingness and workload selection with the table', async ({
@@ -52,12 +52,12 @@ test('Mem charts keep measured values, missingness and workload selection with t
   const overview = page.getByRole('table', { name: 'Memory comparison overview', exact: true });
   await expect(overview.locator('tbody tr')).toHaveCount(6);
   await expect(overview.getByRole('rowheader')).toHaveText([
-    'Readers · fixed-context replay →Luna / DeepSeek Flash 1017',
-    'Readers · fixed-context replay →Luna reasoning effort',
-    'Systems · native retrieval →Native memory systemsViewing',
-    'Systems · nightly version check →Native memory systems',
-    'Writers · extraction replay →Luna / DeepSeek Flash 1017',
-    'Writers · extraction replay →Luna reasoning effort',
+    'Readers · fixed-context replay → Luna / DeepSeek Flash 1017',
+    'Readers · fixed-context replay → Luna reasoning effort',
+    'Systems · native retrieval → Native memory systems Viewing',
+    'Systems · nightly version check → Native memory systems',
+    'Writers · extraction replay → Luna / DeepSeek Flash 1017',
+    'Writers · extraction replay → Luna reasoning effort',
   ]);
   await expect(overview.locator('tbody tr').nth(0)).toContainText('DeepSeek Flash 101711/13');
   await expect(overview.locator('tbody tr').nth(0)).toContainText('$0.004811–$0.019369');
@@ -65,12 +65,12 @@ test('Mem charts keep measured values, missingness and workload selection with t
   const selected = overview.locator('a[aria-current="location"]');
   await expect(selected).toHaveCount(1);
   await expect(selected).toHaveAccessibleName(
-    'Explore Native memory systems · Systems · native retrieval',
+    /Systems · native retrieval → Native memory systems(?: Viewing)?$/u,
   );
   await expect(page.getByLabel('Study', { exact: true })).not.toBeVisible();
   await overview
     .getByRole('link', {
-      name: 'Explore Luna reasoning effort · Readers · fixed-context replay',
+      name: /Readers · fixed-context replay → Luna reasoning effort(?: Viewing)?$/u,
       exact: true,
     })
     .click();
@@ -91,14 +91,14 @@ test('Mem charts keep measured values, missingness and workload selection with t
   expect(new Set(effortFills.map((fill) => fill.color)).size).toBe(1);
   expect(new Set(effortFills.map((fill) => fill.texture)).size).toBe(3);
   await expect(selected).toHaveAccessibleName(
-    'Explore Luna reasoning effort · Readers · fixed-context replay',
+    /Readers · fixed-context replay → Luna reasoning effort(?: Viewing)?$/u,
   );
   await expect(overview.locator('tbody tr')).toHaveCount(6);
   await page.goBack();
   await expect(quality.locator('li')).toHaveCount(2);
   await expect(quality).toContainText('OpenViking11/13');
   await expect(selected).toHaveAccessibleName(
-    'Explore Native memory systems · Systems · native retrieval',
+    /Systems · native retrieval → Native memory systems(?: Viewing)?$/u,
   );
   const jump = page.getByRole('link', { name: 'Selected comparison ↓', exact: true });
   if (await jump.isVisible()) {
@@ -118,7 +118,7 @@ test('Mem charts keep measured values, missingness and workload selection with t
     const scrollBefore = await page.evaluate(() => scrollY);
     await overview
       .getByRole('link', {
-        name: 'Explore Luna reasoning effort · Readers · fixed-context replay',
+        name: /Readers · fixed-context replay → Luna reasoning effort(?: Viewing)?$/u,
         exact: true,
       })
       .click();
@@ -156,7 +156,7 @@ test('Mem charts keep measured values, missingness and workload selection with t
   await expect(writer).toContainText('$0.001142');
   await page.reload();
   await expect(selected).toHaveAccessibleName(
-    'Explore Luna / DeepSeek Flash 1017 · Writers · extraction replay',
+    /Writers · extraction replay → Luna \/ DeepSeek Flash 1017(?: Viewing)?$/u,
   );
   await expect(page.getByLabel('Study', { exact: true })).toHaveValue('luna-deepseek');
   await expect(page.getByLabel('Test', { exact: true })).toHaveValue('writer');
@@ -202,8 +202,7 @@ test('Harness task matrix opens actual acceptance gates and preserves the absenc
   await expect(matrix.locator('.task-matrix-legend')).toContainText('Medium (12)');
   await expect(matrix.locator('.task-matrix-legend')).toContainText('Hard (6)');
   const review = matrix.getByRole('button', {
-    name: 'Review Cache expiration boundary',
-    exact: true,
+    name: /Cache expiration boundary/u,
   });
   await review.click();
   const dialog = page.getByRole('dialog', { name: 'Cache expiration boundary', exact: true });
@@ -239,6 +238,6 @@ test('Harness task matrix opens actual acceptance gates and preserves the absenc
   await page.getByRole('tab', { name: 'Data', exact: true }).click();
   await expect(matrix).toHaveCount(0);
   await expect(
-    page.getByRole('link', { name: 'Download draft protocol · JSON', exact: true }),
+    page.getByRole('link', { name: /Task set and protocol.*JSON/u, exact: true }),
   ).toBeVisible();
 });

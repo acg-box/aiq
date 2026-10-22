@@ -823,7 +823,7 @@ fn shell_quote_text(value: &str) -> String {
 }
 
 fn digest(path: &Path) -> String {
-	format!("sha256:{:x}", Sha256::digest(fs::read(path).expect("digest input")))
+	format!("sha256:{}", hex::encode(Sha256::digest(fs::read(path).expect("digest input"))))
 }
 
 fn git<const N: usize>(repository: &Path, arguments: [&str; N]) {

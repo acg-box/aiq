@@ -1,5 +1,5 @@
 /* eslint-disable no-await-in-loop -- Each drawer must open and close before the next row can receive focus. */
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test as base } from '@playwright/test';
 import scorerGeneratedFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
 import { AIQ_CORE_SCORING_VERSION } from '../src/aiq-core-contract.ts';
@@ -60,7 +60,7 @@ test('the board renders the scorer-owned 17-configuration publication and exact 
   for (const expected of scorerGeneratedFixture.leaderboard) {
     const row = table.locator(`tr[data-configuration="${expected.matrix_id}"]`);
     await expect(row).toContainText(expected.score.toFixed(3));
-    await row.getByRole('button', { name: /^Evidence for / }).click();
+    await row.getByRole('button', { name: /^Details: Evidence for / }).click();
     const drawer = page.getByRole('dialog');
     await expect(drawer).toContainText(expected.run_id);
     await drawer.getByText('Run identity & original JSON', { exact: true }).click();
@@ -82,7 +82,9 @@ test('the board renders the scorer-owned 17-configuration publication and exact 
   await expect(
     page.getByRole('region', { name: 'Core result records' }).locator('tbody tr'),
   ).toHaveCount(1);
-  await page.getByRole('button', { name: 'Evidence for Terra medium', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Details: Evidence for Terra medium', exact: true })
+    .click();
   await page.getByRole('dialog').getByText('Run identity & original JSON', { exact: true }).click();
   const completeRun = page.getByRole('link', { name: 'Open complete run evidence', exact: true });
   await expect(completeRun).toHaveAttribute(
@@ -165,7 +167,7 @@ test('the visual leaderboard keeps exact scorer intervals and one scale after fi
   await page.getByRole('tab', { name: 'Data', exact: true }).click();
   await expect(table).toHaveCount(0);
   await expect(
-    page.getByRole('link', { name: 'Frozen Core task catalogue · JSON', exact: true }),
+    page.getByRole('link', { name: /Task catalogue.*JSON/u, exact: true }),
   ).toBeVisible();
   await expect(page.getByRole('link', { name: 'Calibration records', exact: true })).toHaveCount(0);
 });

@@ -10,7 +10,7 @@ version.workspace    = true
 
 [dependencies]
 # workspace
-aiq-runner = { path = "../aiq-runner" }
+aiq-runner = { workspace = true }
 
 # crates.io
 clap       = { workspace = true }
@@ -22,7 +22,7 @@ ureq       = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 # crates.io
-libc = "0.2"
+libc = { workspace = true }
 
 [[bin]]
 name = "aiq-verifier"

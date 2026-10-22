@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test as base } from '@playwright/test';
 import coreCatalogue from '../../../benchmarks/candidates/aiq-core-1.1.0/catalog.json' with { type: 'json' };
 import { harnessPlan } from '../src/benchmarks/harness-plan.ts';
