@@ -536,24 +536,25 @@ void test('reconciliation records storage-only grace, registry-only, and identit
   assert.equal(storageOnly?.supplied_eligible_after, '2026-07-25T01:00:00.000Z');
 });
 
+const fetchConfusedPackageDirectory: typeof fetch = async (input, init) => {
+  const url = new URL(String(input));
+  const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+  if (url.pathname.endsWith('/rpc/aiq_list_storage_registry')) return response([]);
+  if (url.pathname.endsWith('/rpc/aiq_list_storage_reconciliation')) return response([]);
+  if (url.pathname.includes('/storage/v1/object/list/aiq-submission-packages')) {
+    if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
+    return response([{ name: packageDigest, id: null, metadata: { size: 12 } }]);
+  }
+  if (url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts')) {
+    if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
+    return response([]);
+  }
+  throw new Error(`unexpected request ${url.pathname}`);
+};
+
 void test('reconciliation rejects file and directory type confusion', async () => {
-  const fetchImplementation: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-    if (url.pathname.endsWith('/rpc/aiq_list_storage_registry')) return response([]);
-    if (url.pathname.endsWith('/rpc/aiq_list_storage_reconciliation')) return response([]);
-    if (url.pathname.includes('/storage/v1/object/list/aiq-submission-packages')) {
-      if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
-      return response([{ name: packageDigest, id: null, metadata: { size: 12 } }]);
-    }
-    if (url.pathname.includes('/storage/v1/object/list/aiq-runner-artifacts')) {
-      if (body.prefix === '') return response([{ name: 'sha256', id: null }]);
-      return response([]);
-    }
-    throw new Error(`unexpected request ${url.pathname}`);
-  };
   await assert.rejects(
-    runReconciliation(configuration({ mode: 'reconcile' }), fetchImplementation),
+    runReconciliation(configuration({ mode: 'reconcile' }), fetchConfusedPackageDirectory),
     /package bucket contains a noncanonical object/,
   );
 });

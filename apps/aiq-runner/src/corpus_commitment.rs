@@ -1,19 +1,12 @@
 //! Public-safe identities for the current controlled benchmark corpus.
 
+use std::io::ErrorKind;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt as _, PermissionsExt};
-use std::{
-	collections::{BTreeMap, BTreeSet},
-	env::{
+use std::{collections::{BTreeMap, BTreeSet}, env::{
 		self,
 		consts::{ARCH, OS},
-	},
-	error::Error,
-	fmt::{Display, Formatter},
-	fs::{self, DirEntry, File},
-	io::{self, Read as _, Take},
-	path::{Path, PathBuf},
-};
+	}, error::Error, fmt::{Display, Formatter}, fs::{self, DirEntry, File}, io::{self, Read, Take}, path::{Path, PathBuf}};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -1306,7 +1299,8 @@ fn platform_minimal_path_entries() -> &'static [&'static str] {
 	#[cfg(target_os = "macos")]
 	let entries = &["/usr/bin", "/bin", "/usr/sbin", "/sbin"][..];
 	#[cfg(target_os = "linux")]
-	let entries = &["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"][..];
+	let entries =
+		&["/usr/local/sbin", "/usr/local/bin", "/usr/sbin", "/usr/bin", "/sbin", "/bin"][..];
 	#[cfg(target_os = "windows")]
 	let entries = &[r"C:\Windows\System32", r"C:\Windows"][..];
 	#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
@@ -1604,7 +1598,7 @@ fn hash_executable(path: &Path, label: &str) -> Result<String, CorpusCommitmentE
 	}
 
 	let mut hasher = Sha256::new();
-	let bytes = io::copy(&mut file, &mut hasher)
+	let bytes = hash_reader(&mut file, &mut hasher)
 		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be hashed")))?;
 
 	if bytes != metadata.len() {
@@ -1651,7 +1645,7 @@ fn hash_bounded_file(
 
 	let mut reader: Take<File> = file.take(max_bytes + 1);
 	let mut hasher = Sha256::new();
-	let bytes = io::copy(&mut reader, &mut hasher)
+	let bytes = hash_reader(&mut reader, &mut hasher)
 		.map_err(|_| CorpusCommitmentError::new(format!("{label} cannot be hashed")))?;
 
 	if bytes != length {
@@ -1663,6 +1657,24 @@ fn hash_bounded_file(
 
 fn valid_bounded_file_size(length: u64, max_bytes: u64) -> bool {
 	(1..=max_bytes).contains(&length)
+}
+
+fn hash_reader(reader: &mut impl Read, hasher: &mut Sha256) -> io::Result<u64> {
+	let mut buffer = [0_u8; 8 * 1_024];
+	let mut bytes = 0;
+
+	loop {
+		match reader.read(&mut buffer) {
+			Ok(0) => return Ok(bytes),
+			Ok(count) => {
+				hasher.update(&buffer[..count]);
+
+				bytes += count as u64;
+			},
+			Err(error) if error.kind() == ErrorKind::Interrupted => {},
+			Err(error) => return Err(error),
+		}
+	}
 }
 
 fn valid_source_path(value: &str) -> bool {
@@ -1881,7 +1893,7 @@ fn valid_digest(value: &str) -> bool {
 
 #[cfg(test)]
 pub(crate) mod tests {
-	use std::{env, fs, process, slice};
+	use std::{env, fs, io, process, slice};
 	#[cfg(unix)]
 	use std::{
 		ffi::OsString,
@@ -1901,6 +1913,7 @@ pub(crate) mod tests {
 		protocol, runner,
 		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	};
+
 
 	#[cfg(unix)]
 	pub(crate) struct RunnerProvenancePathFixture {
@@ -3499,4 +3512,38 @@ pub(crate) mod tests {
 
 		fs::remove_dir_all(root).expect("remove root");
 	}
+	#[test]
+	fn stream_hash_preserves_digest_across_short_and_interrupted_reads() {
+		struct InterruptedOnce<R> {
+			reader: R,
+			interrupted: bool,
+		}
+
+		impl<R> io::Read for InterruptedOnce<R>
+		where
+			R: io::Read,
+		{
+			fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+				if !self.interrupted {
+					self.interrupted = true;
+
+					return Err(io::ErrorKind::Interrupted.into());
+				}
+
+				let length = buffer.len().min(3);
+
+				self.reader.read(&mut buffer[..length])
+			}
+		}
+
+		let input = b"abc".repeat(4_097);
+		let mut reader = InterruptedOnce { reader: io::Cursor::new(&input), interrupted: false };
+		let mut hasher = Sha256::new();
+		let bytes = corpus_commitment::hash_reader(&mut reader, &mut hasher)
+			.expect("short and interrupted reads must preserve the input");
+
+		assert_eq!(bytes, input.len() as u64);
+		assert_eq!(hasher.finalize(), Sha256::digest(&input));
+	}
+
 }

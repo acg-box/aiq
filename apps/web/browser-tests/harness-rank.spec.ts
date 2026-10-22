@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 import { selectTheme } from './workspace-helpers.ts';
 
@@ -93,7 +93,7 @@ test('Harness Rank is a peer board and preserves draft selections without invent
   await expect(
     page.getByText('No attempt artifacts have been collected.', { exact: false }),
   ).toBeVisible();
-  const download = page.getByRole('link', { name: 'Download draft protocol · JSON', exact: true });
+  const download = page.getByRole('link', { name: /Task set and protocol.*JSON/u, exact: true });
   await expect(download).toHaveAttribute('href', '/api/benchmarks/harness/protocol');
   const response = await request.get('/api/benchmarks/harness/protocol');
   expect(response.status()).toBe(200);
@@ -153,7 +153,7 @@ test('the draft method and documentation remain legible at 320 pixels in both th
     .getByRole('button', { name: 'Details for Archive extraction containment', exact: true })
     .click();
   await page
-    .getByRole('button', { name: 'Review Archive extraction containment', exact: true })
+    .getByRole('button', { name: 'Details: Review Archive extraction containment', exact: true })
     .click();
   const taskDialog = page.getByRole('dialog', {
     name: 'Archive extraction containment',
@@ -186,7 +186,7 @@ test('the draft method and documentation remain legible at 320 pixels in both th
   await page.getByRole('tab', { name: 'Data', exact: true }).click();
   await expect(page.getByRole('region', { name: 'Protocol sources', exact: true })).toBeVisible();
   await expect(
-    page.getByRole('link', { name: 'Download draft protocol · JSON', exact: true }),
+    page.getByRole('link', { name: /Task set and protocol.*JSON/u, exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText('Trial data has not been collected.', { exact: false }),
@@ -265,7 +265,7 @@ test('task specifications filter, survive reload, and expose concrete acceptance
   await expect(page.getByLabel('Stack', { exact: true })).toHaveValue('TypeScript');
   if ((page.viewportSize()?.width ?? 1_440) < 500) await selectTheme(page, 'dark');
   const review = page.getByRole('button', {
-    name: 'Review Export resume and deduplication',
+    name: 'Details: Review Export resume and deduplication',
     exact: true,
   });
   if (!(await review.isVisible()))
@@ -311,7 +311,7 @@ test('task specifications filter, survive reload, and expose concrete acceptance
   await expect(page.getByLabel('Stack', { exact: true })).toHaveValue('TypeScript');
   await page.getByLabel('Stack', { exact: true }).selectOption('Go');
   await expect(table).toContainText('No task specifications match these filters.');
-  await page.getByRole('button', { name: 'Clear task filters', exact: true }).click();
+  await page.getByRole('button', { name: 'Reset filters for tasks', exact: true }).click();
   await expect(table.locator('tbody tr')).toHaveCount(24);
   await expectFits(page);
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);

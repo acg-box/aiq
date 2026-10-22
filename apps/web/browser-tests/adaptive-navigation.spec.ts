@@ -1,6 +1,6 @@
 /* eslint-disable no-await-in-loop -- Resize and route checks share one page and must remain sequential. */
 import assert from 'node:assert/strict';
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page } from '@playwright/test';
 
 const boards = ['AI Intelligence', 'Harness Rank', 'Mem'];
@@ -62,7 +62,7 @@ test('compact navigation keeps only the current board while desktop fits peers t
       const visible = await navigation.getByRole('link').allTextContents();
       if (visible.length < boards.length) {
         const trigger = page.getByRole('button', {
-          name: 'Open benchmark navigation',
+          name: 'More benchmark navigation',
           exact: true,
         });
         await trigger.click();
@@ -100,7 +100,7 @@ test('font changes refit navigation and expanding an open menu restores the curr
   await expect.poll(() => navigation.getByRole('link').count()).toBeLessThan(3);
   await expect(navigation.getByRole('link', { name: 'Mem', exact: true })).toBeVisible();
   await expectHeaderFits(page);
-  await page.getByRole('button', { name: 'Open benchmark navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'More benchmark navigation', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
   await expect(dialog).toBeVisible();
   await largeType.evaluate((element: HTMLStyleElement) => element.remove());
@@ -119,7 +119,7 @@ test('More puts board destinations before compact utilities on mobile and deskto
     await page.setViewportSize({ width, height: 844 });
     await page.goto('/benchmarks/memory');
     if (width === 900) await page.addStyleTag({ content: enlargedNavigation });
-    const trigger = page.getByRole('button', { name: 'Open benchmark navigation', exact: true });
+    const trigger = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
     await trigger.click();
     const dialog = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
     const destinations = dialog.getByRole('navigation', { name: 'More benchmarks', exact: true });
@@ -146,7 +146,7 @@ test('More puts board destinations before compact utilities on mobile and deskto
     // WebKit uses Option-Tab to traverse all controls with its default keyboard preference.
     await page.keyboard.press(browserName === 'webkit' ? 'Alt+Tab' : 'Tab');
     await expect(
-      theme.getByRole('button', { name: 'Use device theme', exact: true }),
+      theme.getByRole('button', { name: 'Use system theme', exact: true }),
     ).toBeFocused();
     await theme.getByRole('button', { name: 'Use light theme', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('data-theme-setting', 'light');
@@ -155,7 +155,7 @@ test('More puts board destinations before compact utilities on mobile and deskto
     await page.keyboard.press('Escape');
     await expect(trigger).toBeFocused();
   }
-  await page.getByRole('button', { name: 'Open benchmark navigation', exact: true }).click();
+  await page.getByRole('button', { name: 'More benchmark navigation', exact: true }).click();
   await page.setViewportSize({ width: 900, height: 240 });
   const shortMenu = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
   const shortBounds = await shortMenu.boundingBox();
@@ -181,7 +181,7 @@ test('compact themes live in More and retain one setting across desktop, mobile 
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto('/benchmarks/memory');
   const header = page.locator('.workspace-header');
-  const trigger = page.getByRole('button', { name: 'Open benchmark navigation', exact: true });
+  const trigger = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
   const dialog = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
   await expect(header.getByRole('group', { name: 'Color theme', exact: true })).toHaveCount(0);
   await trigger.click();
@@ -211,7 +211,7 @@ test('compact themes live in More and retain one setting across desktop, mobile 
   await expect(
     dialog.getByRole('button', { name: 'Use light theme', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
-  await dialog.getByRole('button', { name: 'Use device theme', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Use system theme', exact: true }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme-setting', 'system');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
@@ -226,7 +226,7 @@ test('an overflow selection becomes visible immediately and the menu supports Es
   await page.goto('/benchmarks/memory');
   await expectHeaderFits(page);
   await page.evaluate(() => window.scrollTo(0, 500));
-  const trigger = page.getByRole('button', { name: 'Open benchmark navigation', exact: true });
+  const trigger = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
   await trigger.click();
   const dialog = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
   expect(

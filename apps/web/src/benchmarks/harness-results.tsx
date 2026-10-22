@@ -206,7 +206,7 @@ export function HarnessResults({
                         href={item.documentation}
                         target="_blank"
                         rel="noopener"
-                        aria-label={`${item.name} documentation`}
+                        aria-label={`Docs for ${item.name}`}
                       >
                         Docs ↗
                       </a>

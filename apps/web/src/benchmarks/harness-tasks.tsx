@@ -112,7 +112,7 @@ export function HarnessTasks({
           <button
             className="ui-action workspace-reset"
             type="button"
-            aria-label="Clear task filters"
+            aria-label="Reset filters for tasks"
             onClick={() => update({ workload: null, difficulty: null, stack: null, q: null })}
           >
             <ArrowCounterClockwiseIcon size={14} aria-hidden="true" /> Reset filters

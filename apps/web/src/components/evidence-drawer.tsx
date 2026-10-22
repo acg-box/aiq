@@ -52,7 +52,7 @@ export function EvidenceDrawer({
         ref={trigger}
         type="button"
         className={triggerClassName ?? 'ui-action evidence-trigger'}
-        aria-label={label}
+        aria-label={triggerContent ? undefined : `Details: ${label}`}
         aria-haspopup="dialog"
         onClick={() => {
           const current = dialog.current;

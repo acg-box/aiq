@@ -18,7 +18,7 @@ use crate::{
 /// Schedule configuration schema version.
 pub const SCHEDULE_SCHEMA_VERSION: &str = "aiq.schedule.v1";
 /// Reviewed IANA Time Zone Database release embedded in every runner build.
-pub const EMBEDDED_TZDB_VERSION: &str = "2026c";
+pub const EMBEDDED_TZDB_VERSION: &str = "2026e";
 
 /// A twice-daily local schedule.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -511,7 +511,7 @@ mod tests {
 	}
 
 	#[test]
-	fn schedule_uses_reviewed_2026c_future_rules() {
+	fn schedule_uses_reviewed_2026e_future_rules() {
 		let edmonton =
 			ScheduleConfig { timezone: "America/Edmonton".to_owned(), ..ScheduleConfig::default() }
 				.slot("2027-01-15", ScheduleOccurrence::Day)
@@ -522,9 +522,14 @@ mod tests {
 		}
 		.slot("2026-10-15", ScheduleOccurrence::Day)
 		.expect("Morocco permanent UTC rule");
+		let winnipeg =
+			ScheduleConfig { timezone: "America/Winnipeg".to_owned(), ..ScheduleConfig::default() }
+				.slot("2027-01-15", ScheduleOccurrence::Day)
+				.expect("Manitoba permanent UTC-05 rule");
 
 		assert_eq!(edmonton.scheduled_unix_ms().expect("Edmonton slot"), 1_800_046_800_000);
 		assert_eq!(casablanca.scheduled_unix_ms().expect("Casablanca slot"), 1_792_076_400_000);
+		assert_eq!(winnipeg.scheduled_unix_ms().expect("Winnipeg slot"), 1_800_043_200_000);
 	}
 
 	#[test]

@@ -1085,9 +1085,10 @@ await test('Official method and rule stay identical across Rust, schemas, databa
     'scripts/check-aiq-2-cutover.ts',
   ];
   const sources = await Promise.all(
-    paths.map(
-      async (path): Promise<readonly [string, string]> => [path, await readFile(path, 'utf8')],
-    ),
+    paths.map(async (path): Promise<readonly [string, string]> => [
+      path,
+      await readFile(path, 'utf8'),
+    ]),
   );
   const retiredJointMethod = ['rasch_fractional', 'joint_map'].join('_');
 
@@ -1482,6 +1483,14 @@ await test('tool evidence schemas accept optional completed-command digest count
   strictEqual(matchesSchema(normalized, normalizedTaskResultSchema, normalizedSchema), false);
 });
 
+function submissionResults(value: JsonObject): unknown[] {
+  return requireArrayProperty(requireObjectProperty(value, 'payload'), 'results');
+}
+
+function firstSubmissionResult(value: JsonObject): JsonObject {
+  return requireObjectAt(submissionResults(value), 0, 'results');
+}
+
 await test('result submission schema rejects matrix, pair, status, byte, artifact, and tool mutations', async () => {
   const schema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
   const fixture = requireObject(
@@ -1493,34 +1502,31 @@ await test('result submission schema rejects matrix, pair, status, byte, artifac
     mutate(changed);
     strictEqual(matchesSchema(changed, schema, schema), false, label);
   };
-  const results = (value: JsonObject) =>
-    requireArrayProperty(requireObjectProperty(value, 'payload'), 'results');
-  const firstResult = (value: JsonObject) => requireObjectAt(results(value), 0, 'results');
 
   reject('matrix order and uniqueness are exact', (value) => {
     const models = requireArrayProperty(requireObjectProperty(value, 'payload'), 'models');
     models[1] = structuredClone(models[0]);
   });
   reject('one result per task and model pair is required', (value) => {
-    const values = results(value);
+    const values = submissionResults(value);
     const duplicate = structuredClone(requireObjectAt(values, 0, 'results'));
     duplicate.result_id = resultId(9_999);
     values[1] = duplicate;
   });
   reject('exactly 72 distinct task identities are required', (value) => {
-    firstResult(value).task_id = 'extra-task';
+    firstSubmissionResult(value).task_id = 'extra-task';
   });
   reject('unknown result statuses are rejected', (value) => {
-    firstResult(value).status = 'garbage';
+    firstSubmissionResult(value).status = 'garbage';
   });
   reject('completed results require a response', (value) => {
-    firstResult(value).response = null;
+    firstSubmissionResult(value).response = null;
   });
   reject('tool totals equal the saturating by-tool sum', (value) => {
-    requireObjectProperty(firstResult(value), 'tool_usage').total_calls = 1;
+    requireObjectProperty(firstSubmissionResult(value), 'tool_usage').total_calls = 1;
   });
   reject('result artifacts cannot use the workspace-manifest role', (value) => {
-    requireArrayProperty(firstResult(value), 'artifacts').push({
+    requireArrayProperty(firstSubmissionResult(value), 'artifacts').push({
       kind: 'workspace-manifest.json',
       content_hash: sha256(9_000),
       uri: `aiq-artifact://sha256/${hex(9_000)}/workspace-manifest.json`,
@@ -1528,7 +1534,7 @@ await test('result submission schema rejects matrix, pair, status, byte, artifac
     });
   });
   reject('artifact URIs bind the sibling digest and kind', (value) => {
-    requireArrayProperty(firstResult(value), 'artifacts').push({
+    requireArrayProperty(firstSubmissionResult(value), 'artifacts').push({
       kind: 'stdout.jsonl',
       content_hash: sha256(9_001),
       uri: `aiq-artifact://sha256/${hex(9_002)}/stdout.jsonl`,
@@ -1536,10 +1542,11 @@ await test('result submission schema rejects matrix, pair, status, byte, artifac
     });
   });
   reject('response limits count UTF-8 bytes', (value) => {
-    firstResult(value).response = '😀'.repeat(17);
+    firstSubmissionResult(value).response = '😀'.repeat(17);
   });
   reject('runner versions reject escaped or multiline signed text', (value) => {
-    requireObjectProperty(firstResult(value), 'provenance').runner_version = 'bad\nversion';
+    requireObjectProperty(firstSubmissionResult(value), 'provenance').runner_version =
+      'bad\nversion';
   });
 });
 

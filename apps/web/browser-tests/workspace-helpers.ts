@@ -2,12 +2,12 @@ import { expect, type Page } from '@playwright/test';
 
 export async function selectTheme(page: Page, setting: 'dark' | 'light' | 'system') {
   const option = page.getByRole('button', {
-    name: `Use ${setting === 'system' ? 'device' : setting} theme`,
+    name: `Use ${setting} theme`,
     exact: true,
   });
   const openMenu = !(await option.isVisible());
   if (openMenu)
-    await page.getByRole('button', { name: 'Open benchmark navigation', exact: true }).click();
+    await page.getByRole('button', { name: 'More benchmark navigation', exact: true }).click();
   await option.click();
   await expect(page.locator('html')).toHaveAttribute('data-theme-setting', setting);
   if (openMenu)
@@ -15,7 +15,10 @@ export async function selectTheme(page: Page, setting: 'dark' | 'light' | 'syste
 }
 
 export async function openStudyEvidence(page: Page, profile: string) {
-  const evidence = page.getByRole('button', { name: `Evidence for ${profile}`, exact: true });
+  const evidence = page.getByRole('button', {
+    name: `Details: Evidence for ${profile}`,
+    exact: true,
+  });
   if (await evidence.isVisible()) {
     await evidence.click();
     const content = page.getByRole('dialog', { name: profile, exact: true });

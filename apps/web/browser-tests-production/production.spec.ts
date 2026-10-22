@@ -226,7 +226,7 @@ test('production publishes the exact current complete 17-by-72 Official matrix',
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
     await expect(ability.locator('.core-interval')).not.toHaveText('');
-    await row.getByRole('button', { name: /^Evidence for / }).click();
+    await row.getByRole('button', { name: /^Details: Evidence for / }).click();
     const drawer = page.getByRole('dialog');
     await drawer.getByText('Run identity & original JSON', { exact: true }).click();
     const href = await drawer

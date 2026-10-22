@@ -1,4 +1,4 @@
-import AxeBuilder from '@axe-core/playwright';
+import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Page, type Locator } from '@playwright/test';
 
 async function fits(page: Page, table: Locator) {
@@ -98,7 +98,8 @@ for (const width of [320, 390]) {
     await expect(notes.locator('.table-notes-content')).not.toBeVisible();
     expect((await table.locator('thead').boundingBox())?.height).toBeLessThan(70);
     await headingsFit(table);
-    const costHeader = table.getByRole('button', { name: 'Settled cost', exact: true });
+    const costHeader = table.getByRole('button', { name: 'Cost USD total', exact: true });
+    await expect(costHeader).toHaveAccessibleDescription('Settled cost');
     await expect(costHeader.locator('svg')).toHaveCount(1);
     const initialHeadings = await table.locator('thead').boundingBox();
     await costHeader.click();
@@ -214,7 +215,7 @@ for (const width of [320, 390]) {
     expect((await table.locator('thead').boundingBox())?.height).toBeLessThan(90);
     await page.screenshot({ path: testInfo.outputPath(`harness-expanded-${width}.png`) });
     await detail
-      .getByRole('button', { name: 'Review Ledger refund accounting', exact: true })
+      .getByRole('button', { name: 'Details: Review Ledger refund accounting', exact: true })
       .click();
     await expect(
       page.getByRole('dialog', { name: 'Ledger refund accounting', exact: true }),
@@ -420,9 +421,9 @@ test('desktop tables retain complete columns without mobile disclosure controls'
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/benchmarks/memory');
   const table = page.locator('.study-results-table');
-  await expect(table.getByRole('button', { name: 'Individual quotes', exact: true })).toBeVisible();
+  await expect(table.getByRole('button', { name: 'Quotes matched', exact: true })).toBeVisible();
   await expect(
-    table.getByRole('button', { name: 'Evidence for OpenViking', exact: true }),
+    table.getByRole('button', { name: 'Details: Evidence for OpenViking', exact: true }),
   ).toBeVisible();
   await expect(
     table.getByRole('button', { name: 'Details for OpenViking', exact: true }),

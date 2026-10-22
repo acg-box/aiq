@@ -215,7 +215,7 @@ export function BenchmarkBoards() {
                 <Link
                   className="board-open-action"
                   href={`/benchmarks/${board.id}`}
-                  aria-label={`Open ${board.title} leaderboard`}
+                  aria-label={`Open leaderboard: ${board.title}`}
                 >
                   Open leaderboard
                   <ArrowRightIcon size={16} aria-hidden="true" />

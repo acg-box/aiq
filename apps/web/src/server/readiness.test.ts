@@ -243,6 +243,17 @@ async function withDependencyFetch(
   }
 }
 
+async function assertMissingCalibrationRpc(name: string): Promise<void> {
+  await assert.rejects(
+    withDependencyFetch((contracts) => {
+      const index = contracts.findIndex((contract) => contract.name === name);
+      assert.ok(index >= 0);
+      contracts.splice(index, 1);
+    }),
+    /role_scoped_rpc_contract probe failed/,
+  );
+}
+
 void describe('bounded readiness probe', () => {
   void it('preserves explicit non-production local synthetic readiness', async () => {
     const response = await createReadinessHandler({
@@ -701,16 +712,6 @@ void describe('bounded readiness probe', () => {
       },
     });
 
-    const assertMissingCalibrationRpc = async (name: string): Promise<void> => {
-      await assert.rejects(
-        withDependencyFetch((contracts) => {
-          const index = contracts.findIndex((contract) => contract.name === name);
-          assert.ok(index >= 0);
-          contracts.splice(index, 1);
-        }),
-        /role_scoped_rpc_contract probe failed/,
-      );
-    };
     await assertMissingCalibrationRpc('aiq_stage_calibration_verification');
     await assertMissingCalibrationRpc('aiq_record_calibration_attestation');
     await assertMissingCalibrationRpc('aiq_publish_calibration_evidence');

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { deepStrictEqual, strictEqual, throws } from 'node:assert/strict';
+import { deepStrictEqual, match, strictEqual, throws } from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -531,7 +531,7 @@ await test('the generated candidate.20 public source is deterministic', async ()
   );
 });
 
-await test('candidate.20 uses the exact checked-in Node, npm, and TypeScript identities', async () => {
+await test('candidate.20 preserves its runtime identities with the current Web compiler', async () => {
   const rootPackage = jsonObject(
     JSON.parse(await readFile(join(repositoryRoot, 'package.json'), 'utf8')),
     'root package',
@@ -554,17 +554,23 @@ await test('candidate.20 uses the exact checked-in Node, npm, and TypeScript ide
   strictEqual(rootPackage.packageManager, 'npm@11.17.0');
   strictEqual(npm.status, 0);
   strictEqual(npm.stdout.trim(), '11.17.0');
-  strictEqual(rootDevelopment.typescript, '7.0.2');
-  strictEqual(webDevelopment.typescript, '5.9.3');
-  strictEqual(webDevelopment['typescript-compiler-api'], 'npm:typescript@~5.9.0');
-  strictEqual(jsonObject(packages['node_modules/typescript'], 'root TypeScript').version, '7.0.2');
-  strictEqual(
-    jsonObject(packages['apps/web/node_modules/typescript'], 'Web TypeScript').version,
-    '5.9.3',
+  match(String(rootDevelopment.typescript), /^~7\.0\.\d+$/u);
+  strictEqual(webDevelopment.typescript, rootDevelopment.typescript);
+  match(
+    String(webDevelopment['typescript-compiler-api']),
+    /^npm:@typescript\/typescript6@~6\.0\.\d+$/u,
   );
-  strictEqual(
-    jsonObject(packages['node_modules/typescript-compiler-api'], 'compiler API alias').version,
-    '5.9.3',
+  strictEqual(jsonObject(packages['node_modules/typescript'], 'root TypeScript').version, '7.0.2');
+  strictEqual(packages['apps/web/node_modules/typescript'], undefined);
+  const compilerApi = jsonObject(
+    packages['apps/web/node_modules/typescript-compiler-api'],
+    'compiler API alias',
+  );
+  strictEqual(compilerApi.name, '@typescript/typescript6');
+  match(String(compilerApi.version), /^6\.0\.\d+$/u);
+  match(
+    String(jsonObject(packages['node_modules/@typescript/old'], 'compatibility compiler').version),
+    /^6\.0\.\d+$/u,
   );
 });
 
@@ -947,6 +953,24 @@ await test('private task bytes derive the production response shapes directly', 
   }
 });
 
+function mutatePrivateTaskChecks(
+  sourceCase: PrivateSourceCase,
+  mutate: (checks: JsonObject[]) => void,
+): string {
+  const task: unknown = JSON.parse(sourceCase.task_bytes);
+  const root = jsonObject(task, `${sourceCase.task_id} private task`);
+  const evaluator = jsonObject(root.evaluator, `${sourceCase.task_id} evaluator`);
+  const external = jsonObject(evaluator.external, `${sourceCase.task_id} external evaluator`);
+  const configuration = jsonObject(
+    external.configuration,
+    `${sourceCase.task_id} evaluator configuration`,
+  );
+  const checks = objectArray(configuration.checks, `${sourceCase.task_id} checks`);
+  mutate(checks);
+  configuration.checks = checks;
+  return JSON.stringify(root);
+}
+
 await test('private response authority mutations fail closed at the byte-derived owner', () => {
   const sourceByTask = new Map(
     privateSourceCases.map((sourceCase) => [sourceCase.task_id, sourceCase]),
@@ -955,23 +979,6 @@ await test('private response authority mutations fail closed at the byte-derived
     const sourceCase = sourceByTask.get(taskId);
     if (sourceCase === undefined) throw new TypeError(`${taskId} private source case is missing.`);
     return sourceCase;
-  };
-  const mutateTask = (
-    sourceCase: PrivateSourceCase,
-    mutate: (checks: JsonObject[]) => void,
-  ): string => {
-    const task: unknown = JSON.parse(sourceCase.task_bytes);
-    const root = jsonObject(task, `${sourceCase.task_id} private task`);
-    const evaluator = jsonObject(root.evaluator, `${sourceCase.task_id} evaluator`);
-    const external = jsonObject(evaluator.external, `${sourceCase.task_id} external evaluator`);
-    const configuration = jsonObject(
-      external.configuration,
-      `${sourceCase.task_id} evaluator configuration`,
-    );
-    const checks = objectArray(configuration.checks, `${sourceCase.task_id} checks`);
-    mutate(checks);
-    configuration.checks = checks;
-    return JSON.stringify(root);
   };
 
   const coding = requiredSource('coding-01');
@@ -987,14 +994,14 @@ await test('private response authority mutations fail closed at the byte-derived
   for (const [label, taskBytes] of [
     [
       'missing complete policy',
-      mutateTask(coding, (checks) => {
+      mutatePrivateTaskChecks(coding, (checks) => {
         const index = checks.findIndex((check) => check.check_id === 'complete_workspace_policy');
         checks.splice(index, 1);
       }),
     ],
     [
       'duplicate complete policy',
-      mutateTask(coding, (checks) => {
+      mutatePrivateTaskChecks(coding, (checks) => {
         const complete = checks.find((check) => check.check_id === 'complete_workspace_policy');
         if (complete === undefined) throw new TypeError('complete policy is missing');
         checks.push(structuredClone(complete));
@@ -1007,7 +1014,7 @@ await test('private response authority mutations fail closed at the byte-derived
       /exactly one complete workspace policy/u,
     );
   }
-  const nonHardComplete = mutateTask(coding, (checks) => {
+  const nonHardComplete = mutatePrivateTaskChecks(coding, (checks) => {
     const complete = checks.find((check) => check.check_id === 'complete_workspace_policy');
     if (complete === undefined) throw new TypeError('complete policy is missing');
     complete.hard_gate = false;
@@ -1023,7 +1030,7 @@ await test('private response authority mutations fail closed at the byte-derived
   );
 
   const data = requiredSource('data-processing-01');
-  const reboundTarget = mutateTask(data, (checks) => {
+  const reboundTarget = mutatePrivateTaskChecks(data, (checks) => {
     const report = checks.find((check) => check.check_id === 'report');
     if (report === undefined) throw new TypeError('report check is missing');
     report.path = 'input/export.csv';
@@ -1039,7 +1046,7 @@ await test('private response authority mutations fail closed at the byte-derived
   );
 
   const debugging = requiredSource('debugging-02');
-  const protectedChangeEvidence = mutateTask(debugging, (checks) => {
+  const protectedChangeEvidence = mutatePrivateTaskChecks(debugging, (checks) => {
     const complete = checks.find((check) => check.check_id === 'complete_workspace_policy');
     if (complete === undefined) throw new TypeError('complete policy is missing');
     complete.progress_changed_from_sha256 = digestMap(['README.md']);
