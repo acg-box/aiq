@@ -1,3 +1,35 @@
+# Release dependency review, 2026-10-22
+
+The release review found known advisories in the existing Web dependency graph.
+The scoped patch roll changes Next.js 16.3.0 to 16.3.8, Sharp 0.35.3 to 0.35.5,
+source-map-js 1.2.1 to 1.2.2, and Tinypool 2.1.0 to 2.1.2. Node, npm, React,
+TypeScript, Playwright, and the formatter version are unchanged.
+
+Next stays on the 16.3 line. Its [16.3.8 release](https://github.com/vercel/next.js/releases/tag/v16.3.8)
+maps to commit `b0fad0d45eb4c4430fda5eeeb442e8a5af08a5f6` and was published on
+2026-09-30. The obsolete Sharp override is removed so Next can use its patched
+image dependency. The formatter's Tinypool override selects the patched 2.1
+line without a formatter upgrade. See the
+[Sharp advisory](https://github.com/advisories/GHSA-wq5f-xc86-pv6w) and
+[Tinypool advisory](https://github.com/advisories/GHSA-85c8-ppgw-ccpr).
+
+The generated lockfile changes only existing package identities, including
+platform-specific SWC and Sharp binaries. Package sources remain the npm
+registry; no changed package declares an install script. Resolution and install
+used `--ignore-scripts`. The 2026-10-22 npm advisory scan changed from five
+affected packages to zero. Registry checks verified 57 package signatures in
+both graphs, with 36 baseline and 37 final provenance attestations. These checks
+establish the stated origin and known-advisory evidence, not a general safety
+guarantee. The complete repository verification gate runs on the final locked
+graph before merge.
+
+Dependency decision: `risk_coverage: complete`, `risk_delta: improved`,
+`decision: proceed`. Unrelated Dependabot updates remain outside this patch
+roll. The detailed baseline, final audit, signature, and graph records are in
+the release receipt directory named below.
+
+---
+
 # Release regression: unified benchmark workspace, 2026-10-22
 
 This review covers the homepage and the AI Intelligence, Harness Rank, and Mem
