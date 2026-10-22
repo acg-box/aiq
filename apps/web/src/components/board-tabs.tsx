@@ -35,8 +35,10 @@ export function BoardTabs({ tabs }: { tabs: { id: string; label: string; content
     return () => cancelAnimationFrame(frame);
   }, [activeView, prefix]);
   function startView(id: string) {
-    if (id === activeView) window.scrollTo({ top: 0, behavior: 'instant' });
-    else {
+    if (id === activeView) {
+      if (requestedView.current === null) window.scrollTo({ top: 0, behavior: 'instant' });
+      requestedView.current = null;
+    } else {
       rememberWorkspacePosition();
       requestedView.current = id;
     }
