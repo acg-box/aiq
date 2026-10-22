@@ -47,54 +47,41 @@ function requirePageEvidence(condition: boolean, message: string): asserts condi
 }
 
 export function productionPageEvidenceExpectation(path: string): ProductionPageEvidenceExpectation {
-  const pathname = new URL(path, 'https://aiq.invalid').pathname;
-  if (pathname === '/') {
-    return {
-      requiredPublishedLabels: [
-        'Data provenance',
-        'Official efficiency provenance',
-        'Run archive provenance',
-        'Comparison matrix provenance',
-        'Benchmark method provenance',
-        'Runner network provenance',
-      ],
-      allowedEmptyLabels: ['Calibration status'],
-    };
+  const url = new URL(path, 'https://aiq.invalid');
+  const pathname = url.pathname;
+  if (pathname === '/' || pathname === '/about' || pathname.startsWith('/benchmarks/memory'))
+    return { requiredPublishedLabels: [], allowedEmptyLabels: [] };
+  if (pathname === '/benchmarks/intelligence') {
+    if (url.searchParams.get('view') === 'method')
+      return { requiredPublishedLabels: [], allowedEmptyLabels: [] };
+    if (url.searchParams.get('view') === 'data')
+      return {
+        requiredPublishedLabels: ['Official efficiency provenance'],
+        allowedEmptyLabels: [],
+      };
+    if (url.searchParams.has('range'))
+      return {
+        requiredPublishedLabels: [
+          'Matrix entries provenance',
+          'Trend points provenance',
+          'Historical efficiency provenance',
+        ],
+        allowedEmptyLabels: [],
+      };
+    return { requiredPublishedLabels: [], allowedEmptyLabels: [] };
   }
-  if (pathname === '/trends') {
-    return {
-      requiredPublishedLabels: [
-        'Matrix entries provenance',
-        'Trend points provenance',
-        'Historical efficiency provenance',
-      ],
-      allowedEmptyLabels: [],
-    };
-  }
-  if (pathname === '/calibrations') {
+  if (pathname === '/benchmarks/intelligence/calibrations')
     return {
       requiredPublishedLabels: [],
       allowedEmptyLabels: ['Calibration register status', 'Selected-run score matrix status'],
     };
-  }
-  if (pathname === '/runs') {
-    return { requiredPublishedLabels: ['Run archive provenance'], allowedEmptyLabels: [] };
-  }
-  if (pathname === '/compare') {
-    return { requiredPublishedLabels: ['Comparison matrix provenance'], allowedEmptyLabels: [] };
-  }
-  if (pathname === '/method') {
-    return { requiredPublishedLabels: ['Benchmark method provenance'], allowedEmptyLabels: [] };
-  }
-  if (pathname === '/radar') {
+  if (pathname === '/benchmarks/intelligence/verification')
     return { requiredPublishedLabels: ['Runner network provenance'], allowedEmptyLabels: [] };
-  }
-  if (/^\/runs\/[^/]+$/.test(pathname)) {
+  if (/^\/benchmarks\/intelligence\/records\/[^/]+$/.test(pathname))
     return {
       requiredPublishedLabels: ['Data provenance', 'Official run efficiency provenance'],
       allowedEmptyLabels: [],
     };
-  }
   return { requiredPublishedLabels: ['Data provenance'], allowedEmptyLabels: [] };
 }
 

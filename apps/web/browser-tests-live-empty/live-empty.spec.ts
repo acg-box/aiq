@@ -32,16 +32,11 @@ const test = base.extend<LiveEmptyFixtures>({
 });
 
 const routes = [
-  '/',
-  '/runs',
-  '/calibrations',
-  '/compare',
-  '/trends?range=day',
-  '/trends?range=week',
-  '/trends?range=month',
-  '/trends?range=all',
-  '/method',
-  '/radar',
+  '/benchmarks/intelligence',
+  '/benchmarks/intelligence?view=records',
+  '/benchmarks/intelligence?view=method',
+  '/benchmarks/intelligence/calibrations',
+  '/benchmarks/intelligence/verification',
 ] as const;
 
 function expectPrivateNoStore(response: Response | null) {
@@ -74,8 +69,7 @@ for (const route of routes) {
     const response = await page.goto(route);
     expect(response?.status()).toBe(200);
     expectPrivateNoStore(response);
-    await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
-    await expect(page.locator('.live-pill')).toHaveAttribute('title', 'Published public data');
+    await expect(page.getByRole('navigation', { name: 'Core navigation' })).toHaveCount(0);
     await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
     await expect(page.locator('main h1').first()).toBeVisible();
     expect(await new AxeBuilder({ page }).analyze()).toMatchObject({ violations: [] });
@@ -83,50 +77,30 @@ for (const route of routes) {
   });
 }
 
-test('the live empty overview preserves all 17 fixed matrix identities without scores', async ({
+test('an empty published board keeps design counts separate from measurements', async ({
   page,
 }) => {
-  const response = await page.goto('/');
+  const response = await page.goto('/benchmarks/intelligence');
   expectPrivateNoStore(response);
-  await page.locator('#results > details.evidence-notes > summary').click();
-  await expect(page.getByText('No published evidence', { exact: true }).first()).toBeVisible();
-  await page.getByText('Read all configuration values as a table', { exact: true }).click();
-  const table = page.getByRole('region', {
-    name: 'Descriptively ordered public index table',
-  });
-  await expect(table.getByRole('row')).toHaveCount(18);
-  await expect(table.getByRole('link', { name: 'Inspect' })).toHaveCount(0);
   await expect(
-    page.getByText('17 configurations · Publication pending', { exact: true }),
+    page.getByRole('heading', { name: 'No Official results published.', exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('region', { name: 'Compare configurations' })).toHaveCount(0);
-  const ranking = page.getByRole('region', { name: 'Top configurations' });
-  await expect(ranking).toContainText('Publication pending');
-  await expect(ranking).toContainText('Score unavailable');
-  await expect(ranking).toContainText('No scored configurations are available.');
-  await expect(page.getByText('17 configurations · 0 task cells', { exact: true })).toHaveCount(0);
-  const deferredMatrix = page.locator('[data-homepage-analytics="matrix"]');
-  await expect(deferredMatrix).toHaveClass(/homepage-analytics-empty/);
-  await deferredMatrix.scrollIntoViewIfNeeded();
-  await expect(page.getByRole('heading', { name: 'Score by configuration' })).toBeVisible();
-  await expect(deferredMatrix.locator('.matrix-chart-frame')).toHaveCount(0);
-  await expect(page.getByText(/scored configurations shown/)).toHaveCount(0);
-  const emptyMatrixBox = await deferredMatrix.boundingBox();
-  expect(emptyMatrixBox?.height ?? Number.POSITIVE_INFINITY).toBeLessThan(700);
-  await expect(page.getByRole('status', { name: 'Official efficiency status' })).toContainText(
-    'The live public read is available, but it has no evidence to display.',
+  await expect(page.getByRole('list', { name: 'Board coverage' })).toContainText(
+    '72 tasks in design',
   );
+  await expect(page.getByRole('button', { name: /^Evidence for / })).toHaveCount(0);
+  await expect(page.getByLabel('Model', { exact: true })).toBeDisabled();
 });
 
 test('the live empty calibration register does not substitute seed evidence', async ({ page }) => {
-  await page.goto('/calibrations');
+  await page.goto('/benchmarks/intelligence/calibrations');
   await expect(page.getByRole('region', { name: 'Public calibration register' })).toHaveCount(0);
   await expect(page.getByText('No published evidence', { exact: true })).toBeVisible();
   await expect(page.getByText('Synthetic seed', { exact: true })).toHaveCount(0);
 });
 
 test('the live empty trends page reports matrix and point reads separately', async ({ page }) => {
-  const response = await page.goto('/trends');
+  const response = await page.goto('/benchmarks/intelligence?view=records&range=all');
   expectPrivateNoStore(response);
   await expect(page.getByRole('status', { name: 'Matrix entries status' })).toBeVisible();
   await expect(page.getByRole('status', { name: 'Trend points status' })).toBeVisible();
@@ -136,7 +110,7 @@ test('an unknown live run detail remains an uncached 404 without synthetic fallb
   page,
   runtimeFailures,
 }) => {
-  const response = await page.goto('/runs/unknown-live-run');
+  const response = await page.goto('/benchmarks/intelligence/records/unknown-live-run');
   expect(response?.status()).toBe(404);
   expectPrivateNoStore(response);
   await expect(

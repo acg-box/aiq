@@ -1,0 +1,87 @@
+{
+  "id": "post-memory-0-1",
+  "kind": "reader",
+  "seconds": 4.310391666018404,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1906,
+    "completion_tokens": 794,
+    "total_tokens": 2700,
+    "cost": 0.0015246,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0015246,
+      "upstream_inference_prompt_cost": 0.0005718,
+      "upstream_inference_completions_cost": 0.0009528
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 360,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "For Larch’s next outage, Mara should use REPLAY-0-632: the August 22 review instructs use of the recovery procedure validated on August 8, and the August 8 record shows REPLAY-0-632 was tested and restored the missing updates. The delivery-mode change was caused by the GATE-0-519 outages; on August 15 Mara approved switching Larch from BATCH-0-741 to STREAM-0-286, and the August 22 review kept that delivery choice. The August 8 meeting itself did not approve a delivery-mode change.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "For the next outage, use the recovery procedure validated on August 8."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "The team tested REPLAY-0-632, which restored the missing updates."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+        "quote": "Mara approved switching Larch from BATCH-0-741 to STREAM-0-286."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+        "quote": "The cause was the GATE-0-519 outages recorded on August 8"
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "Keep the August 15 delivery choice."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"For Larch’s next outage, Mara should use REPLAY-0-632: the August 22 review instructs use of the recovery procedure validated on August 8, and the August 8 record shows REPLAY-0-632 was tested and restored the missing updates. The delivery-mode change was caused by the GATE-0-519 outages; on August 15 Mara approved switching Larch from BATCH-0-741 to STREAM-0-286, and the August 22 review kept that delivery choice. The August 8 meeting itself did not approve a delivery-mode change.\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"For the next outage, use the recovery procedure validated on August 8.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"The team tested REPLAY-0-632, which restored the missing updates.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"No change of delivery mode was approved at this meeting.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11\",\"quote\":\"Mara approved switching Larch from BATCH-0-741 to STREAM-0-286.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11\",\"quote\":\"The cause was the GATE-0-519 outages recorded on August 8\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"Keep the August 15 delivery choice.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

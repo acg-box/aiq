@@ -11,7 +11,7 @@ export default function NotFound() {
     <section className="page-shell empty-page">
       <span className="eyebrow">404 · Not found</span>
       <h1>This evidence is not in the index.</h1>
-      <p>The run may not exist, or the selected public view did not return it.</p>
+      <p>The study, case, or run may not exist, or its public source is unavailable.</p>
       <Link className="button primary" href="/">
         Return to the index
       </Link>

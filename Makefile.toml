@@ -5,16 +5,18 @@ default_to_workspace = false
 skip_core_tasks = true
 
 # Check
-# | task           | type      | cwd |
-# | -------------- | --------- | --- |
-# | check          | composite |     |
-# | check-database | command   |     |
-# | typecheck      | command   |     |
+# | task                      | type      | cwd |
+# | ------------------------- | --------- | --- |
+# | check                     | composite |     |
+# | check-database            | command   |     |
+# | check-database-connection | command   |     |
+# | typecheck                 | command   |     |
 
 [tasks.check]
 clear = true
 dependencies = [
 	"check-database",
+	"check-studies",
 	"typecheck",
 	"lint",
 	"test",
@@ -23,6 +25,14 @@ dependencies = [
 [tasks.check-database]
 command = "node"
 args = ["scripts/check-database-schema.ts"]
+
+[tasks.check-database-connection]
+command = "node"
+args = ["databases/psql.ts", "databases/connection-check.sql"]
+
+[tasks.check-studies]
+command = "node"
+args = ["scripts/check-studies.ts"]
 
 [tasks.typecheck]
 command = "npm"
@@ -202,30 +212,25 @@ args = ["run", "storage:lifecycle"]
 # | smoke-database            | command |     |
 # | smoke-calibration-database | command |     |
 # | smoke-live-web            | command |     |
+# | smoke-workspace-web       | command |     |
 # | smoke-subscription        | command |     |
 # | smoke-controlled-subscription | command |     |
 
 [tasks.smoke-database]
-script = '''
-if [ -z "${AIQ_DATABASE_URL:-}" ]; then
-	echo "AIQ_DATABASE_URL is required for smoke-database." >&2
-	exit 2
-fi
-exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/smoke.sql
-'''
+command = "node"
+args = ["databases/psql.ts", "databases/smoke.sql"]
 
 [tasks.smoke-calibration-database]
-script = '''
-if [ -z "${AIQ_DATABASE_URL:-}" ]; then
-	echo "AIQ_DATABASE_URL is required for smoke-calibration-database." >&2
-	exit 2
-fi
-exec psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 --file databases/calibration-integration.sql
-'''
+command = "node"
+args = ["databases/psql.ts", "databases/calibration-integration.sql"]
 
 [tasks.smoke-live-web]
 command = "npm"
 args = ["run", "test:browser:live-stack", "--workspace", "@aiq/web"]
+
+[tasks.smoke-workspace-web]
+command = "npm"
+args = ["run", "test:browser:workspace-production", "--workspace", "@aiq/web"]
 
 [tasks.require-subscription-smoke-platform]
 private = true
@@ -313,6 +318,11 @@ args = ["run", "test:coverage", "--workspace", "@aiq/web"]
 dependencies = ["build-web"]
 command = "npm"
 args = ["run", "test:browser:prebuilt", "--workspace", "@aiq/web"]
+
+[tasks.test-browser-studies]
+dependencies = ["build-web"]
+command = "npm"
+args = ["run", "test:browser:studies", "--workspace", "@aiq/web"]
 
 [tasks.build-real-codex-host-probe]
 private = true

@@ -5,13 +5,11 @@ import { describe, it } from 'node:test';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 const livePublicRoutes = [
-  'apps/web/src/app/page.tsx',
-  'apps/web/src/app/compare/page.tsx',
-  'apps/web/src/app/trends/page.tsx',
-  'apps/web/src/app/method/page.tsx',
-  'apps/web/src/app/radar/page.tsx',
-  'apps/web/src/app/runs/page.tsx',
-  'apps/web/src/app/runs/[id]/page.tsx',
+  'apps/web/src/app/benchmarks/[id]/page.tsx',
+  'apps/web/src/app/benchmarks/intelligence/records/[id]/page.tsx',
+  'apps/web/src/app/benchmarks/intelligence/calibrations/page.tsx',
+  'apps/web/src/app/benchmarks/intelligence/calibrations/[id]/page.tsx',
+  'apps/web/src/app/benchmarks/intelligence/verification/page.tsx',
 ] as const;
 
 const serverApiRoutes = [
@@ -30,7 +28,7 @@ void describe('live public route rendering', () => {
 
       assert.match(
         source,
-        /export const dynamic = ['"]force-dynamic['"];/,
+        /export const dynamic = ['"]force-dynamic['"];|await connection\(\)/,
         'A build-time snapshot would freeze twice-daily benchmark updates until redeployment.',
       );
     });
@@ -42,7 +40,7 @@ void describe('controlled API route runtime', () => {
     void it(`${route} stays dynamic on the Node.js runtime`, () => {
       const source = readFileSync(join(repositoryRoot, route), 'utf8');
 
-      assert.match(source, /export const dynamic = ['"]force-dynamic['"];/);
+      assert.match(source, /export const dynamic = ['"]force-dynamic['"];|await connection\(\)/);
       assert.match(source, /export const runtime = ['"]nodejs['"];/);
     });
   }

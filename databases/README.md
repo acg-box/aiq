@@ -1,5 +1,104 @@
 # Database authority
 
+This directory remains the sole SQL authority. The initial retained research
+studies use reviewed, checked-in public snapshots and content-addressed files;
+they do not read Core views or change this database. Do not run the destructive
+initializer to publish study pages. A later query or upload workflow can add
+study metadata and Storage objects here through a reviewed additive transition.
+The fixed Core matrix and publication constraints below apply to Core data.
+
+## Production connection
+
+Use Session Pooler for all production PostgreSQL commands. Personal Infisical
+`prod:/aiq/SUPABASE_DATABASE_URL` owns the complete connection URL. Inject it as
+`AIQ_DATABASE_URL` into the database command. Do not copy it into the repository,
+shell history, or web application settings.
+
+| Setting         | Value                                    |
+| --------------- | ---------------------------------------- |
+| Host            | `aws-0-ca-central-1.pooler.supabase.com` |
+| Port            | `5432`                                   |
+| Database        | `postgres`                               |
+| Connection user | `postgres.xxnszykaeapolqdnhalx`          |
+| TLS             | `sslmode=require`                        |
+
+The initializer, reset command, SQL command wrapper, and cutover check accept
+only this production target. They reject direct-host URLs and transaction mode
+on port `6543`. The SQL wrapper passes credentials through the child process
+environment, not command-line arguments.
+
+Run this read-only connection check without initialization or a reset:
+
+```sh
+/usr/local/bin/acg secret --env prod --path /aiq \
+  --inject AIQ_DATABASE_URL=SUPABASE_DATABASE_URL -- \
+  cargo make check-database-connection
+```
+
+The check reports the client connection, TLS, database identity, and read-only
+transaction state. It does not insert data or change the schema. The same
+Session Pooler provides PostgreSQL session state for the repository's SQL
+commands. See the [Supabase connection guide](https://supabase.com/docs/guides/database/connecting-to-postgres#shared-pooler-session-mode).
+
+## ELF retirement check, 2026-10-22
+
+The read-only inventory of project `xxnszykaeapolqdnhalx` found no ELF-owned
+database, schema, relation, function, role, bucket, or Storage object. All 42
+AIQ private tables were scanned for ELF references. The scan found none and
+used a read-only role that bypasses RLS. No remote rows needed deletion.
+The retained Core inventory remains 34 runs, 2,448 task results, 17 model
+configurations, and 34 score snapshots. These are observed counts, not a
+current Core publication or an initialization receipt.
+
+All 13 unused local ELF database and baseline data volumes were removed from
+the `orbstack` Docker context. The 85 unrelated volumes and 10
+containers were preserved.
+
+Management access uses Personal Infisical `prod:/aiq/SUPABASE_ACCESS_TOKEN`.
+The replacement token is `aiq-managed-2026-10-22`, expires on October 29,
+2026, and is scoped to this project with Project Settings read access and
+Database read/write access. It was saved with the official Infisical CLI and
+verified through a fresh `acg secret` injection. The expired `aiq` token was
+deleted. No initializer or reset command was run. The Management API supplied
+the verified read access for this check. The failed database connection
+credential was then replaced by the rotation below.
+
+## Database credential rotation, 2026-10-22
+
+The official Supabase Management API changed the `postgres` password for
+project `xxnszykaeapolqdnhalx`. The official Infisical CLI saved the new
+PostgreSQL URL at Personal Infisical `prod:/aiq/SUPABASE_DATABASE_URL`.
+No manual credential copy was required. The saved URL uses the supported
+session pooler `aws-0-ca-central-1.pooler.supabase.com:5432`, database
+`postgres`, and user `postgres.xxnszykaeapolqdnhalx`.
+
+A fresh `acg secret` injection supplied that URL to a native `psql` check.
+The client authenticated, negotiated TLS 1.3, and completed a read-only
+transaction as database user `postgres`. The before/after SHA-256 content
+summaries match for all 17 model configurations, 34 runs, 34 score snapshots,
+and 2,448 task results. No result or schema was changed.
+
+The temporary token `aiq-db-rotation-2026-10-22` had only Database Config
+read/write access for this project, with a 24-hour expiry. It was revoked
+after verification. The token disappeared from the account list, and a
+configuration API request with it returned HTTP 401. The existing managed
+AIQ token keeps its original permissions and expiry.
+
+## Connection decision, 2026-10-22
+
+Session Pooler is the selected production connection. The current network has
+no IPv6 egress. Direct-host troubleshooting is closed; no IPv6 allocation,
+proxy change, or direct-host repair is pending. All temporary network rules
+and profile changes from the investigation were removed.
+
+A fresh Infisical-injected `psql` connection through Session Pooler passes
+with TLS 1.3. The counts and SHA-256 content summaries match the original
+inventory for all 17 model configurations, 34 runs, 34 score snapshots, and
+2,448 task results. The connection change preserves existing AI Intelligence
+results. No initializer, reset, or benchmark run was used for this verification.
+
+## Desired state and initialization
+
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization command.
 `databases/reset.ts` is the production greenfield replacement command. It
@@ -8,12 +107,9 @@ initializer. It is not a migration or an upgrade path.
 
 The initializer opens one PostgreSQL connection, starts one transaction, applies
 the schema, inserts public reference data, checks readiness, and commits. The
-production connection must use either the direct host
-`db.xxnszykaeapolqdnhalx.supabase.co` as user `postgres`, or the exact session
-pooler `aws-0-ca-central-1.pooler.supabase.com:5432` as user
-`postgres.xxnszykaeapolqdnhalx`. Both forms require database `postgres` and bind
-initialization to the personal Supabase project documented by repository
-authority. The transaction-pooler port is not accepted. Tests and local
+production connection must use the exact Session Pooler target in
+[Production connection](#production-connection). This binds initialization to
+the personal Supabase project documented by repository authority. Tests and local
 development can target only a loopback host when
 `NODE_ENV` is `test` or `development` and
 `AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true` is set explicitly. Production
@@ -37,9 +133,10 @@ with one of those exact names rejects initialization. It does not use a broad
 outside the cleanup boundary.
 
 ```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
-cargo make init-database
+/usr/local/bin/acg secret --env prod --path /aiq \
+  --inject AIQ_DATABASE_URL=SUPABASE_DATABASE_URL -- \
+  cargo make init-database
 ```
 
 The Supabase database must already provide `anon`, `authenticated`,
@@ -154,18 +251,20 @@ of each AIQ gateway role to `postgres`; Supabase creates these grants with a new
 role. Thus, the internal schema cascade cannot remove an external dependent.
 
 ```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
-cargo make reset-database --dry-run
+/usr/local/bin/acg secret --env prod --path /aiq \
+  --inject AIQ_DATABASE_URL=SUPABASE_DATABASE_URL -- \
+  cargo make reset-database --dry-run
 ```
 
 Review the inventory. Then run the one-step replacement with the exact project
 and namespace confirmation:
 
 ```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_SUPABASE_SERVICE_ROLE_KEY='<controlled-service-role-key>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
-cargo make reset-database --confirm xxnszykaeapolqdnhalx:aiq_private
+/usr/local/bin/acg secret --env prod --path /aiq \
+  --inject AIQ_DATABASE_URL=SUPABASE_DATABASE_URL -- \
+  cargo make reset-database --confirm xxnszykaeapolqdnhalx:aiq_private
 ```
 
 Before it makes a Storage request or starts PostgreSQL cleanup, the destructive
@@ -365,7 +464,9 @@ initialized disposable database. It uses the initializer-owned exact catalog
 and does not add or replace catalog rows.
 
 ```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' cargo make smoke-calibration-database
+NODE_ENV=test AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true \
+AIQ_DATABASE_URL='<disposable-loopback-postgres-url>' \
+cargo make smoke-calibration-database
 ```
 
 Run `synthetic-demo.sql`, `integration.sql`, and `calibration-integration.sql`

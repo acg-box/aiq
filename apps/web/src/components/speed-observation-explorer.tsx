@@ -1,17 +1,19 @@
 'use client';
 
+import { ExpandableTableRow, RowDetailContext, TableRowFacts } from './expandable-table-row.tsx';
+import { TableColumnHeading } from './table-column-heading.tsx';
 import type { EChartsCoreOption } from 'echarts/core';
 import { useMemo, useState } from 'react';
+import { alphabetical } from '../display-order.ts';
 
 import type {
   ModelFamily,
   PublicSpeedObservation,
   ReasoningTier,
-  SpeedMode,
   SpeedTrendPoint,
 } from '../data/types.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
-import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
+import { comparisonColor, configurationStyle } from '../data/comparison-palette.ts';
 import { EChartsChart } from './echarts-chart.tsx';
 import { pairedSpeedupRows } from './speed-observation-analysis.ts';
 
@@ -20,7 +22,7 @@ type SpeedScope = ModelFamily | 'All';
 type ReasoningScope = ReasoningTier | 'All';
 type SpeedView = 'latest' | 'history';
 
-const families: readonly SpeedScope[] = ['All', 'Sol', 'Terra', 'Luna'];
+const families: readonly SpeedScope[] = ['All', 'Luna', 'Sol', 'Terra'];
 const reasoningLevels: readonly ReasoningScope[] = [
   'All',
   'low',
@@ -30,11 +32,6 @@ const reasoningLevels: readonly ReasoningScope[] = [
   'max',
   'ultra',
 ];
-const modeColor: Record<SpeedMode, string> = {
-  normal: '#7d8995',
-  fast: '#8ed6bd',
-};
-
 function metricValue(
   row: PublicSpeedObservation | SpeedTrendPoint,
   metric: SpeedMetric,
@@ -84,15 +81,20 @@ function readTooltipItem(value: unknown): {
     value === null ||
     !('seriesName' in value) ||
     typeof value.seriesName !== 'string' ||
-    !('data' in value) ||
-    !Array.isArray(value.data) ||
-    !value.data.every(
-      (item: unknown) => item === null || typeof item === 'number' || typeof item === 'string',
-    )
+    !('data' in value)
   ) {
     return null;
   }
-  return { seriesName: value.seriesName, data: value.data };
+  const data =
+    typeof value.data === 'object' && value.data !== null && 'value' in value.data
+      ? value.data.value
+      : value.data;
+  return Array.isArray(data) &&
+    data.every(
+      (item: unknown) => item === null || typeof item === 'number' || typeof item === 'string',
+    )
+    ? { seriesName: value.seriesName, data }
+    : null;
 }
 
 export function SpeedObservationExplorer({
@@ -107,11 +109,19 @@ export function SpeedObservationExplorer({
   const [reasoning, setReasoning] = useState<ReasoningScope>('All');
   const [view, setView] = useState<SpeedView>('latest');
   const visibleObservations = useMemo(
-    () => observations.filter((row) => filterConfiguration(row, family, reasoning)),
+    () =>
+      alphabetical(
+        observations.filter((row) => filterConfiguration(row, family, reasoning)),
+        (row) => row.modelFamily,
+      ),
     [family, observations, reasoning],
   );
   const visibleTrends = useMemo(
-    () => trendPoints.filter((row) => filterConfiguration(row, family, reasoning)),
+    () =>
+      alphabetical(
+        trendPoints.filter((row) => filterConfiguration(row, family, reasoning)),
+        (row) => row.modelFamily,
+      ),
     [family, reasoning, trendPoints],
   );
   const pairRows = useMemo(() => pairedSpeedupRows(visibleObservations), [visibleObservations]);
@@ -158,29 +168,45 @@ export function SpeedObservationExplorer({
         nameTextStyle: { color: 'var(--muted)' },
         splitLine: { lineStyle: { color: 'var(--line)' } },
       },
-      series: (['normal', 'fast'] as const).map((mode) => ({
+      series: (['fast', 'normal'] as const).map((mode) => ({
         id: `speed-latest-${metric}-${mode}`,
         name: mode === 'normal' ? 'Normal' : 'Fast',
         type: 'bar',
         barMaxWidth: 18,
-        itemStyle: { color: modeColor[mode], borderRadius: [3, 3, 0, 0] },
+        itemStyle: {
+          color: mode === 'normal' ? 'transparent' : 'var(--plot-neutral)',
+          borderColor: 'var(--plot-neutral)',
+          borderWidth: 1.5,
+          borderRadius: [3, 3, 0, 0],
+        },
         data: entryIds.map((entryId) => {
           const row = visibleObservations.find(
             (candidate) => candidate.entryId === entryId && candidate.mode === mode,
           );
-          return [entryId, row ? metricValue(row, metric) : null, row?.completedTrials ?? 0];
+          const color = comparisonColor(entryId);
+          return {
+            value: [entryId, row ? metricValue(row, metric) : null, row?.completedTrials ?? 0],
+            itemStyle: {
+              color: mode === 'normal' ? 'transparent' : color,
+              borderColor: color,
+            },
+          };
         }),
       })),
     };
   }, [metric, visibleObservations]);
 
   const historyOption = useMemo<EChartsCoreOption>(() => {
-    const configurationIds = [...new Set(visibleTrends.map((row) => row.entryId))];
     const seriesIdentities = [
       ...new Map(
         visibleTrends.map((row) => [
           `${row.entryId}:${row.mode}`,
-          { entryId: row.entryId, mode: row.mode },
+          {
+            entryId: row.entryId,
+            mode: row.mode,
+            modelFamily: row.modelFamily,
+            reasoningTier: row.reasoningTier,
+          },
         ]),
       ).values(),
     ];
@@ -218,9 +244,8 @@ export function SpeedObservationExplorer({
         nameTextStyle: { color: 'var(--muted)' },
         splitLine: { lineStyle: { color: 'var(--line)' } },
       },
-      series: seriesIdentities.map(({ entryId, mode }, index) => {
-        const configurationIndex = configurationIds.indexOf(entryId);
-        const color = TREND_SERIES_STYLES[configurationIndex]?.color ?? '#83909c';
+      series: seriesIdentities.map(({ entryId, mode, modelFamily, reasoningTier }) => {
+        const color = comparisonColor(modelFamily);
         return {
           id: `speed-history-${metric}-${entryId}-${mode}`,
           name: `${entryId} · ${mode === 'normal' ? 'Normal' : 'Fast'}`,
@@ -228,11 +253,12 @@ export function SpeedObservationExplorer({
           connectNulls: false,
           smooth: false,
           showSymbol: true,
+          symbol: configurationStyle(reasoningTier).symbol,
           symbolSize: 7,
           lineStyle: {
+            color,
             width: 1.5,
             type: mode === 'fast' ? 'solid' : 'dashed',
-            opacity: 0.72 + (index % 3) * 0.08,
           },
           itemStyle:
             mode === 'fast'
@@ -317,7 +343,7 @@ export function SpeedObservationExplorer({
         <div className="chart-control">
           <span>Measure</span>
           <div className="chart-switch" role="group" aria-label="Speed measure">
-            {(['completion', 'duration', 'throughput', 'credits'] as const).map((candidate) => (
+            {(['completion', 'credits', 'throughput', 'duration'] as const).map((candidate) => (
               <button
                 key={candidate}
                 type="button"
@@ -338,7 +364,7 @@ export function SpeedObservationExplorer({
         <div className="chart-control">
           <span>View</span>
           <div className="chart-switch" role="group" aria-label="Speed chart view">
-            {(['latest', 'history'] as const).map((candidate) => (
+            {(['history', 'latest'] as const).map((candidate) => (
               <button
                 key={candidate}
                 type="button"
@@ -400,6 +426,9 @@ export function SpeedObservationExplorer({
         )}
       </div>
 
+      <p className="research-caption">
+        Color identifies the model. Normal: hollow / dashed. Fast: filled / solid.
+      </p>
       <details className="data-disclosure">
         <summary>Exact paired measurements</summary>
         <div
@@ -408,60 +437,165 @@ export function SpeedObservationExplorer({
           aria-label="Normal and Fast measurements"
           tabIndex={0}
         >
-          <table>
+          <table className="speed-values-table compact-table measurement-table">
             <thead>
               <tr>
-                <th scope="col">Configuration</th>
-                <th scope="col">Normal completion</th>
-                <th scope="col">Fast completion</th>
-                <th scope="col">Normal time</th>
-                <th scope="col">Fast time</th>
-                <th scope="col">Speedup</th>
-                <th scope="col">Normal output</th>
-                <th scope="col">Fast output</th>
-                <th scope="col">Normal credits</th>
-                <th scope="col">Fast credits</th>
+                <th scope="col">
+                  <TableColumnHeading label="Model" unit="effort" />
+                </th>
+                <th scope="col">
+                  <TableColumnHeading label="Normal" unit="completed %" />
+                </th>
+                <th scope="col">
+                  <TableColumnHeading label="Fast" unit="completed %" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Normal time" unit="median · s" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Fast time" unit="median · s" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Speedup" unit="ratio · ×" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Normal output" unit="median tokens/s" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Fast output" unit="median tokens/s" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Normal credits" unit="estimate" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Fast credits" unit="estimate" />
+                </th>
+                <th scope="col" className="row-expand-cell">
+                  <span className="sr-only">Details</span>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {pairRows.map(({ entryId, normal, fast, speedup }) => (
-                <tr key={entryId}>
-                  <th scope="row">{entryId}</th>
-                  <td>
-                    {formatMetric(
-                      'completion',
-                      normal.attemptedTrials === 0
-                        ? null
-                        : (normal.completedTrials / normal.attemptedTrials) * 100,
-                    )}
-                  </td>
-                  <td>
-                    {formatMetric(
-                      'completion',
-                      fast.attemptedTrials === 0
-                        ? null
-                        : (fast.completedTrials / fast.attemptedTrials) * 100,
-                    )}
-                  </td>
-                  <td>
-                    {formatMetric(
-                      'duration',
-                      normal.medianElapsedMs === null ? null : normal.medianElapsedMs / 1_000,
-                    )}
-                  </td>
-                  <td>
-                    {formatMetric(
-                      'duration',
-                      fast.medianElapsedMs === null ? null : fast.medianElapsedMs / 1_000,
-                    )}
-                  </td>
-                  <td>{speedup.toFixed(2)}×</td>
-                  <td>{formatMetric('throughput', normal.medianAggregateOutputTps)}</td>
-                  <td>{formatMetric('throughput', fast.medianAggregateOutputTps)}</td>
-                  <td>{formatMetric('credits', normal.estimatedCredits)}</td>
-                  <td>{formatMetric('credits', fast.estimatedCredits)}</td>
-                </tr>
-              ))}
+              {pairRows.map(({ entryId, normal, fast, speedup }) => {
+                const measurements = [
+                  { label: 'Model', unit: 'effort', value: <>{entryId}</> },
+                  {
+                    label: 'Normal',
+                    unit: 'completed %',
+                    value: (
+                      <>
+                        {formatMetric(
+                          'completion',
+                          normal.attemptedTrials === 0
+                            ? null
+                            : (normal.completedTrials / normal.attemptedTrials) * 100,
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    label: 'Fast',
+                    unit: 'completed %',
+                    value: (
+                      <>
+                        {formatMetric(
+                          'completion',
+                          fast.attemptedTrials === 0
+                            ? null
+                            : (fast.completedTrials / fast.attemptedTrials) * 100,
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    label: 'Normal time',
+                    unit: 'median · s',
+                    value: (
+                      <>
+                        {formatMetric(
+                          'duration',
+                          normal.medianElapsedMs === null ? null : normal.medianElapsedMs / 1_000,
+                        )}
+                      </>
+                    ),
+                  },
+                  {
+                    label: 'Fast time',
+                    unit: 'median · s',
+                    value: (
+                      <>
+                        {formatMetric(
+                          'duration',
+                          fast.medianElapsedMs === null ? null : fast.medianElapsedMs / 1_000,
+                        )}
+                      </>
+                    ),
+                  },
+                  { label: 'Speedup', unit: 'ratio · ×', value: <>{speedup.toFixed(2)}×</> },
+                  {
+                    label: 'Normal output',
+                    unit: 'median tokens/s',
+                    value: <>{formatMetric('throughput', normal.medianAggregateOutputTps)}</>,
+                  },
+                  {
+                    label: 'Fast output',
+                    unit: 'median tokens/s',
+                    value: <>{formatMetric('throughput', fast.medianAggregateOutputTps)}</>,
+                  },
+                  {
+                    label: 'Normal credits',
+                    unit: 'estimate',
+                    value: <>{formatMetric('credits', normal.estimatedCredits)}</>,
+                  },
+                  {
+                    label: 'Fast credits',
+                    unit: 'estimate',
+                    value: <>{formatMetric('credits', fast.estimatedCredits)}</>,
+                  },
+                ] as const;
+                return (
+                  <ExpandableTableRow
+                    visibleColumns={3}
+                    label={entryId}
+                    details={
+                      <>
+                        <TableRowFacts items={measurements.slice(1, 6)} />
+                        <RowDetailContext label="Trials & additional measures">
+                          <TableRowFacts
+                            layout="rows"
+                            items={[
+                              measurements[0],
+                              {
+                                label: 'Normal trials',
+                                unit: 'completed / attempted',
+                                value: `${normal.completedTrials}/${normal.attemptedTrials}`,
+                              },
+                              {
+                                label: 'Fast trials',
+                                unit: 'completed / attempted',
+                                value: `${fast.completedTrials}/${fast.attemptedTrials}`,
+                              },
+                            ]}
+                          />
+                          <TableRowFacts items={measurements.slice(6)} />
+                        </RowDetailContext>
+                      </>
+                    }
+                    key={entryId}
+                  >
+                    <th scope="row">{measurements[0].value}</th>
+                    <td>{measurements[1].value}</td>
+                    <td>{measurements[2].value}</td>
+                    <td className="compact-secondary">{measurements[3].value}</td>
+                    <td className="compact-secondary">{measurements[4].value}</td>
+                    <td className="compact-secondary">{measurements[5].value}</td>
+                    <td className="compact-secondary">{measurements[6].value}</td>
+                    <td className="compact-secondary">{measurements[7].value}</td>
+                    <td className="compact-secondary">{measurements[8].value}</td>
+                    <td className="compact-secondary">{measurements[9].value}</td>
+                  </ExpandableTableRow>
+                );
+              })}
             </tbody>
           </table>
         </div>

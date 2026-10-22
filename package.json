@@ -32,8 +32,8 @@
     "typescript": "7.0.2"
   },
   "overrides": {
-    "next": {
-      "sharp": "0.35.3"
+    "oxfmt": {
+      "tinypool": "~2.1.2"
     }
   },
   "devEngines": {

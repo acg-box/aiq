@@ -1,0 +1,85 @@
+{
+  "questions_completed": 3,
+  "fresh_session_ids": [
+    "6dc83e6350e04ff98a9f7c3970a014ef",
+    "b37ff9d4bff0448dbb2d14befc9e4eae",
+    "6ae231b6aed04747906a06695bd38659"
+  ],
+  "unique_sessions": 3,
+  "model_calls_reported": [
+    2,
+    2,
+    2
+  ],
+  "raw_readback": [
+    {
+      "record": "initial",
+      "session_id": "c85b95d1f54e4664819589c368d521f9",
+      "raw_message_id": 29,
+      "exact_original": true,
+      "expected_sha256": "ce52df9f0db923f782eaf083df2cfa90e57bb4936bf2bb426f98991f81c4d12a",
+      "readback_sha256": "ce52df9f0db923f782eaf083df2cfa90e57bb4936bf2bb426f98991f81c4d12a",
+      "extraction_complete": true
+    },
+    {
+      "record": "conditional-update",
+      "session_id": "ca3dcf649cc741258b8115c2773879ea",
+      "raw_message_id": 33,
+      "exact_original": true,
+      "expected_sha256": "9c66070fb4bb77ab20461fed71eb6e05c016a565f1c167d0deaa510647d9f024",
+      "readback_sha256": "9c66070fb4bb77ab20461fed71eb6e05c016a565f1c167d0deaa510647d9f024",
+      "extraction_complete": true
+    }
+  ],
+  "derived_parent_links": [
+    {
+      "message_id": 30,
+      "source_id": 29,
+      "parent_found": true,
+      "content": "On 2026-10-01, Project ORBIT-NIGHTLY used delivery mode POLL-71 in staging.",
+      "valid_at": "2026-10-01 00:00:00",
+      "invalid_at": null
+    },
+    {
+      "message_id": 31,
+      "source_id": 29,
+      "parent_found": true,
+      "content": "On 2026-10-01, Mira owned the rollout for Project ORBIT-NIGHTLY.",
+      "valid_at": "2026-10-01 00:00:00",
+      "invalid_at": null
+    },
+    {
+      "message_id": 32,
+      "source_id": 29,
+      "parent_found": true,
+      "content": "On 2026-10-01, production for Project ORBIT-NIGHTLY was unchanged.",
+      "valid_at": "2026-10-01 00:00:00",
+      "invalid_at": null
+    },
+    {
+      "message_id": 34,
+      "source_id": 33,
+      "parent_found": true,
+      "content": "On 2026-10-20, Mira was identified as the owner of Project ORBIT-NIGHTLY, and no production rollout was authorized.",
+      "valid_at": "2026-10-20 14:56:36",
+      "invalid_at": null
+    },
+    {
+      "message_id": 35,
+      "source_id": 33,
+      "parent_found": true,
+      "content": "For Project ORBIT-NIGHTLY, retain POLL-71 in staging until audit AUDIT-62 passes. Only after it passes may STREAM-93 be approved for staging. Do not roll out to production.",
+      "valid_at": "2026-10-20 14:56:36",
+      "invalid_at": null
+    }
+  ],
+  "tool_evidence_receipts": 6,
+  "structured_references": [
+    null,
+    null,
+    null
+  ],
+  "main_requested_facts_correct": 3,
+  "historical_caveat": "The historical answer gives POLL-71 and Mira, but also discusses audit/STREAM-93 information introduced on October 20 without clearly dating that later policy. Do not count this as clean historical-cutoff acceptance.",
+  "source_caveat": "All native Agent final responses have reference=null. Numeric memory IDs in model text are not checked original-source citations."
+}

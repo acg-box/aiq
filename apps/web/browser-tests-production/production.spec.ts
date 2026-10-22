@@ -6,7 +6,6 @@ import {
   validateProductionTaskCostEvidence,
 } from '../playwright-production-evidence.ts';
 import { validateProductionExpectedIdentity } from '../playwright-production-identity.ts';
-import { partitionProductionHistory } from './production-acceptance-helpers.ts';
 import { expectProductionPageEvidence } from './production-page-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production reads stay serial to bound load on the public origin. */
@@ -49,7 +48,7 @@ async function expectPublishedPage(
   expect(new URL(page.url()).origin).toBe(expectedOrigin);
   await expect(page.locator('main h1').first()).toBeVisible();
   if (heading) {
-    const expectedHeading = page.getByRole('heading', { level: 1, name: heading });
+    const expectedHeading = page.getByRole('heading', { name: heading });
     await expect(expectedHeading).toHaveCount(1);
     await expectedHeading.scrollIntoViewIfNeeded();
     await expect(expectedHeading).toBeVisible();
@@ -57,10 +56,6 @@ async function expectPublishedPage(
   await expectProductionPageEvidence(page, path);
   await expect(page.getByText('Demo values are synthetic seed data', { exact: false })).toHaveCount(
     0,
-  );
-  await expect(page.locator('.live-pill.status-public')).toHaveAttribute(
-    'title',
-    'Published public data',
   );
 }
 
@@ -215,59 +210,47 @@ test('production publishes the exact current complete 17-by-72 Official matrix',
   );
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/', 'Latest results');
+  await expectPublishedPage(page, expectedOrigin, '/benchmarks/intelligence', 'AI Intelligence');
   await expectNoDocumentOverflow(page, testInfo);
-  if (testInfo.config.metadata.productionEvidenceVariants === true) {
-    await expect(
-      page.getByText('Latest non-ranking calibration evidence', { exact: true }),
-    ).toHaveCount(0);
-  }
-
-  const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  await expect(workbench.locator('.workbench-filter-toggle small')).toContainText('17/17 visible');
-  await page.locator('#results > details.evidence-notes > summary').click();
-  await page.getByText('Time, token, and cost table', { exact: true }).click();
-
-  const leaderboard = workbench.getByRole('region', {
-    name: 'Filtered configuration comparison table',
-  });
+  const leaderboard = page.getByRole('region', { name: 'Core leaderboard', exact: true });
   const leaderboardRows = leaderboard.locator('tbody tr');
   await expect(leaderboardRows).toHaveCount(17);
   const configurations = new Set<string>();
   const runHrefs = new Set<string>();
-
   for (const row of await leaderboardRows.all()) {
-    const cells = row.getByRole('cell');
-    await expect(cells).toHaveCount(4);
-    const configurationId = await row.getAttribute('data-configuration-id');
-    expect(configurationId).toMatch(/^(?:sol|terra|luna)-(?:low|medium|high|xhigh|max|ultra)$/);
-    configurations.add(configurationId ?? '');
-
-    const score = Number((await cells.nth(0).innerText()).split('\n')[0]?.trim());
-    expect(Number.isFinite(score)).toBe(true);
+    const id = await row.getAttribute('data-configuration');
+    expect(id).toMatch(/^(?:sol|terra|luna)-(?:low|medium|high|xhigh|max|ultra)$/);
+    configurations.add(id ?? '');
+    const ability = row.locator('.core-ability');
+    const score = Number((await ability.innerText()).split('\n')[0]);
     expect(score).toBeGreaterThanOrEqual(0);
     expect(score).toBeLessThanOrEqual(100);
-    await expect(cells.nth(0)).toContainText('95% interval');
-    await expect(cells.nth(1)).toContainText('72-task sum');
-    await expect(cells.nth(2)).not.toHaveText('');
-    await expect(cells.nth(3)).toContainText('100% coverage');
-
-    const href = await cells
-      .nth(3)
-      .getByRole('link', { name: 'Official run' })
+    await expect(ability.locator('.core-interval')).not.toHaveText('');
+    await row.getByRole('button', { name: /^Evidence for / }).click();
+    const drawer = page.getByRole('dialog');
+    await drawer.getByText('Run identity & original JSON', { exact: true }).click();
+    const href = await drawer
+      .getByRole('link', { name: 'Open complete run evidence', exact: true })
       .getAttribute('href');
-    expect(href).toMatch(/^\/runs\/[A-Za-z0-9._:-]+$/);
-    runHrefs.add(href ?? '');
+    const target = new URL(href ?? '', expectedOrigin);
+    expect(target.origin).toBe(expectedOrigin);
+    expect(target.pathname).toMatch(/^\/benchmarks\/intelligence\/records\/run_[a-f0-9]{64}$/);
+    expect(target.searchParams.get('return')).toBe('/benchmarks/intelligence');
+    runHrefs.add(target.pathname);
+    await page.keyboard.press('Escape');
   }
-
   expect(configurations.size).toBe(17);
   expect(runHrefs.size).toBe(17);
-
+  await page.getByRole('tab', { name: 'Data', exact: true }).click();
   const efficiency = page.getByRole('region', { name: 'Official model efficiency' });
+  await efficiency
+    .getByLabel('Official efficiency notes', { exact: true })
+    .locator('summary')
+    .click();
   await expect(efficiency).toContainText('Signed matrix batch wall-clock');
   await expect(efficiency).toContainText('count once across all 17 configurations');
   await expect(efficiency).toContainText('TTFT and TPS are unavailable and are not inferred');
-  const signedBatchRecords = efficiency.locator('.formula-note > p[title]');
+  const signedBatchRecords = efficiency.locator('.table-notes-content > p[title]');
   await expect(signedBatchRecords).toHaveCount(1);
   const signedBatchId = await signedBatchRecords.getAttribute('title');
   expect(signedBatchId).toMatch(matrixBatchPattern);
@@ -278,58 +261,16 @@ test('production publishes the exact current complete 17-by-72 Official matrix',
   );
   expect(overviewEfficiency.batchId).toBe(signedBatchId);
   expect(new Set(overviewEfficiency.runIds)).toEqual(
-    new Set([...runHrefs].map((href) => href.slice('/runs/'.length))),
+    new Set([...runHrefs].map((href) => href.slice('/benchmarks/intelligence/records/'.length))),
   );
 
-  const historyHrefs: string[] = [];
-  const historyPages: Array<{ path: string; hrefs: string[] }> = [];
-  const visitedHistoryPaths = new Set<string>();
-  let historyPath: string | null = '/runs';
-  let historyPartition = partitionProductionHistory(runHrefs, historyHrefs);
-  while (historyPath !== null && historyPartition.missingCurrentRunHrefs.length > 0) {
-    expect(visitedHistoryPaths.has(historyPath), 'run-history cursor cycle').toBe(false);
-    visitedHistoryPaths.add(historyPath);
-    await expectPublishedPage(page, expectedOrigin, historyPath, 'Run archive');
-    const historyRows = page
-      .getByRole('region', { name: 'Public run history' })
-      .locator('tbody tr');
-    const hrefs = await historyRows
-      .getByRole('link', { name: 'Inspect run' })
-      .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
-    expect(new Set(hrefs).size, 'duplicate run within one history page').toBe(hrefs.length);
-    for (const href of hrefs) {
-      expect(href).toMatch(/^\/runs\/[A-Za-z0-9._:-]+$/);
-      expect(historyHrefs, `overlapping run-history page: ${href}`).not.toContain(href);
-      historyHrefs.push(href);
-    }
-    historyPages.push({ path: historyPath, hrefs });
-    historyPartition = partitionProductionHistory(runHrefs, historyHrefs);
-
-    const older = page.getByRole('link', { name: 'Older runs' });
-    if ((await older.count()) === 0) {
-      historyPath = null;
-    } else {
-      historyPath = await older.getAttribute('href');
-    }
-  }
-  expect(
-    historyPartition.missingCurrentRunHrefs,
-    'current publication missing from run history',
-  ).toEqual([]);
-  expect(new Set(historyPartition.currentRunHrefs)).toEqual(runHrefs);
-
-  for (let index = historyPages.length - 1; index > 0; index -= 1) {
-    const newer = page.getByRole('link', { name: 'Newer runs' });
-    await expect(newer).toBeVisible();
-    const newerPath = await newer.getAttribute('href');
-    await expectPublishedPage(page, expectedOrigin, newerPath ?? '', 'Run archive');
-    const newerHrefs = await page
-      .getByRole('region', { name: 'Public run history' })
-      .getByRole('link', { name: 'Inspect run' })
-      .evaluateAll((links) => links.map((link) => link.getAttribute('href') ?? ''));
-    expect(newerHrefs).toEqual(historyPages[index - 1]?.hrefs);
-  }
-  await expect(page.getByRole('link', { name: 'Newer runs' })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Records', exact: true }).click();
+  const recordRows = page.getByRole('region', { name: 'Core result records' }).locator('tbody tr');
+  await expect(recordRows).toHaveCount(17);
+  const recordIds = await recordRows.evaluateAll((rows) =>
+    rows.map((row) => `/benchmarks/intelligence/records/${row.getAttribute('data-run-id')}`),
+  );
+  expect(new Set(recordIds)).toEqual(runHrefs);
 
   let resultCount = 0;
   let pricedCostSubtotalUsdNanos = 0n;
@@ -403,6 +344,7 @@ test('production publishes the exact current complete 17-by-72 Official matrix',
       );
     }
 
+    await page.locator('#run-provenance > summary').click();
     const provenancePanel = page.locator('.provenance-panel');
     const readProvenance = async (label: string) =>
       (
@@ -449,10 +391,27 @@ test('production method, trends, and radar preserve transparent evidence semanti
   );
   expect(baseURL).toBeDefined();
   const expectedOrigin = new URL(baseURL ?? '').origin;
-  await expectPublishedPage(page, expectedOrigin, '/method', 'How AIQ is scored');
+  await expectPublishedPage(
+    page,
+    expectedOrigin,
+    '/benchmarks/intelligence?view=method',
+    'How AIQ is scored',
+  );
+  const sections = page.getByRole('navigation', { name: 'On this page', exact: true });
+  await sections.getByRole('link', { name: 'Scope', exact: true }).click();
+  await expect(page.getByText(expectedIdentity.benchmarkVersion, { exact: true })).toBeVisible();
+  await expect(page.getByText(expectedIdentity.scoringVersion, { exact: true })).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
+    page.getByRole('link', { name: 'Frozen Core task catalogue', exact: true }),
+  ).toHaveAttribute(
+    'href',
+    'https://github.com/acg-box/aiq/blob/e12a22c794d4610c6131199743fe2bc0c43ed7be/benchmarks/candidates/aiq-core-1.1.0/catalog.json',
+  );
+  await sections.getByRole('link', { name: 'Domains', exact: true }).click();
+  await expect(
+    page.getByText('72 tasks · 10 equally weighted domains', { exact: true }),
   ).toBeVisible();
+  await sections.getByRole('link', { name: 'Time & cost', exact: true }).click();
   await expect(page.getByText('displays a published-rate range', { exact: false })).toBeVisible();
   await expect(page.getByText('remains unavailable, never zero', { exact: false })).toBeVisible();
   await expect(
@@ -466,7 +425,7 @@ test('production method, trends, and radar preserve transparent evidence semanti
   await expectPublishedPage(
     page,
     expectedOrigin,
-    '/trends?range=all',
+    '/benchmarks/intelligence?view=records&range=all',
     isLocalContractMock ? 'Latest AIQ snapshot' : 'AIQ over time',
   );
   const visibleSeries = page.getByRole('list', { name: 'Visible trend series' });
@@ -484,13 +443,13 @@ test('production method, trends, and radar preserve transparent evidence semanti
   }
   await page.getByText('Evidence notes and visible values', { exact: true }).click();
   await expect(page.getByRole('note')).toContainText(
-    'Showing 17 configurations in canonical matrix order',
+    'Showing 17 configurations in alphabetical family order',
   );
   await expect(page.getByRole('note')).toContainText(
     'Family and reasoning are explicit filters, not point-estimate cutoffs.',
   );
   const trendValues = page.getByRole('region', { name: 'Visible trend values' });
-  const trendRows = trendValues.locator('tbody tr');
+  const trendRows = trendValues.locator('tbody > tr:not(.row-expanded)');
   if (isLocalContractMock) {
     await expect(trendRows).toHaveCount(17);
   } else {
@@ -502,26 +461,55 @@ test('production method, trends, and radar preserve transparent evidence semanti
     expect(seriesCounts.size).toBe(17);
     expect([...seriesCounts.values()].every((count) => count >= 2)).toBe(true);
   }
-  for (const heading of [
-    'Coverage',
-    'Runtime',
-    'Missing',
-    'Summed adapter duration',
-    'API-equivalent cost',
-  ]) {
-    await expect(trendValues.getByRole('columnheader', { name: heading })).toBeVisible();
+  const compact = await trendRows
+    .first()
+    .getByRole('button', { name: /^Details for / })
+    .isVisible();
+  if (!compact) {
+    for (const heading of ['Coverage', 'Runtime', 'Missing', 'Adapter time', 'API ceiling']) {
+      await expect(trendValues.getByRole('columnheader', { name: heading })).toBeVisible();
+    }
   }
   for (const row of await trendRows.all()) {
-    const cells = row.getByRole('cell');
-    await expect(cells.nth(5)).not.toHaveText('Unavailable');
-    await expect(cells.nth(6)).not.toHaveText('Unavailable');
-    await expect(cells.nth(7)).not.toHaveText('Unavailable');
-    await expect(cells.nth(8)).toHaveText(/^\d+$/);
-    await expect(cells.nth(9)).toHaveText(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h))$/);
-    await expect(cells.nth(10)).toHaveText(/^(?:Unavailable|\$\d+\.\d{2,4}(?:–\$\d+\.\d{2,4})?)$/);
+    if (compact) {
+      const toggle = row.getByRole('button', { name: /^Details for / });
+      await toggle.click();
+      const details = row.locator('xpath=following-sibling::tr[1]').getByRole('region');
+      await details.locator('.row-detail-context > summary').click();
+      const fact = (name: string) =>
+        details
+          .locator('dt')
+          .filter({ hasText: new RegExp(`^${name}\\b`) })
+          .locator('..')
+          .locator('dd');
+      await expect(fact('Run')).not.toHaveText('Unavailable');
+      await expect(fact('Coverage')).not.toHaveText('Unavailable');
+      await expect(fact('Runtime issues')).not.toHaveText('Unavailable');
+      await expect(fact('Missing')).toHaveText(/^\d+$/);
+      await expect(fact('Adapter time')).toHaveText(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h))$/);
+      await expect(fact('API ceiling')).toHaveText(
+        /^(?:Unavailable|\$\d+\.\d{2,4}(?:–\$\d+\.\d{2,4})?)$/,
+      );
+      await toggle.click();
+    } else {
+      const cells = row.getByRole('cell');
+      await expect(cells.nth(5)).not.toHaveText('Unavailable');
+      await expect(cells.nth(6)).not.toHaveText('Unavailable');
+      await expect(cells.nth(7)).not.toHaveText('Unavailable');
+      await expect(cells.nth(8)).toHaveText(/^\d+$/);
+      await expect(cells.nth(9)).toHaveText(/^(?:Unavailable|\d+(?:\.\d+)? (?:s|min|h))$/);
+      await expect(cells.nth(10)).toHaveText(
+        /^(?:Unavailable|\$\d+\.\d{2,4}(?:–\$\d+\.\d{2,4})?)$/,
+      );
+    }
   }
 
-  await expectPublishedPage(page, expectedOrigin, '/radar', 'Runner network');
+  await expectPublishedPage(
+    page,
+    expectedOrigin,
+    '/benchmarks/intelligence/verification',
+    'Runner network',
+  );
   await page.locator('details.radar-node-details > summary').click();
   await expect(page.locator('.node-card')).not.toHaveCount(0);
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();

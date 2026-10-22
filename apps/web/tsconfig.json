@@ -1,6 +1,7 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "resolveJsonModule": true,
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "jsx": "preserve",
     "module": "ESNext",
@@ -15,6 +16,8 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "playwright-production-identity.ts",
+    "playwright.workspace-production.ts",
+    "browser-tests-workspace-production/**/*.ts",
     "playwright-web-server.ts",
     "run-browser-tests.ts",
     "src/**/*.ts",

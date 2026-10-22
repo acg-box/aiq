@@ -141,9 +141,15 @@ const CANDIDATE_20_TOOL_USE_02_RESPONSE_CONTRACT = Object.freeze({
   ],
   optional_fields: [],
   field_types: {
-    schema_version: 'string', task_id: 'string', release_decision: 'string',
-    reconciliation_status: 'string', verified_paths: 'array', missing_paths: 'array',
-    mismatches: 'array', required_actions: 'array', report_sha256: 'string',
+    schema_version: 'string',
+    task_id: 'string',
+    release_decision: 'string',
+    reconciliation_status: 'string',
+    verified_paths: 'array',
+    missing_paths: 'array',
+    mismatches: 'array',
+    required_actions: 'array',
+    report_sha256: 'string',
   },
   field_semantics: {
     schema_version: 'Identifies the exact scored tool-analysis response schema.',
@@ -1512,7 +1518,8 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     predecessor.public_contract_projection_sha256 !==
       PREDECESSOR_PUBLIC_CONTRACT_PROJECTION_SHA256 ||
     predecessor.task_facing_semantics_sha256 !== PREDECESSOR_TASK_FACING_SEMANTICS_SHA256 ||
-    predecessor.task_semantics !== 'candidate_19_complete_calibration_preserved_as_rejected_evidence' ||
+    predecessor.task_semantics !==
+      'candidate_19_complete_calibration_preserved_as_rejected_evidence' ||
     predecessor.task_issue_closure_entries !== 42 ||
     predecessor.semantic_retention_rule !==
       'candidate_19_preserved_immutable; only tool-use-02 response semantics advance' ||
@@ -1667,15 +1674,23 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
     if (sourceAuthority === undefined || sourceAuthority.task_id !== decision.task_id) {
       throw new TypeError(`${decision.task_id} task response authority is missing or unordered.`);
     }
-    const historicalAuthority = decision.task_id === 'tool-use-02'
-      ? { response_mode: 'workspace' as const, response_locations: ['result.json', 'receipt.json'] }
-      : sourceAuthority;
+    const historicalAuthority =
+      decision.task_id === 'tool-use-02'
+        ? {
+            response_mode: 'workspace' as const,
+            response_locations: ['result.json', 'receipt.json'],
+          }
+        : sourceAuthority;
     for (const [owner, contract] of [
       ['candidate.3', decision.candidate_3_contract.response_contract],
       ['candidate.4', decision.candidate_4_contract.response_contract],
       ['candidate.5', decision.candidate_5_contract.response_contract],
     ] as const) {
-      assertGeneratedResponseContract(contract, historicalAuthority, `${decision.task_id} ${owner}`);
+      assertGeneratedResponseContract(
+        contract,
+        historicalAuthority,
+        `${decision.task_id} ${owner}`,
+      );
     }
   }
 
@@ -1697,7 +1712,8 @@ export function parseDecisionManifest(value: unknown): CandidateDecisionManifest
       task_facing_semantics_sha256: PREDECESSOR_TASK_FACING_SEMANTICS_SHA256,
       task_semantics: 'candidate_19_complete_calibration_preserved_as_rejected_evidence',
       task_issue_closure_entries: 42,
-      semantic_retention_rule: 'candidate_19_preserved_immutable; only tool-use-02 response semantics advance',
+      semantic_retention_rule:
+        'candidate_19_preserved_immutable; only tool-use-02 response semantics advance',
     },
     immutable_rejected_predecessors: [
       'aiq-core/1.1.0-candidate.1',
@@ -1923,9 +1939,13 @@ export function assertDecisionManifest(
     if (sourceAuthority === undefined || sourceAuthority.task_id !== decision.task_id) {
       throw new Error(`${decision.task_id} task response authority is missing or unordered.`);
     }
-    const historicalAuthority = decision.task_id === 'tool-use-02'
-      ? { response_mode: 'workspace' as const, response_locations: ['result.json', 'receipt.json'] }
-      : sourceAuthority;
+    const historicalAuthority =
+      decision.task_id === 'tool-use-02'
+        ? {
+            response_mode: 'workspace' as const,
+            response_locations: ['result.json', 'receipt.json'],
+          }
+        : sourceAuthority;
     assertGeneratedResponseContract(
       decision.candidate_4_contract.response_contract,
       historicalAuthority,
@@ -2282,9 +2302,10 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     design.candidate_20_response_contract =
       decision.task_id === 'tool-use-02' ? CANDIDATE_20_TOOL_USE_02_RESPONSE_CONTRACT : null;
     design.decision = decision.task_id === 'tool-use-02' ? 'revised' : 'retained';
-    design.task_specific_delta = decision.task_id === 'tool-use-02'
-      ? 'tool-use-02 adds a scored, digest-bound final-response release decision after the existing one-command manifest reconciliation; all tool, workspace, receipt, and operation semantics remain unchanged.'
-      : `${decision.task_id} retains exact candidate.19 task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.`;
+    design.task_specific_delta =
+      decision.task_id === 'tool-use-02'
+        ? 'tool-use-02 adds a scored, digest-bound final-response release decision after the existing one-command manifest reconciliation; all tool, workspace, receipt, and operation semantics remain unchanged.'
+        : `${decision.task_id} retains exact candidate.19 task semantics; candidate.20 changes only source identity while repairing tool-use-02 calibration discrimination.`;
     if (decision.task_id === 'tool-use-02') {
       const evaluator = jsonObject(revised.evaluator, 'tool-use-02 public evaluator');
       const passConditions = unknownArray(evaluator.pass_conditions, 'tool-use-02 pass conditions');
@@ -2302,7 +2323,9 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     const design = jsonObject(task.design_revision, `${taskId} generated design`);
     const candidate20 = design.candidate_20_response_contract;
     const currentContract = jsonObject(
-      candidate20 ?? jsonObject(design.candidate_5_contract, `${taskId} generated candidate.5 contract`).response_contract,
+      candidate20 ??
+        jsonObject(design.candidate_5_contract, `${taskId} generated candidate.5 contract`)
+          .response_contract,
       `${taskId} generated response contract`,
     );
     const decision = manifest.decisions[index];
@@ -2322,8 +2345,8 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
     const decision = manifest.decisions[index];
     if (
       decision === undefined ||
-      decision.task_id !== 'tool-use-02' &&
-      digestValue(projection) !== decision.candidate_5_task_facing_semantics_sha256
+      (decision.task_id !== 'tool-use-02' &&
+        digestValue(projection) !== decision.candidate_5_task_facing_semantics_sha256)
     ) {
       throw new Error('Candidate.20 public task semantics drift from candidate.18.');
     }
@@ -2331,8 +2354,15 @@ export function buildCatalogFrom(manifest: CandidateDecisionManifest): JsonObjec
   const publicContractProjection = tasks.map((task, index) => ({
     task_facing: taskFacingProjections[index],
     response_contract: (() => {
-      const design = jsonObject(jsonObject(task, `task ${String(index)}`).design_revision, `task ${String(index)} design revision`);
-      return design.candidate_20_response_contract ?? jsonObject(design.candidate_5_contract, `task ${String(index)} candidate.5 contract`).response_contract;
+      const design = jsonObject(
+        jsonObject(task, `task ${String(index)}`).design_revision,
+        `task ${String(index)} design revision`,
+      );
+      return (
+        design.candidate_20_response_contract ??
+        jsonObject(design.candidate_5_contract, `task ${String(index)} candidate.5 contract`)
+          .response_contract
+      );
     })(),
   }));
   const evaluatorFixtureToolProjection = tasks.map((taskValue, index) => {

@@ -1,0 +1,58 @@
+{
+  "id": "none-post-memory-1-2",
+  "kind": "reader",
+  "seconds": 5.850531709031202,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1800,
+    "completion_tokens": 183,
+    "total_tokens": 1983,
+    "cost": 0.000316425,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1797,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000316425,
+      "upstream_inference_prompt_cost": 0.000224925,
+      "upstream_inference_completions_cost": 9.15e-05
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "Immediately after the August 8 meeting, batch delivery via BATCH-1-741 remained approved; REPLAY-1-632 was tested as a recovery procedure, but no delivery-mode change was approved at that meeting.",
+    "citations": [
+      {
+        "handle": "ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e",
+        "quote": "They chose BATCH-1-741 for batch delivery."
+      },
+      {
+        "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+        "quote": "The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"Immediately after the August 8 meeting, batch delivery via BATCH-1-741 remained approved; REPLAY-1-632 was tested as a recovery procedure, but no delivery-mode change was approved at that meeting.\",\"citations\":[{\"handle\":\"ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e\",\"quote\":\"They chose BATCH-1-741 for batch delivery.\"},{\"handle\":\"ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657\",\"quote\":\"The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "none",
+  "source_case_id": "post-memory-1-2",
+  "block": 2
+}

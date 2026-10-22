@@ -1,0 +1,75 @@
+{
+  "product": "ragflow",
+  "scope": "formal",
+  "phase": "post",
+  "case_id": "combined-001",
+  "question": "As of August 22, what delivery mode and retry policy apply to Mara's Larch project? Also list both exception identifiers in the signed Kestrel-0 return policy.",
+  "answer": {
+    "answer": "For Mara’s Larch project, the retry policy as of August 22 is RETRY-0-907, superseding RETRY-0-108. The delivery mode is not established: Larch started with batch delivery BATCH-0-741, and the August 22 note says to keep the August 15 delivery choice, but the supplied evidence does not state what that choice was. The signed Kestrel-0 return policy lists exceptions CUSTOM-0-7c2 and DEFECT-0-9b4.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+        "quote": "They chose BATCH-0-741 for batch delivery. The initial retry policy was RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+        "quote": "custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4"
+      }
+    ]
+  },
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+      "quote_bound": true
+    }
+  ],
+  "retrieval_seconds": 0.175,
+  "total_seconds": 8.741,
+  "context_bytes": 4906,
+  "context_entries": 12,
+  "dropped": [],
+  "usage": {
+    "prompt_tokens": 1894,
+    "completion_tokens": 740,
+    "total_tokens": 2634,
+    "cost": 0.000606675,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1891,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000606675,
+      "upstream_inference_prompt_cost": 0.000236675,
+      "upstream_inference_completions_cost": 0.00037
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 297,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "finish_reason": "stop"
+}

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { databaseConnectionEnvironment } from '../databases/init.ts';
+import { assertDatabaseTarget, databaseConnectionEnvironment } from '../databases/init.ts';
 
 export const AIQ_2_CUTOVER_QUERY = `
 with target_batches as (
@@ -125,6 +125,7 @@ export function parseAiq2CutoverEvidence(value: unknown): Aiq2CutoverEvidence {
 }
 
 async function query(databaseUrl: string): Promise<unknown> {
+  assertDatabaseTarget(databaseUrl, process.env);
   const environment = databaseConnectionEnvironment(databaseUrl);
   if (process.env.PATH !== undefined) environment.PATH = process.env.PATH;
   return new Promise((resolvePromise, rejectPromise) => {

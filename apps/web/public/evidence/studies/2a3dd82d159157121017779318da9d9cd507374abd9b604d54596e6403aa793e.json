@@ -1,0 +1,56 @@
+{
+  "id": "none-writer-larch-decision",
+  "kind": "writer",
+  "seconds": 3.431523917010054,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 656,
+    "completion_tokens": 221,
+    "total_tokens": 877,
+    "cost": 0.0001761,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0001761,
+      "upstream_inference_prompt_cost": 6.56e-05,
+      "upstream_inference_completions_cost": 0.0001105
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "episodic": [
+      {
+        "content": "On 2026-08-15, Mara approved switching Larch from BATCH-0-741 to STREAM-0-286, superseding the August 1 delivery decision. The change was attributed to GATE-0-519 outages recorded on August 8.",
+        "valid_at": "2026-08-15T00:00:00",
+        "invalid_at": ""
+      },
+      {
+        "content": "GATE-0-519 outages were recorded on August 8, 2026.",
+        "valid_at": "2026-08-08T00:00:00",
+        "invalid_at": ""
+      }
+    ],
+    "procedural": [],
+    "semantic": [
+      {
+        "content": "The successful recovery procedure from the GATE-0-519 outage incident should be retained.",
+        "valid_at": "2026-10-20T14:53:57",
+        "invalid_at": ""
+      }
+    ]
+  },
+  "raw_content": "{\n  \"episodic\": [\n    {\n      \"content\": \"On 2026-08-15, Mara approved switching Larch from BATCH-0-741 to STREAM-0-286, superseding the August 1 delivery decision. The change was attributed to GATE-0-519 outages recorded on August 8.\",\n      \"valid_at\": \"2026-08-15T00:00:00\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"GATE-0-519 outages were recorded on August 8, 2026.\",\n      \"valid_at\": \"2026-08-08T00:00:00\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"procedural\": [],\n  \"semantic\": [\n    {\n      \"content\": \"The successful recovery procedure from the GATE-0-519 outage incident should be retained.\",\n      \"valid_at\": \"2026-10-20T14:53:57\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}",
+  "effort": "none",
+  "source_case_id": "writer-larch-decision",
+  "block": 0
+}

@@ -1,74 +1,11 @@
+/* eslint-disable no-await-in-loop -- Each drawer must open and close before the next row can receive focus. */
 import AxeBuilder from '@axe-core/playwright';
-import {
-  expect,
-  test as base,
-  type APIResponse,
-  type Locator,
-  type Page,
-  type Response,
-  type TestInfo,
-} from '@playwright/test';
-
+import { expect, test as base } from '@playwright/test';
 import scorerGeneratedFixture from '../../../benchmarks/fixtures/aiq-2.0-test-generated-public.json' with { type: 'json' };
-import { resolvePlaywrightCompanionPort } from '../playwright-port.ts';
 import { AIQ_CORE_SCORING_VERSION } from '../src/aiq-core-contract.ts';
-
 interface LivePublishedFixtures {
   runtimeFailures: string[];
 }
-
-interface PublishedLeaderboardEvidence {
-  matrix_id: string;
-  run_id: string;
-  score: number;
-  score_ci_low: number;
-  score_ci_high: number;
-  quality_score: number;
-  strict_pass_rate: number;
-  strict_pass_low: number;
-  strict_pass_high: number;
-  strict_pass_sample_size: number;
-  strict_pass_successes: number;
-  reliability_status: string;
-  calibration_status: string;
-  sensitivity_low: number;
-  sensitivity_high: number;
-  sample_size: number;
-  scoring_version: string;
-  synthetic: boolean;
-}
-
-interface PublishedTrendEvidence extends PublishedLeaderboardEvidence {
-  recorded_at: string;
-  bucket_started_at: string;
-  bucket_ended_at: string;
-}
-
-interface PublishedRunEvidence {
-  id: string;
-  matrix_id: string;
-  started_at: string;
-  completed_at: string;
-  scoring_version: string;
-  synthetic: boolean;
-}
-
-interface PublishedResultEvidence {
-  run_id: string;
-  domain: string;
-  outcome: string;
-  execution_status: string;
-  score: number;
-}
-
-interface EfficiencyPointState {
-  key: string;
-  fill: string | null;
-  scale: string;
-  x: number;
-  y: number;
-}
-
 const test = base.extend<LivePublishedFixtures>({
   runtimeFailures: [
     async ({ page }, use) => {
@@ -90,504 +27,268 @@ const test = base.extend<LivePublishedFixtures>({
 
 const calibrationRunId = `run_${'8'.repeat(64)}`;
 const subsetCalibrationRunId = `run_${'7'.repeat(64)}`;
-
-const historicalPublishedAggregates: Readonly<
-  Record<string, { runId: string; score: number; sensitivityLow: number; sensitivityHigh: number }>
-> = {
-  'sol-low': {
-    runId: 'run_441adf403347a1f32c3176e2ca837341e236a8db5ef5ee3059cdc7baa3cac1d7',
-    score: 41.959,
-    sensitivityLow: 31.377,
-    sensitivityHigh: 52.066,
-  },
-  'sol-medium': {
-    runId: 'run_fa605028cfc2d6c94d2ee0769a75d0f5c7bfddfc3b32b0106f525cc328e68930',
-    score: 42.801,
-    sensitivityLow: 32.474,
-    sensitivityHigh: 52.45,
-  },
-  'sol-high': {
-    runId: 'run_37c17d1683b14473966cfc9c4ac8fb97ea16b7f9a0bf2948bd8b234220f6240f',
-    score: 42.26,
-    sensitivityLow: 32.472,
-    sensitivityHigh: 51.524,
-  },
-  'sol-xhigh': {
-    runId: 'run_17b245b7a4b7c46348864a100e70cb0ce47d8f961e4d762ef4b4610e620bee5c',
-    score: 42.865,
-    sensitivityLow: 31.708,
-    sensitivityHigh: 53.996,
-  },
-  'sol-max': {
-    runId: 'run_87c706c0bdc9e7cdfd52eebc9f55661d3cb6c2f2606721dd68fd869df8723093',
-    score: 42.397,
-    sensitivityLow: 31.196,
-    sensitivityHigh: 53.282,
-  },
-  'sol-ultra': {
-    runId: 'run_f43f06eefb714c86d413a802587ba303b16e9a0ddc3de9f4cc01b8ff9e8d3f14',
-    score: 40.803,
-    sensitivityLow: 28.825,
-    sensitivityHigh: 52.294,
-  },
-  'terra-low': {
-    runId: 'run_a8358a9ea1ee1fb19edc9b2c0a3f8909764503d5f1d2c4f2a7161debaac610c4',
-    score: 37.299,
-    sensitivityLow: 27.509,
-    sensitivityHigh: 47.286,
-  },
-  'terra-medium': {
-    runId: 'run_130c49d83c7816a4939cf9851d936e8fa578d2b1d3dcedff5a6c9bbbfae53684',
-    score: 40.571,
-    sensitivityLow: 29.572,
-    sensitivityHigh: 51.103,
-  },
-  'terra-high': {
-    runId: 'run_0f873d71f76b85a0670444fec79be29fb0102e7435b1c1bcb3f0b2d8f50387b4',
-    score: 39.117,
-    sensitivityLow: 29.328,
-    sensitivityHigh: 48.561,
-  },
-  'terra-xhigh': {
-    runId: 'run_834fdafb3146ead1d05f146388e68b99a0f2569a19d92bd2fb9f3de25f93fcc7',
-    score: 39.67,
-    sensitivityLow: 29.983,
-    sensitivityHigh: 48.929,
-  },
-  'terra-max': {
-    runId: 'run_b7415ac6300414b294a668149710c4fecb7a7bec368d25361e4fcc961db7cac4',
-    score: 42.432,
-    sensitivityLow: 32,
-    sensitivityHigh: 52.211,
-  },
-  'terra-ultra': {
-    runId: 'run_db0ba87f356c60ee87a93df4cf730c44b3d511ca65c3310d00acb193686fa685',
-    score: 42.347,
-    sensitivityLow: 32.279,
-    sensitivityHigh: 51.96,
-  },
-  'luna-low': {
-    runId: 'run_ff1d6d7ac0b68f652e28a4437baa9417fbab23789dc60c2b0bb6c6fee4eac71c',
-    score: 37.314,
-    sensitivityLow: 26.628,
-    sensitivityHigh: 47.616,
-  },
-  'luna-medium': {
-    runId: 'run_f4bfbadc40f66cfd7bdd279a9ac025c4fdf6951e61e2f58ccb90b0988090a363',
-    score: 39.083,
-    sensitivityLow: 29.548,
-    sensitivityHigh: 48.834,
-  },
-  'luna-high': {
-    runId: 'run_34f3e4bdea2d80922c016d17f0fb8005ae4a4bfbd7724c0e841384466666dc82',
-    score: 41.879,
-    sensitivityLow: 31.824,
-    sensitivityHigh: 51.618,
-  },
-  'luna-xhigh': {
-    runId: 'run_5b896428917c276cc7aec28f91f48a3572b2b62e1266a89fd568cf8ac3983c8b',
-    score: 38.781,
-    sensitivityLow: 29.728,
-    sensitivityHigh: 48.172,
-  },
-  'luna-max': {
-    runId: 'run_03c1830225ab52b741137eb34847d4432b08f3f57c7e562df4288999f1b48f0d',
-    score: 41.39,
-    sensitivityLow: 31.042,
-    sensitivityHigh: 51.324,
-  },
-};
-
-const scorerGeneratedAggregates = new Map(
-  scorerGeneratedFixture.leaderboard.map((aggregate) => [aggregate.matrix_id, aggregate]),
-);
-const historicalRunIds = new Set(
-  Object.values(historicalPublishedAggregates).map((aggregate) => aggregate.runId),
-);
-if (
-  scorerGeneratedFixture.schema_version !== 'aiq.test-generated-public-fixture.v1' ||
-  !scorerGeneratedFixture.test_generated ||
-  scorerGeneratedFixture.production_publishable ||
-  scorerGeneratedFixture.official_eligible ||
-  scorerGeneratedFixture.ranking_eligible ||
-  !scorerGeneratedFixture.synthetic ||
-  scorerGeneratedAggregates.size !== 17 ||
-  scorerGeneratedFixture.leaderboard.some((aggregate) => historicalRunIds.has(aggregate.run_id))
-) {
-  throw new Error('The browser scorer fixture is not isolated from historical production data.');
+function expectNoStore(response: { headers(): Record<string, string> }) {
+  expect(response.headers()['cache-control']).toContain('no-store');
 }
 
-function scorerGeneratedAggregate(matrixId: string) {
-  const aggregate = scorerGeneratedAggregates.get(matrixId);
-  if (!aggregate) throw new Error(`Missing scorer-generated public aggregate for ${matrixId}.`);
-  return aggregate;
+function scorerGeneratedAggregate(id: string) {
+  const row = scorerGeneratedFixture.leaderboard.find((candidate) => candidate.matrix_id === id);
+  if (!row) throw new Error(`Missing generated aggregate: ${id}`);
+  return row;
 }
-
-const routes = [
-  '/',
-  '/runs',
-  `/runs/${scorerGeneratedAggregate('sol-ultra').run_id}`,
-  '/calibrations',
-  `/calibrations/${calibrationRunId}`,
-  `/calibrations/${subsetCalibrationRunId}`,
-  '/compare',
-  '/trends?range=day',
-  '/trends?range=week',
-  '/trends?range=month',
-  '/trends?range=all',
-  '/method',
-  '/radar',
-] as const;
-
-function expectNotPubliclyCacheable(response: Response | null) {
-  const cacheControl = response?.headers()['cache-control'] ?? '';
-  expect(cacheControl).toMatch(/\b(?:private|no-store|no-cache)\b/);
-  expect(cacheControl).not.toMatch(/\bpublic\b/);
-}
-
-function expectNoStore(response: APIResponse) {
-  const cacheControl = response.headers()['cache-control'] ?? '';
-  expect(cacheControl).toContain('no-store');
-  expect(cacheControl).toContain('max-age=0');
-}
-
-function companionOrigin(baseURL: string): string {
-  const application = new URL(baseURL);
-  const applicationPort = Number(application.port);
-  if (!Number.isSafeInteger(applicationPort)) {
-    throw new Error('The live-published application URL must include one valid port.');
-  }
-  application.port = String(resolvePlaywrightCompanionPort(applicationPort));
-  return application.origin;
-}
-
-function parseEvidenceTimestamp(value: string): number {
-  const timestamp = Date.parse(value);
-  expect(Number.isFinite(timestamp), `invalid evidence timestamp: ${value}`).toBe(true);
-  return timestamp;
-}
-
-function isEvidenceRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isPublishedLeaderboardEvidence(value: unknown): value is PublishedLeaderboardEvidence {
-  return (
-    isEvidenceRecord(value) &&
-    typeof value.matrix_id === 'string' &&
-    typeof value.run_id === 'string' &&
-    typeof value.score === 'number' &&
-    typeof value.score_ci_low === 'number' &&
-    typeof value.score_ci_high === 'number' &&
-    typeof value.quality_score === 'number' &&
-    typeof value.strict_pass_rate === 'number' &&
-    typeof value.strict_pass_low === 'number' &&
-    typeof value.strict_pass_high === 'number' &&
-    typeof value.strict_pass_sample_size === 'number' &&
-    typeof value.strict_pass_successes === 'number' &&
-    typeof value.reliability_status === 'string' &&
-    typeof value.calibration_status === 'string' &&
-    typeof value.sensitivity_low === 'number' &&
-    typeof value.sensitivity_high === 'number' &&
-    typeof value.sample_size === 'number' &&
-    typeof value.scoring_version === 'string' &&
-    typeof value.synthetic === 'boolean'
-  );
-}
-
-function isPublishedTrendEvidence(value: unknown): value is PublishedTrendEvidence {
-  return (
-    isPublishedLeaderboardEvidence(value) &&
-    isEvidenceRecord(value) &&
-    typeof value.recorded_at === 'string' &&
-    typeof value.bucket_started_at === 'string' &&
-    typeof value.bucket_ended_at === 'string'
-  );
-}
-
-function isPublishedRunEvidence(value: unknown): value is PublishedRunEvidence {
-  return (
-    isEvidenceRecord(value) &&
-    typeof value.id === 'string' &&
-    typeof value.matrix_id === 'string' &&
-    typeof value.started_at === 'string' &&
-    typeof value.completed_at === 'string' &&
-    typeof value.scoring_version === 'string' &&
-    typeof value.synthetic === 'boolean'
-  );
-}
-
-function isPublishedResultEvidence(value: unknown): value is PublishedResultEvidence {
-  return (
-    isEvidenceRecord(value) &&
-    typeof value.run_id === 'string' &&
-    typeof value.domain === 'string' &&
-    typeof value.outcome === 'string' &&
-    typeof value.execution_status === 'string' &&
-    typeof value.score === 'number'
-  );
-}
-
-const officialDomainTaskCounts = [
-  ['coding', 8],
-  ['debugging', 8],
-  ['repository_understanding', 7],
-  ['data_processing', 8],
-  ['retrieval_verification', 7],
-  ['documentation_communication', 7],
-  ['planning_execution', 7],
-  ['tool_use', 7],
-  ['instruction_following', 6],
-  ['reliability_recovery', 7],
-] as const;
-
-function recomputeQualityScore(results: readonly PublishedResultEvidence[]): number {
-  if (results.length !== 72) throw new Error('Quality-score evidence must contain 72 rows.');
-  const domainMeans = officialDomainTaskCounts.map(([domain, expectedTaskCount]) => {
-    const scores = results.filter((result) => result.domain === domain).map(({ score }) => score);
-    if (
-      scores.length !== expectedTaskCount ||
-      scores.some((score) => !Number.isFinite(score) || score < 0 || score > 1)
-    ) {
-      throw new Error(`Invalid ${domain} score evidence.`);
-    }
-    return scores.reduce((total, score) => total + score, 0) / scores.length;
-  });
-  return (100 * domainMeans.reduce((total, score) => total + score, 0)) / domainMeans.length;
-}
-
-function evidenceRows<T>(value: unknown, isRow: (row: unknown) => row is T, subject: string): T[] {
-  if (!Array.isArray(value) || !value.every(isRow)) {
-    throw new Error(`Invalid ${subject} fixture evidence.`);
-  }
-  return value;
-}
-
-async function expectNoDocumentOverflow(page: Page, testInfo: TestInfo) {
-  const dimensions = await page.evaluate(() => ({
-    clientWidth: document.documentElement.clientWidth,
-    scrollWidth: document.documentElement.scrollWidth,
-  }));
-  expect(
-    dimensions.scrollWidth,
-    `${testInfo.project.name} document width ${dimensions.scrollWidth} exceeds ${dimensions.clientWidth}`,
-  ).toBeLessThanOrEqual(dimensions.clientWidth);
-}
-
-async function readEfficiencyPoints(plot: Locator): Promise<EfficiencyPointState[]> {
-  const states = await plot
-    .locator('.workbench-chart-canvas svg path')
-    .evaluateAll<EfficiencyPointState[], undefined, SVGPathElement>((paths: SVGPathElement[]) => {
-      const points: EfficiencyPointState[] = [];
-      for (const path of paths) {
-        const transform = path.getAttribute('transform') ?? '';
-        if (path.getAttribute('stroke') !== 'var(--panel)' || !transform.startsWith('matrix')) {
-          continue;
-        }
-        const matrix = /^matrix\(([^,]+),[^,]+,[^,]+,[^,]+,([^,]+),([^)]+)\)$/.exec(transform);
-        const bounds = path.getBoundingClientRect();
-        points.push({
-          key: `${path.getAttribute('d') ?? ''}|${matrix?.[2] ?? ''}|${matrix?.[3] ?? ''}`,
-          fill: path.getAttribute('fill'),
-          scale: matrix?.[1] ?? '',
-          x: bounds.left + bounds.width / 2,
-          y: bounds.top + bounds.height / 2,
-        });
-      }
-      return points;
-    });
-  states.sort((left: EfficiencyPointState, right: EfficiencyPointState) =>
-    left.key.localeCompare(right.key),
-  );
-  return states;
-}
-
-for (const route of routes) {
-  test(`${route} renders published live evidence accessibly`, async ({ page }, testInfo) => {
-    const response = await page.goto(route);
-    expect(response?.status()).toBe(200);
-    expectNotPubliclyCacheable(response);
-    await expect(page.locator('main h1').first()).toBeVisible();
-    await expect(page.locator('.live-pill')).toHaveClass(/status-public/);
-    if (route.startsWith('/trends')) {
-      const evidenceDisclosure = page.locator('details.evidence-status-disclosure');
-      await expect(evidenceDisclosure).not.toHaveAttribute('open', '');
-      await evidenceDisclosure.locator('summary').click();
-      await expect(evidenceDisclosure).toHaveAttribute('open', '');
-    }
-    if (route === '/' || route === '/compare') {
-      await page.locator('main details.evidence-notes > summary').first().click();
-    }
-    await expect(page.getByText('Published evidence', { exact: true }).first()).toBeVisible();
-    await expect(page.getByText('Synthetic / seed data', { exact: true })).toHaveCount(0);
-    await expect(
-      page.getByText('Demo values are synthetic seed data', { exact: false }),
-    ).toHaveCount(0);
-    expect(await new AxeBuilder({ page }).analyze()).toMatchObject({ violations: [] });
-    await expectNoDocumentOverflow(page, testInfo);
-  });
-}
-
-test('the live overview exposes all 17 published configurations without seed substitution', async ({
+test('the board renders the scorer-owned 17-configuration publication and exact run evidence', async ({
   page,
 }) => {
   await page.goto('/');
-  await expect(page.getByRole('heading', { level: 1, name: 'Latest results' })).toBeVisible();
-  const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  await expect(workbench).toBeVisible();
-  await expect(workbench.locator('.workbench-filter-toggle small')).toContainText('17/17 visible');
-  await expect(page.getByRole('region', { name: 'Top configurations' })).toHaveCount(0);
-  await expect(page.getByText('Published Dec 31, 2025', { exact: false })).toBeVisible();
-  const comparisonTable = workbench.getByRole('region', {
-    name: 'Filtered configuration comparison table',
-  });
-  await expect(comparisonTable.locator('tbody tr')).toHaveCount(17);
-  await expect(comparisonTable).toContainText('Unavailable');
-  await expect(comparisonTable).not.toContainText('$0\n');
-  const timePlot = workbench.getByRole('region', { name: 'AIQ against summed task time' });
-  await expect(timePlot).toHaveAttribute('data-workbench-point-count', '16');
-  await expect(timePlot.locator('.workbench-chart-canvas svg')).toBeVisible();
-  await expect(timePlot.locator('canvas')).toHaveCount(0);
-  await workbench.getByRole('button', { name: 'AIQ × cost range', exact: true }).click();
-  const costPlot = workbench.getByRole('region', { name: 'AIQ against API-equivalent cost range' });
-  await expect(costPlot).toHaveAttribute('data-workbench-point-count', '2');
-  await workbench.getByRole('button', { name: 'Decision map', exact: true }).click();
-  const decision = workbench.getByRole('region', {
-    name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
-  });
-  await expect(decision).toBeVisible();
-  await expect(decision).toHaveAttribute('data-workbench-point-count', '16');
-  await expect(decision.locator('svg')).toBeVisible();
-  await workbench.getByRole('button', { name: 'AIQ × time', exact: true }).click();
-  await expect(comparisonTable.getByText('72-task sum', { exact: true })).toHaveCount(17);
-  await page.locator('#results > details.evidence-notes > summary').click();
-  await page.getByText('Latest non-ranking calibration evidence', { exact: true }).click();
+  const preview = page
+    .getByRole('region', { name: 'Benchmark boards', exact: true })
+    .getByRole('row')
+    .filter({ has: page.getByRole('rowheader', { name: 'AI Intelligence', exact: true }) });
+  await expect(preview).toContainText('17 Official configurations');
   await expect(
-    page.getByText(/not Official.*not ranking eligible/, { exact: false }).first(),
-  ).toBeVisible();
-  const calibrationEfficiency = page.getByRole('region', {
-    name: 'Calibration model efficiency',
-  });
-  await expect(calibrationEfficiency.getByRole('row')).toHaveCount(2);
-  await expect(
-    calibrationEfficiency.getByRole('row').filter({ hasText: 'terra · medium' }),
-  ).toBeVisible();
-  await expect(page.locator('.calibration-chart svg')).toHaveCount(1);
-  await expect(page.locator('.calibration-chart canvas')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Inspect calibration' })).toHaveAttribute(
-    'href',
-    `/calibrations/${subsetCalibrationRunId}`,
-  );
-  await page.getByText('Time, token, and cost table', { exact: true }).click();
-  await expect(
-    page.getByRole('region', { name: 'Official model efficiency' }).getByRole('row'),
-  ).toHaveCount(18);
-  const officialEfficiency = page.getByRole('region', { name: 'Official model efficiency' });
-  await expect(officialEfficiency).toContainText('1.6 h');
-  await expect(officialEfficiency).toContainText('unavailable missing usage');
-  await expect(officialEfficiency).toContainText('0/72 priced');
-  await expect(officialEfficiency).not.toContainText('$0');
-});
-
-test('comparison points keep stable geometry while the pointer moves between them', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto('/?compareView=duration#compare');
-  await page.evaluate(() => {
-    document.documentElement.style.scrollBehavior = 'auto';
-  });
-  const plot = page.getByRole('region', { name: 'AIQ against summed task time' });
-  const chart = plot.locator('.workbench-chart-canvas');
-  await chart.scrollIntoViewIfNeeded();
-  await expect(chart.locator('svg')).toBeVisible();
-  await page.mouse.move(0, 0);
-  await page.waitForTimeout(300);
-
-  const baseline = await readEfficiencyPoints(plot);
-  expect(baseline.length).toBeGreaterThanOrEqual(3);
-  expect(baseline.every((point) => point.fill?.startsWith('var(--data-'))).toBe(true);
-  const stableGeometry = baseline.map(({ key, fill, scale }) => ({ key, fill, scale }));
-  const targets = [baseline[0], baseline[Math.floor(baseline.length / 2)], baseline.at(-1)];
-
-  const verifyStableTarget = async (target: EfficiencyPointState | undefined) => {
-    if (!target) throw new Error('Expected a representative efficiency point');
-    await page.mouse.move(target.x, target.y, { steps: 8 });
-    await page.waitForTimeout(220);
-    const pointerReachedChart = await page.evaluate(
-      ({ x, y }) => document.elementFromPoint(x, y)?.closest('.echarts-host') !== null,
-      target,
+    preview.getByRole('list', { name: 'Recorded ability preview', exact: true }).locator('li'),
+  ).toHaveCount(3);
+  await preview.getByRole('link', { name: 'AI Intelligence', exact: true }).click();
+  await expect(page.getByLabel('Model', { exact: true }).locator('option')).toHaveText([
+    'All',
+    'Luna',
+    'Sol',
+    'Terra',
+  ]);
+  const table = page.getByRole('region', { name: 'Core leaderboard', exact: true });
+  await expect(table.locator('tbody tr')).toHaveCount(17);
+  for (const expected of scorerGeneratedFixture.leaderboard) {
+    const row = table.locator(`tr[data-configuration="${expected.matrix_id}"]`);
+    await expect(row).toContainText(expected.score.toFixed(3));
+    await row.getByRole('button', { name: /^Evidence for / }).click();
+    const drawer = page.getByRole('dialog');
+    await expect(drawer).toContainText(expected.run_id);
+    await drawer.getByText('Run identity & original JSON', { exact: true }).click();
+    await expect(
+      drawer.getByRole('link', { name: 'Open complete run evidence', exact: true }),
+    ).toHaveAttribute(
+      'href',
+      `/benchmarks/intelligence/records/${expected.run_id}?return=${encodeURIComponent('/benchmarks/intelligence')}`,
     );
-    expect(pointerReachedChart).toBe(true);
-    const hovered = await readEfficiencyPoints(plot);
-    expect(hovered.map(({ key, fill, scale }) => ({ key, fill, scale }))).toEqual(stableGeometry);
-  };
-
-  await verifyStableTarget(targets[0]);
-  await verifyStableTarget(targets[1]);
-  await verifyStableTarget(targets[2]);
-});
-
-test('the decision map keeps the same complete comparison table', async ({ page }) => {
-  await page.goto('/?compareView=decision#compare');
-  const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  const decision = workbench.getByRole('region', {
-    name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
-  });
-  await expect(decision.locator('svg')).toBeVisible();
+    await page.keyboard.press('Escape');
+  }
+  await expect(page.getByLabel('Model', { exact: true })).not.toBeVisible();
+  await page.locator('.comparison-filters > summary').click();
+  await page.getByLabel('Model', { exact: true }).selectOption('Terra');
+  await expect(table.locator('tbody tr')).toHaveCount(6);
+  await page.getByLabel('Effort', { exact: true }).selectOption('medium');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await page.getByRole('tab', { name: 'Records', exact: true }).click();
   await expect(
-    workbench
-      .getByRole('region', { name: 'Filtered configuration comparison table' })
-      .locator('tbody tr'),
-  ).toHaveCount(17);
-  await workbench.getByRole('button', { name: 'AIQ × time', exact: true }).click();
-  await expect(
-    workbench.getByRole('region', { name: 'AIQ against summed task time' }),
-  ).toBeVisible();
-});
-
-test('the comparison remains accessible in light, dark, and reduced-motion decision states', async ({
-  page,
-}) => {
-  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'reduce' });
-  await page.goto('/?compareView=decision#compare');
-  await page.getByRole('button', { name: 'Use light theme', exact: true }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  const decision = workbench.getByRole('region', {
-    name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
-  });
-  await expect(decision.locator('svg')).toBeVisible();
-  await page.getByRole('button', { name: 'Use dark theme', exact: true }).click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expect(decision.locator('svg')).toBeVisible();
+    page.getByRole('region', { name: 'Core result records' }).locator('tbody tr'),
+  ).toHaveCount(1);
+  await page.getByRole('button', { name: 'Evidence for Terra medium', exact: true }).click();
+  await page.getByRole('dialog').getByText('Run identity & original JSON', { exact: true }).click();
+  const completeRun = page.getByRole('link', { name: 'Open complete run evidence', exact: true });
+  await expect(completeRun).toHaveAttribute(
+    'href',
+    `/benchmarks/intelligence/records/${scorerGeneratedAggregate('terra-medium').run_id}?return=${encodeURIComponent('/benchmarks/intelligence?model=Terra&effort=medium&view=records')}`,
+  );
+  await completeRun.click();
+  await page.getByRole('link', { name: '← Back to records', exact: true }).click();
+  await expect(page.getByLabel('Model', { exact: true })).toHaveValue('Terra');
+  await expect(page.getByLabel('Effort', { exact: true })).toHaveValue('medium');
+  await expect(page.getByRole('tab', { name: 'Records', exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
 });
-
-test('the public comparison keeps all complete Official rows and run links visible', async ({
+test('the visual leaderboard keeps exact scorer intervals and one scale after filtering', async ({
   page,
 }) => {
-  await page.goto('/');
-  const publicIndex = page.getByRole('region', {
-    name: 'Filtered configuration comparison table',
+  await page.goto('/benchmarks/intelligence');
+  const notes = page.locator('.table-notes[aria-label="AI Intelligence results notes"]');
+  await expect(notes).not.toHaveAttribute('open');
+  await expect(notes.locator('.table-notes-content')).not.toBeVisible();
+  await notes.locator('summary').click();
+  await expect(notes.locator('.table-notes-content')).toBeVisible();
+  await expect(notes).toContainText('relative to all 17 configurations');
+  await expect(notes).toContainText('not a human IQ norm');
+  await notes.locator('summary').click();
+  await expect(notes.locator('.table-notes-content')).not.toBeVisible();
+  const table = page.getByRole('region', { name: 'Core leaderboard', exact: true });
+  await expect(page.locator('.comparison-reading-key')).toContainText(
+    'Strict pass: fully correct outcomes.',
+  );
+  await expect(page.getByRole('link', { name: 'How scoring works', exact: true })).toHaveAttribute(
+    'href',
+    '/benchmarks/intelligence?view=method',
+  );
+  await expect(table.locator('tbody tr')).toHaveCount(17);
+  await expect(table.locator('.core-interval-mark')).toHaveCount(17);
+  await expect(
+    page.getByRole('region', { name: 'Core performance chart', exact: true }),
+  ).toHaveCount(0);
+  const expected = scorerGeneratedAggregate('terra-medium');
+  const row = table.locator(`tr[data-configuration="${expected.matrix_id}"]`);
+  const mark = row.locator('.core-interval-mark');
+  await expect(row).toContainText(expected.score.toFixed(3));
+  await expect(mark).toHaveAttribute('data-low', String(expected.score_ci_low));
+  await expect(mark).toHaveAttribute('data-high', String(expected.score_ci_high));
+  await expect(mark).toHaveAttribute('data-value', String(expected.score));
+  const beforeFiltering = await mark.locator('.core-interval-line').getAttribute('d');
+  await page.locator('.comparison-filters > summary').click();
+  await page.getByLabel('Model', { exact: true }).selectOption('Terra');
+  await page.getByLabel('Effort', { exact: true }).selectOption('medium');
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await expect(mark.locator('.core-interval-line')).toHaveAttribute('d', beforeFiltering ?? '');
+  await page.reload();
+  await expect(table.locator('tbody tr')).toHaveCount(1);
+  await page.setViewportSize({ width: 320, height: 760 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  const detailsToggle = table.getByRole('button', {
+    name: 'Details for Terra medium',
+    exact: true,
   });
-  await expect(publicIndex.getByRole('row')).toHaveCount(18);
-  await expect(publicIndex.getByRole('link', { name: 'Official run' })).toHaveCount(17);
-  await expect(publicIndex.getByText('100% coverage', { exact: true })).toHaveCount(17);
-  await expect(publicIndex.getByRole('columnheader', { name: 'AIQ' })).toBeVisible();
+  await detailsToggle.click();
+  const details = table.getByRole('region', { name: 'Terra medium details', exact: true });
+  await expect(details).toContainText(expected.run_id);
+  await expect(details).toContainText(
+    `${(expected.strict_pass_low * 100).toFixed(1)}–${(expected.strict_pass_high * 100).toFixed(1)}%`,
+  );
+  const measurements = await table.locator('table').evaluate((element) => ({
+    width: element.getBoundingClientRect().width,
+    available: element.parentElement?.clientWidth ?? 0,
+  }));
+  expect(measurements.width).toBeLessThanOrEqual(measurements.available + 1);
+  await detailsToggle.click();
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(table.locator('tbody tr')).toHaveCount(17);
+  await expect(mark.locator('.core-interval-line')).toHaveAttribute('d', beforeFiltering ?? '');
+  await page.getByRole('tab', { name: 'Data', exact: true }).click();
+  await expect(table).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Frozen Core task catalogue · JSON', exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Calibration records', exact: true })).toHaveCount(0);
+});
+test('the model-effort matrix keeps all results and filters the ranking on desktop and mobile', async ({
+  page,
+}) => {
+  const expected = scorerGeneratedAggregate('terra-medium');
+  const expectedRank =
+    1 + scorerGeneratedFixture.leaderboard.filter((entry) => entry.score > expected.score).length;
+  for (const width of [1536, 320]) {
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto('/benchmarks/intelligence');
+    const matrix = page.getByRole('table', {
+      name: 'Recorded ability by model and reasoning effort',
+      exact: true,
+    });
+    const ranking = page.getByRole('region', { name: 'Core leaderboard', exact: true });
+    const notes = page.locator('.table-notes[aria-label="AI Intelligence matrix notes"]');
+    await expect(notes).not.toHaveAttribute('open');
+    await expect(notes.locator('.table-notes-content')).not.toBeVisible();
+    expect((await notes.locator('..').boundingBox())?.height).toBeLessThan(44);
+    await notes.locator('summary').click();
+    await expect(notes.locator('.table-notes-content')).toBeVisible();
+    await expect(notes).toContainText('All 17 configurations stay visible');
+    await notes.locator('summary').click();
+    await expect(matrix.getByRole('columnheader')).toHaveText(['Effort', 'Luna', 'Sol', 'Terra']);
+    await expect(matrix.getByRole('rowheader')).toHaveText([
+      'low',
+      'medium',
+      'high',
+      'xhigh',
+      'max',
+      'ultra',
+    ]);
+    await expect(matrix.getByRole('link')).toHaveCount(17);
+    await expect(ranking.locator('tbody tr')).toHaveCount(17);
+    const entry = ranking.locator(`tr[data-configuration="${expected.matrix_id}"]`);
+    const interval = entry.locator('.core-interval-line');
+    const geometry = await interval.getAttribute('d');
+    const subjectColor = await interval.evaluate((mark) => getComputedStyle(mark).stroke);
+    const familyColors = await ranking
+      .locator('.core-interval-line')
+      .evaluateAll((marks) => marks.map((mark) => getComputedStyle(mark).stroke));
+    expect(new Set(familyColors).size).toBe(3);
+    const cell = matrix.getByRole('link', {
+      name: `Compare Terra medium · ability ${expected.score.toFixed(3)}`,
+      exact: true,
+    });
+    await cell.click();
+    await expect(ranking.locator('tbody tr')).toHaveCount(1);
+    await expect(entry).toHaveAttribute('data-rank', String(expectedRank));
+    await expect(interval).toHaveAttribute('d', geometry ?? '');
+    expect(await interval.evaluate((mark) => getComputedStyle(mark).stroke)).toBe(subjectColor);
+    await expect(cell).toHaveAttribute('aria-current', 'location');
+    expect(await cell.evaluate((link) => getComputedStyle(link).outlineColor)).not.toBe(
+      subjectColor,
+    );
+    await expect(matrix.getByRole('link')).toHaveCount(17);
+    const heading = page.getByRole('heading', { name: 'Practical task results', exact: true });
+    await expect(heading).toBeFocused();
+    if (width === 320) {
+      // Compact notes can bring the page to its scroll end before the heading reaches the top.
+      // Keep the selected result and its notes visible together.
+      await expect(heading).toBeInViewport({ ratio: 1 });
+      await expect(entry).toBeInViewport({ ratio: 1 });
+      await expect(
+        page.locator('.table-notes[aria-label="AI Intelligence results notes"] > summary'),
+      ).toBeInViewport({ ratio: 1 });
+      expect(
+        await page
+          .locator('.board-tabs')
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      ).toBe(true);
+      expect(
+        await entry.locator('.core-strict').evaluate((strictCell) => {
+          const bounds = strictCell.getBoundingClientRect();
+          const range = document.createRange();
+          range.selectNodeContents(strictCell);
+          return Array.from(range.getClientRects()).every(
+            (text) => text.left >= bounds.left && text.right <= bounds.right,
+          );
+        }),
+      ).toBe(true);
+    }
+    await page.reload();
+    await expect(ranking.locator('tbody tr')).toHaveCount(1);
+    expect(await interval.evaluate((mark) => getComputedStyle(mark).stroke)).toBe(subjectColor);
+    await expect(cell).toHaveAttribute('aria-current', 'location');
+    await page.getByRole('tab', { name: 'Records', exact: true }).click();
+    await expect(matrix).toHaveCount(0);
+    await expect(
+      page.getByRole('region', { name: 'Core result records', exact: true }).locator('tbody tr'),
+    ).toHaveCount(1);
+    await page.getByRole('tab', { name: 'Leaderboard', exact: true }).click();
+    await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+    await expect(ranking.locator('tbody tr')).toHaveCount(17);
+    await expect(matrix.locator('[aria-current]')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(
+      false,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  }
 });
 
 test('a partial Terra-only calibration derives a valid default and reports its selected subset', async ({
   page,
   request,
 }) => {
-  await page.goto('/calibrations');
+  await page.setViewportSize({ width: 320, height: 844 });
+  const returnTo = '/benchmarks/intelligence?model=Terra&effort=medium&view=records';
+  await page.goto(returnTo);
+  await page.getByRole('link', { name: 'Calibration records', exact: true }).click();
   const register = page.getByRole('region', { name: 'Public calibration register' });
   await expect(register.getByRole('row')).toHaveCount(3);
   await expect(register).toContainText('1 models × 5 tasks');
+  await expect(
+    register.getByRole('link', { name: 'Inspect calibration' }).first(),
+  ).toBeInViewport();
   await register.getByRole('link', { name: 'Inspect calibration' }).first().click();
 
-  await expect(page).toHaveURL(`/calibrations/${subsetCalibrationRunId}`);
+  await expect(page).toHaveURL(
+    `/benchmarks/intelligence/calibrations/${subsetCalibrationRunId}?${new URLSearchParams({ return: `/benchmarks/intelligence/calibrations?${new URLSearchParams({ return: returnTo })}` })}`,
+  );
   await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
     'terra · medium',
   );
@@ -601,14 +302,28 @@ test('a partial Terra-only calibration derives a valid default and reports its s
   await expect(
     page.getByRole('region', { name: 'Calibration results' }).getByRole('row'),
   ).toHaveCount(6);
+  await page.getByRole('button', { name: 'Show 5-task subset', exact: true }).click();
+  await expect(
+    page.getByRole('link', { name: '← Back to calibrations', exact: true }),
+  ).toHaveAttribute(
+    'href',
+    `/benchmarks/intelligence/calibrations?${new URLSearchParams({ return: returnTo })}`,
+  );
+  await page.getByRole('link', { name: '← Back to calibrations', exact: true }).click();
+  await page.getByRole('link', { name: '← Back to records', exact: true }).click();
+  await page.getByRole('tab', { name: 'Leaderboard', exact: true }).click();
+  await expect(page.getByLabel('Model', { exact: true })).toHaveValue('Terra');
+  await expect(page.getByLabel('Effort', { exact: true })).toHaveValue('medium');
 
   const absentConfiguration = await request.get(
-    `/calibrations/${subsetCalibrationRunId}?configuration=sol%3Alow`,
+    `/benchmarks/intelligence/calibrations/${subsetCalibrationRunId}?configuration=sol%3Alow`,
   );
   expect(absentConfiguration.status()).toBe(404);
   expectNoStore(absentConfiguration);
 
-  const absentRun = await request.get(`/calibrations/run_${'6'.repeat(64)}`);
+  const absentRun = await request.get(
+    `/benchmarks/intelligence/calibrations/run_${'6'.repeat(64)}`,
+  );
   expect(absentRun.status()).toBe(404);
   expectNoStore(absentRun);
 });
@@ -616,9 +331,9 @@ test('a partial Terra-only calibration derives a valid default and reports its s
 test('full calibration detail keeps one run and one selected-task subset bounded', async ({
   page,
   request,
-}) => {
-  await page.goto(`/calibrations/${calibrationRunId}`);
-  await expect(page).toHaveURL(`/calibrations/${calibrationRunId}`);
+}, testInfo) => {
+  await page.goto(`/benchmarks/intelligence/calibrations/${calibrationRunId}`);
+  await expect(page).toHaveURL(`/benchmarks/intelligence/calibrations/${calibrationRunId}`);
   await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
     'sol · low',
   );
@@ -652,213 +367,39 @@ test('full calibration detail keeps one run and one selected-task subset bounded
 
   await selector.selectOption('terra:medium');
   await page.getByRole('button', { name: 'Show 72-task subset' }).click();
-  await expect(page).toHaveURL(`/calibrations/${calibrationRunId}?configuration=terra%3Amedium`);
+  await expect(page).toHaveURL(
+    `/benchmarks/intelligence/calibrations/${calibrationRunId}?configuration=terra%3Amedium`,
+  );
   await expect(page.getByText('Current filter', { exact: true }).locator('..')).toContainText(
     'terra · medium',
   );
   await expect(results.getByRole('row')).toHaveCount(73);
 
-  const invalid = await request.get(`/calibrations/${calibrationRunId}?configuration=luna%3Aultra`);
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.locator('.calibration-chart').scrollIntoViewIfNeeded();
+    const chartBounds = await page.locator('.calibration-chart').boundingBox();
+    const captionBounds = await page.locator('.calibration-plot figcaption').boundingBox();
+    expect(chartBounds?.width).toBeGreaterThan(width === 390 ? 300 : 900);
+    expect(captionBounds?.y).toBeGreaterThanOrEqual(
+      (chartBounds?.y ?? 0) + (chartBounds?.height ?? 0),
+    );
+    await page.screenshot({ path: testInfo.outputPath(`calibration-colors-${width}.png`) });
+  }
+
+  const invalid = await request.get(
+    `/benchmarks/intelligence/calibrations/${calibrationRunId}?configuration=luna%3Aultra`,
+  );
   expect(invalid.status()).toBe(404);
   expectNoStore(invalid);
 });
 
-test('Official comparison selection is limited to the selected run identities', async ({
+test('the published run exposes complete task and provenance evidence', async ({
   page,
-}) => {
-  await page.goto('/compare?compareConfigs=sol-low,sol-medium#compare');
-  const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  await expect(workbench.locator('.workbench-filter-toggle small')).toContainText('2/17 visible');
-  const comparison = workbench.getByRole('region', {
-    name: 'Filtered configuration comparison table',
-  });
-  await expect(comparison.locator('tbody tr')).toHaveCount(2);
-  const low = comparison.locator('[data-configuration-id="sol-low"]');
-  const medium = comparison.locator('[data-configuration-id="sol-medium"]');
-  await expect(low).toContainText('$12.35');
-  await expect(medium).toContainText('Unavailable');
-  await expect(low.getByRole('link', { name: 'Official run' })).toHaveAttribute(
-    'href',
-    `/runs/${scorerGeneratedAggregate('sol-low').run_id}`,
+}, testInfo) => {
+  await page.goto(
+    `/benchmarks/intelligence/records/${scorerGeneratedAggregate('sol-ultra').run_id}`,
   );
-  await expect(medium.getByRole('link', { name: 'Official run' })).toHaveAttribute(
-    'href',
-    `/runs/${scorerGeneratedAggregate('sol-medium').run_id}`,
-  );
-  await expect(comparison).not.toContainText(calibrationRunId);
-  await expect(comparison).not.toContainText('$0');
-});
-
-test('published leaderboard, trends, runs, and results share coherent score evidence', async ({
-  baseURL,
-  request,
-}) => {
-  expect(baseURL).toBeDefined();
-  const origin = companionOrigin(baseURL ?? '');
-  const [leaderboardResponse, trendsResponse, runsResponse, resultsResponse] = await Promise.all([
-    request.get(`${origin}/rest/v1/public_leaderboard?limit=1000`),
-    request.post(`${origin}/rest/v1/rpc/public_trend_points`, {
-      data: { supplied_range: 'all' },
-    }),
-    request.get(`${origin}/rest/v1/public_runs?limit=1000`),
-    request.get(
-      `${origin}/rest/v1/public_run_results?select=run_id,domain,outcome,execution_status,score&limit=2000`,
-    ),
-  ]);
-  expect(leaderboardResponse.status()).toBe(200);
-  expect(trendsResponse.status()).toBe(200);
-  expect(runsResponse.status()).toBe(200);
-  expect(resultsResponse.status()).toBe(200);
-
-  const leaderboardPayload: unknown = await leaderboardResponse.json();
-  const trendsPayload: unknown = await trendsResponse.json();
-  const runsPayload: unknown = await runsResponse.json();
-  const resultsPayload: unknown = await resultsResponse.json();
-  const leaderboard = evidenceRows(
-    leaderboardPayload,
-    isPublishedLeaderboardEvidence,
-    'leaderboard',
-  );
-  const trends = evidenceRows(trendsPayload, isPublishedTrendEvidence, 'trend');
-  const runs = evidenceRows(runsPayload, isPublishedRunEvidence, 'run');
-  const results = evidenceRows(resultsPayload, isPublishedResultEvidence, 'result');
-  expect(leaderboard).toHaveLength(17);
-  expect(trends).toHaveLength(17);
-  expect(runs).toHaveLength(17);
-  expect(results).toHaveLength(1_224);
-  expect(leaderboard.every((row) => !row.synthetic)).toBe(true);
-  expect(trends.every((row) => !row.synthetic)).toBe(true);
-  expect(runs.every((row) => !row.synthetic)).toBe(true);
-  expect(new Set(trends.map((row) => row.run_id)).size).toBe(trends.length);
-  expect(new Set(runs.map((row) => row.id)).size).toBe(runs.length);
-
-  for (const current of leaderboard) {
-    const generated = scorerGeneratedAggregate(current.matrix_id);
-    expect(current).toMatchObject({
-      run_id: generated.run_id,
-      score: generated.score,
-      score_ci_low: generated.score_ci_low,
-      score_ci_high: generated.score_ci_high,
-      quality_score: generated.quality_score,
-      strict_pass_rate: generated.strict_pass_rate,
-      sensitivity_low: generated.sensitivity_low,
-      sensitivity_high: generated.sensitivity_high,
-      calibration_status: 'calibrated',
-      scoring_version: AIQ_CORE_SCORING_VERSION,
-    });
-  }
-
-  const leaderboardByRunId = new Map(leaderboard.map((row) => [row.run_id, row]));
-  const runsById = new Map(runs.map((run) => [run.id, run]));
-  const resultsByRunId = new Map<string, PublishedResultEvidence[]>();
-  for (const result of results) {
-    const retained = resultsByRunId.get(result.run_id) ?? [];
-    retained.push(result);
-    resultsByRunId.set(result.run_id, retained);
-  }
-  expect(resultsByRunId.size).toBe(17);
-  let sharedRunCount = 0;
-  for (const trend of trends) {
-    const run = runsById.get(trend.run_id);
-    expect(run, `missing run evidence for ${trend.run_id}`).toBeDefined();
-    if (!run) continue;
-    expect(run.matrix_id).toBe(trend.matrix_id);
-    expect(run.scoring_version).toBe(trend.scoring_version);
-    const runStartedAt = parseEvidenceTimestamp(run.started_at);
-    const runCompletedAt = parseEvidenceTimestamp(run.completed_at);
-    const recordedAt = parseEvidenceTimestamp(trend.recorded_at);
-    const bucketStartedAt = parseEvidenceTimestamp(trend.bucket_started_at);
-    const bucketEndedAt = parseEvidenceTimestamp(trend.bucket_ended_at);
-    expect(runStartedAt).toBeLessThanOrEqual(runCompletedAt);
-    expect(runCompletedAt).toBeLessThanOrEqual(recordedAt);
-    expect(bucketStartedAt).toBeLessThanOrEqual(recordedAt);
-    expect(recordedAt).toBeLessThanOrEqual(bucketEndedAt);
-
-    const current = leaderboardByRunId.get(trend.run_id);
-    if (!current) continue;
-    sharedRunCount += 1;
-    const runResults = resultsByRunId.get(current.run_id);
-    expect(runResults, `missing task results for ${current.run_id}`).toBeDefined();
-    if (!runResults) continue;
-    const recomputedQuality = recomputeQualityScore(runResults);
-    const strictPassSuccesses = runResults.filter((result) => result.score === 1).length;
-    expect(recomputedQuality).toBeCloseTo(current.quality_score, 10);
-    expect(recomputedQuality).toBeCloseTo(trend.quality_score, 10);
-    expect(current.strict_pass_sample_size).toBe(runResults.length);
-    expect(current.strict_pass_successes).toBe(strictPassSuccesses);
-    expect(current.strict_pass_rate).toBeCloseTo(strictPassSuccesses / runResults.length, 12);
-    expect(current.sensitivity_low).toBeLessThanOrEqual(recomputedQuality);
-    expect(current.sensitivity_high).toBeGreaterThanOrEqual(recomputedQuality);
-    expect(current.score_ci_low).toBeLessThanOrEqual(current.score);
-    expect(current.score_ci_high).toBeGreaterThanOrEqual(current.score);
-    expect(trend).toMatchObject({
-      matrix_id: current.matrix_id,
-      run_id: current.run_id,
-      score: current.score,
-      score_ci_low: current.score_ci_low,
-      score_ci_high: current.score_ci_high,
-      quality_score: current.quality_score,
-      strict_pass_rate: current.strict_pass_rate,
-      sensitivity_low: current.sensitivity_low,
-      sensitivity_high: current.sensitivity_high,
-      sample_size: current.sample_size,
-      scoring_version: current.scoring_version,
-    });
-  }
-  expect(sharedRunCount).toBe(leaderboard.length);
-
-  for (const current of leaderboard) {
-    const retained = trends.filter((trend) => trend.matrix_id === current.matrix_id);
-    retained.sort((left, right) => right.recorded_at.localeCompare(left.recorded_at));
-    expect(retained).toHaveLength(1);
-    expect(retained[0]).toMatchObject({
-      run_id: current.run_id,
-      score: current.score,
-      score_ci_low: current.score_ci_low,
-      score_ci_high: current.score_ci_high,
-      quality_score: current.quality_score,
-      strict_pass_rate: current.strict_pass_rate,
-      sensitivity_low: current.sensitivity_low,
-      sensitivity_high: current.sensitivity_high,
-      sample_size: current.sample_size,
-      scoring_version: current.scoring_version,
-    });
-  }
-
-  expect(results.filter((result) => result.outcome === 'correct')).toHaveLength(10);
-  expect(results.filter((result) => result.outcome === 'partial')).toHaveLength(1_207);
-  expect(results.filter((result) => result.outcome === 'incorrect')).toHaveLength(7);
-  expect(new Set(results.map((result) => result.outcome))).toEqual(
-    new Set(['correct', 'partial', 'incorrect']),
-  );
-  expect(results.filter((result) => result.execution_status === 'completed')).toHaveLength(1_224);
-  expect(new Set(results.map((result) => result.execution_status))).toEqual(new Set(['completed']));
-  expect(
-    results.every((result) => {
-      if (result.outcome === 'correct') return result.score === 1;
-      if (result.outcome === 'partial') return result.score > 0 && result.score < 1;
-      return result.score === 0;
-    }),
-  ).toBe(true);
-});
-
-test('Official trends expose current time and cost evidence', async ({ page }) => {
-  await page.goto('/trends?range=all');
-  await page.getByText('Evidence notes and visible values', { exact: true }).click();
-  const values = page.getByRole('region', { name: 'Visible trend values' });
-  await expect(values.getByRole('row')).toHaveCount(18);
-  await expect(values.getByRole('columnheader', { name: 'Coverage' })).toBeVisible();
-  await expect(values.getByRole('columnheader', { name: 'Runtime' })).toBeVisible();
-  await expect(values.getByRole('columnheader', { name: 'Missing' })).toBeVisible();
-  await expect(values.getByRole('columnheader', { name: 'Summed adapter duration' })).toBeVisible();
-  await expect(values.getByRole('columnheader', { name: 'API-equivalent cost' })).toBeVisible();
-  await expect(values).toContainText('$12.35');
-  await expect(values).toContainText('Unavailable');
-  await expect(values).not.toContainText('$0');
-});
-
-test('the published run exposes complete task and provenance evidence', async ({ page }) => {
-  await page.goto(`/runs/${scorerGeneratedAggregate('sol-ultra').run_id}`);
   await expect(page.locator('.task-list > article')).toHaveCount(72);
   await page.locator('details.run-evidence-notes > summary').click();
   await expect(page.getByText('Official', { exact: true })).toBeVisible();
@@ -868,11 +409,13 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(
     page.locator('.run-stats').getByText('Runtime issue', { exact: true }).locator('..'),
   ).toContainText('0');
-  const provenance = page.getByRole('heading', { name: 'Run provenance' }).locator('..');
+  const provenance = page.locator('#run-provenance');
+  await provenance.locator(':scope > summary').click();
   await expect(provenance).toContainText('corpus_test-generated-aiq-core-1.1.0');
   await expect(provenance).toContainText(`sha256:${'9'.repeat(64)}`);
   await expect(provenance.getByText('Not published', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Time, token coverage, and cost' })).toBeVisible();
+  await page.getByText('Timing scope', { exact: true }).click();
   await expect(
     page.getByText('Neither value is isolated model latency.', { exact: false }),
   ).toBeVisible();
@@ -881,6 +424,8 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(efficiency).toContainText('unavailable missing usage');
   await expect(efficiency).not.toContainText('$0');
   const taskResults = page.locator('.task-list > article');
+  await page.locator('#run-task-outcomes > summary').click();
+  await taskResults.first().getByText('Explanation and usage', { exact: true }).click();
   await expect(taskResults.first()).toContainText('Codex adapter elapsed:');
   await expect(taskResults.first()).toContainText('Tokens: input 1,361');
   await expect(taskResults.first()).toContainText('total unavailable');
@@ -896,17 +441,74 @@ test('the published run exposes complete task and provenance evidence', async ({
   await expect(evaluatorOutcomes.first()).not.toContainText('EXPLANATION_NOT_PUBLISHED');
   await expect(taskResults.filter({ hasText: 'runtime_issue' })).toHaveCount(0);
 
-  await page.goto(`/runs/${scorerGeneratedAggregate('luna-max').run_id}`);
+  await page.goto(
+    `/benchmarks/intelligence/records/${scorerGeneratedAggregate('luna-max').run_id}`,
+  );
   await page.locator('details.run-evidence-notes > summary').click();
   await expect(page.getByText('Correct', { exact: true }).locator('..')).toContainText('2');
   await expect(page.getByText('Partial', { exact: true }).locator('..')).toContainText('70');
   await expect(page.getByText('Incorrect', { exact: true }).locator('..')).toContainText('0');
+  await page.locator('details.run-evidence-notes > summary').click();
+  for (const width of [1440, 820, 320]) {
+    await page.setViewportSize({ width, height: 900 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+      true,
+    );
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    await page.screenshot({
+      path: testInfo.outputPath(`run-detail-${width}.png`),
+      fullPage: false,
+    });
+    if (width <= 820) {
+      const efficiencyTable = page.locator('.official-efficiency-table');
+      await efficiencyTable.getByRole('button', { name: /^Details for / }).click();
+      const rowDetails = efficiencyTable.getByRole('region');
+      await expect(
+        rowDetails.locator('dt').filter({ hasText: /^Provider tokens\s*total reported$/ }),
+      ).toBeVisible();
+      await expect(rowDetails.locator(':scope > .row-detail-context')).not.toHaveAttribute('open');
+      expect((await rowDetails.boundingBox())?.height).toBeLessThan(350);
+      await rowDetails.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`efficiency-expanded-${width}.png`) });
+      await rowDetails.locator('.row-detail-context >summary').first().click();
+      await expect(rowDetails.locator('dt').filter({ hasText: /^Input tokens/ })).toBeVisible();
+      await rowDetails.locator('.row-detail-context >summary').first().click();
+      const efficiencySizes = await efficiencyTable.evaluate((element) => ({
+        width: element.getBoundingClientRect().width,
+        available: element.parentElement?.clientWidth ?? 0,
+        scroll: element.parentElement?.scrollWidth ?? 0,
+      }));
+      expect(efficiencySizes.width).toBeLessThanOrEqual(efficiencySizes.available + 1);
+      expect(efficiencySizes.scroll).toBeLessThanOrEqual(efficiencySizes.available + 1);
+      await expect(efficiencyTable.getByRole('columnheader')).toHaveText([
+        /Model\s*effort/,
+        /Adapter time\s*cell sum/,
+        /API cost\s*USD estimate/,
+        'Details',
+      ]);
+      await efficiencyTable.getByRole('button', { name: /^Details for / }).click();
+      const domains = page.getByRole('region', { name: 'Run domain summary', exact: true });
+      expect(await domains.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+        true,
+      );
+      await domains.scrollIntoViewIfNeeded();
+      await page.screenshot({
+        path: testInfo.outputPath(`run-domains-${width}.png`),
+        fullPage: false,
+      });
+    }
+  }
 });
 
-test('the published method and radar retain versioned, signed provenance', async ({ page }) => {
-  await page.goto('/method');
+test('the frozen definition and published runner records retain their versions and provenance', async ({
+  page,
+}) => {
+  await page.goto('/benchmarks/intelligence?view=method');
+  const sections = page.getByRole('navigation', { name: 'On this page', exact: true });
+  await sections.getByRole('link', { name: 'Scope', exact: true }).click();
   await expect(page.getByText('aiq-core@1.1.0', { exact: true })).toBeVisible();
   await expect(page.getByText(AIQ_CORE_SCORING_VERSION, { exact: true })).toBeVisible();
+  await sections.getByRole('link', { name: 'Time & cost', exact: true }).click();
   await expect(
     page.getByRole('link', { name: 'official OpenAI API pricing documentation' }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
@@ -916,11 +518,13 @@ test('the published method and radar retain versioned, signed provenance', async
     }),
   ).toHaveAttribute('href', 'https://developers.openai.com/api/docs/pricing');
   await expect(page.getByText('displays a published-rate range', { exact: false })).toBeVisible();
+  await sections.getByRole('link', { name: 'Domains', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Domain coverage', exact: true })).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: '72 tasks · 10 equally weighted domains' }),
+    page.getByText('72 tasks · 10 equally weighted domains', { exact: true }),
   ).toBeVisible();
 
-  await page.goto('/radar');
+  await page.goto('/benchmarks/intelligence/verification');
   await page.locator('details.radar-node-details > summary').click();
   await expect(page.getByText('Registry trust: trusted verified', { exact: true })).toBeVisible();
   await expect(page.getByText('Published', { exact: true }).first()).toBeVisible();

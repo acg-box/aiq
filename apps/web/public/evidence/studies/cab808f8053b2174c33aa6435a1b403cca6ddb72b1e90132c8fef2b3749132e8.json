@@ -1,0 +1,26 @@
+{
+  "ragflow_ee96a29f4860481891aa8c5a575ed297": {
+    "mappings": {
+      "properties": {
+        "q_4096_vec": {
+          "type": "dense_vector",
+          "dims": 4096,
+          "index": true,
+          "similarity": "cosine"
+        }
+      }
+    }
+  },
+  "memory_ee96a29f4860481891aa8c5a575ed297": {
+    "mappings": {
+      "properties": {
+        "q_4096_vec": {
+          "type": "dense_vector",
+          "dims": 4096,
+          "index": true,
+          "similarity": "cosine"
+        }
+      }
+    }
+  }
+}

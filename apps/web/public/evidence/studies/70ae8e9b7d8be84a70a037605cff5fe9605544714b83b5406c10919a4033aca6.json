@@ -1,0 +1,51 @@
+{
+  "product": "ragflow",
+  "scope": "formal",
+  "phase": "post",
+  "case_id": "doc-000",
+  "question": "List both exception identifiers in the signed Kestrel-0 return policy.",
+  "answer": {
+    "answer": "The two exception identifiers are CUSTOM-0-7c2 and DEFECT-0-9b4.",
+    "citations": [
+      {
+        "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+        "quote": "custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4"
+      }
+    ]
+  },
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+      "quote_bound": true
+    }
+  ],
+  "retrieval_seconds": 0.101,
+  "total_seconds": 2.223,
+  "context_bytes": 4088,
+  "context_entries": 10,
+  "dropped": [],
+  "usage": {
+    "prompt_tokens": 1615,
+    "completion_tokens": 103,
+    "total_tokens": 1718,
+    "cost": 0.0002533,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1612,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0002533,
+      "upstream_inference_prompt_cost": 0.0002018,
+      "upstream_inference_completions_cost": 5.15e-05
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "finish_reason": "stop"
+}

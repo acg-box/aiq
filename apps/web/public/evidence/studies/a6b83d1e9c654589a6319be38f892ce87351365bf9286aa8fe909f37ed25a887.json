@@ -1,0 +1,48 @@
+{
+  "source_revision": "7eb673bfc3ab1cc22532fe23a1e9bb85c34e48bd",
+  "tag": "nightly-arm64",
+  "published_at": "2026-10-19T13:29:20.155295Z",
+  "image": "infiniflow/ragflow@sha256:002f50e053e9c5081610c9b0bb9f07a190cb240e1c983cadc9f0e4364dec9153",
+  "files": [
+    {
+      "path": "docker/kvrocks-entrypoint.sh",
+      "sha256": "6920d61f8e1a05d3805866fdc797096a779bffcbce7dd401d6f75140f74f615e"
+    },
+    {
+      "path": "docker/init.sql",
+      "sha256": "68217c32597373c52bead702e38b740c5d14279f8fd226def77780cdb7eaa125"
+    },
+    {
+      "path": "docker/.env",
+      "sha256": "eba8f785cbef616f7583a123da1c5cb5197d0dbdaa173b305e3c238e2d023620"
+    },
+    {
+      "path": "docker/docker-compose-base.yml",
+      "sha256": "c536465a66d27d1c0ccb194eefe0566743a0dc542e8a56514c7d98d057c50b4a"
+    },
+    {
+      "path": "docker/docker-compose.yml",
+      "sha256": "f087311ac939d4e9996d3dd63ee6299cc8c7aae0ebbae50c8820c5e89e740f34"
+    },
+    {
+      "path": "docker/entrypoint.sh",
+      "sha256": "c3f50b90a437f20fa1fec8b44d589de69e52eb0d72172d952ad04050a6b92864"
+    },
+    {
+      "path": "docker/service_conf.yaml.template",
+      "sha256": "8894ddf7709ac9383bf15e1236259a5433f6459bfa2018ec50a42daaaa7edf10"
+    },
+    {
+      "path": "docker/nginx/proxy.conf",
+      "sha256": "3e8aca384fac05cedb27c1bfd0f5f8832fb64e2eb2ec4e1f0eea5076ee7e710b"
+    },
+    {
+      "path": "docker/nginx/ragflow.conf",
+      "sha256": "e8834597e58b9255e5af494710df8e2b1f984c4d9eb6d1332370b5684c62bb5f"
+    },
+    {
+      "path": "docker/nginx/nginx.conf",
+      "sha256": "64fbd7e83b5574fdd2e7d932a5db0571db8c4c2f8e0a0605d7d2a84da013f345"
+    }
+  ]
+}

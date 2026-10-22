@@ -2,202 +2,268 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { CaretDownIcon } from '@phosphor-icons/react/dist/csr/CaretDown';
+import { XIcon } from '@phosphor-icons/react/dist/csr/X';
+import { benchmarkBoards, boardForPath, type BenchmarkBoard } from '../benchmarks/boards.ts';
+import { NavigationPending } from './navigation-pending.tsx';
+import { fitNavigationItems } from './navigation-overflow.ts';
+import { ThemeControl, useColorTheme } from './theme-control.tsx';
 
-import type { AiqRepository } from '../data/types.ts';
-import { ThemeControl } from './theme-control.tsx';
-
-const workspaceNavigation = [
-  ['Results', 'results'],
-  ['Compare', 'compare'],
-  ['Trends', 'trends'],
-  ['Evidence', 'runs'],
-] as const;
-
-function scrollWorkspaceSection(section: HTMLElement): void {
-  window.requestAnimationFrame(() =>
-    section.scrollIntoView({ behavior: 'instant', block: 'start' }),
+function BoardLinks({
+  boards,
+  label = 'Main navigation',
+  onNavigate,
+}: {
+  boards: readonly BenchmarkBoard[];
+  label?: string;
+  onNavigate?: (destination: string) => void;
+}) {
+  const pathname = usePathname();
+  const currentBoard = boardForPath(pathname);
+  return (
+    <nav aria-label={label} className="workspace-boards">
+      {boards.map((board) => (
+        <Link
+          key={board.id}
+          href={`/benchmarks/${board.id}`}
+          aria-label={board.title}
+          aria-current={currentBoard?.id === board.id ? 'page' : undefined}
+          onClick={() => onNavigate?.(`/benchmarks/${board.id}`)}
+        >
+          {board.title}
+          <NavigationPending />
+        </Link>
+      ))}
+    </nav>
   );
 }
 
-export function SiteHeader({ configuration }: { configuration: AiqRepository['configuration'] }) {
+function WorkspaceLinks({ onNavigate }: { onNavigate?: (destination: string) => void }) {
   const pathname = usePathname();
-  const [activeSection, setActiveSection] = useState('results');
-  const navigationTarget = useRef<string | null>(null);
-  const navigationTargetFallback = useRef<number | null>(null);
-  const statusClass =
-    configuration === 'live'
-      ? 'status-public'
-      : configuration === 'invalid'
-        ? 'status-invalid'
-        : 'status-seed';
-
-  const activateNavigationTarget = useCallback((section: string) => {
-    navigationTarget.current = section;
-    setActiveSection(section);
-    if (navigationTargetFallback.current !== null) {
-      window.clearTimeout(navigationTargetFallback.current);
-    }
-    navigationTargetFallback.current = window.setTimeout(() => {
-      navigationTarget.current = null;
-      navigationTargetFallback.current = null;
-    }, 3000);
-  }, []);
-
-  useEffect(() => {
-    if (pathname !== '/') return undefined;
-    const observedSections = new Set<HTMLElement>();
-    let navigationFrame: number | null = null;
-
-    const updateActiveSection = () => {
-      navigationFrame = null;
-      const activationOffset = Math.min(120, Math.max(96, window.innerHeight * 0.2));
-      const activationPosition = window.scrollY + activationOffset;
-      const section = [...observedSections]
-        .map((candidate) => ({
-          candidate,
-          position: candidate.getBoundingClientRect().top + window.scrollY,
-        }))
-        .filter(({ position }) => position <= activationPosition)
-        .toSorted((left, right) => right.position - left.position)[0]?.candidate;
-      const visibleSection = section?.dataset.navSection;
-      if (!visibleSection) return;
-      if (navigationTarget.current !== null && navigationTarget.current !== visibleSection) return;
-      if (navigationTarget.current === visibleSection) {
-        navigationTarget.current = null;
-        if (navigationTargetFallback.current !== null) {
-          window.clearTimeout(navigationTargetFallback.current);
-          navigationTargetFallback.current = null;
-        }
-      }
-      setActiveSection(visibleSection);
-    };
-
-    const scheduleNavigationUpdate = () => {
-      if (navigationFrame !== null) return;
-      navigationFrame = window.requestAnimationFrame(updateActiveSection);
-    };
-
-    const observer = new IntersectionObserver(scheduleNavigationUpdate, {
-      threshold: [0, 0.05, 0.2],
-    });
-
-    const alignToHash = () => {
-      const id = window.location.hash.slice(1);
-      const section = id ? document.getElementById(id) : null;
-      if (!section) return;
-      if (section.dataset.navSection) activateNavigationTarget(section.dataset.navSection);
-      scrollWorkspaceSection(section);
-    };
-
-    const observeSections = () => {
-      const hashId = window.location.hash.slice(1);
-      let discoveredHashTarget = false;
-      document.querySelectorAll<HTMLElement>('[data-workspace-section]').forEach((section) => {
-        if (observedSections.has(section)) return;
-        observedSections.add(section);
-        observer.observe(section);
-        if (section.id === hashId) discoveredHashTarget = true;
-      });
-      if (discoveredHashTarget) alignToHash();
-      else scheduleNavigationUpdate();
-    };
-
-    observeSections();
-    const mutationObserver = new MutationObserver(observeSections);
-    mutationObserver.observe(document.body, { childList: true, subtree: true });
-    alignToHash();
-    window.addEventListener('hashchange', alignToHash);
-    window.addEventListener('scroll', scheduleNavigationUpdate, { passive: true });
-    window.addEventListener('resize', scheduleNavigationUpdate);
-    return () => {
-      if (navigationFrame !== null) window.cancelAnimationFrame(navigationFrame);
-      if (navigationTargetFallback.current !== null) {
-        window.clearTimeout(navigationTargetFallback.current);
-        navigationTargetFallback.current = null;
-      }
-      navigationTarget.current = null;
-      mutationObserver.disconnect();
-      observer.disconnect();
-      window.removeEventListener('hashchange', alignToHash);
-      window.removeEventListener('scroll', scheduleNavigationUpdate);
-      window.removeEventListener('resize', scheduleNavigationUpdate);
-    };
-  }, [activateNavigationTarget, pathname]);
-
   return (
-    <header className="site-header">
-      <a className="brand" href="/" aria-label="AIQ home">
-        <span>AIQ</span>
-      </a>
-      <nav aria-label="Main navigation">
-        {workspaceNavigation.map(([label, section]) => {
-          const navigationSection = section === 'runs' ? 'evidence' : section;
-          const current =
-            pathname === '/'
-              ? activeSection === navigationSection
-              : (section === 'trends' && pathname === '/trends') ||
-                (section === 'compare' && pathname === '/compare') ||
-                (section === 'runs' &&
-                  (pathname === '/runs' ||
-                    pathname.startsWith('/runs/') ||
-                    pathname === '/method' ||
-                    pathname === '/radar' ||
-                    pathname.startsWith('/calibrations')));
-          return (
-            <Link
-              key={section}
-              href={`/#${section}`}
-              aria-current={current ? 'page' : undefined}
-              prefetch={false}
-              onClick={(event) => {
-                if (
-                  event.button !== 0 ||
-                  event.altKey ||
-                  event.ctrlKey ||
-                  event.metaKey ||
-                  event.shiftKey
-                ) {
-                  return;
-                }
-                activateNavigationTarget(navigationSection);
-                if (pathname === '/') {
-                  event.preventDefault();
-                  const destination = `${window.location.pathname}${window.location.search}#${section}`;
-                  const currentLocation = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-                  if (currentLocation !== destination) {
-                    window.history.pushState(null, '', destination);
-                  }
-                  const target = document.getElementById(section);
-                  if (target) scrollWorkspaceSection(target);
-                }
+    <nav aria-label="Workspace information" className="workspace-links">
+      <Link
+        href="/about"
+        aria-current={pathname === '/about' ? 'page' : undefined}
+        aria-label="About & definitions"
+        onClick={() => onNavigate?.('/about')}
+      >
+        About
+      </Link>
+      <a href="https://github.com/acg-box/aiq">GitHub ↗</a>
+      {onNavigate ? (
+        <Link
+          href="/"
+          aria-current={pathname === '/' ? 'page' : undefined}
+          onClick={() => onNavigate?.('/')}
+        >
+          Overview
+        </Link>
+      ) : null}
+    </nav>
+  );
+}
+
+export function SiteHeader() {
+  const pathname = usePathname();
+  const theme = useColorTheme();
+  const currentBoard = boardForPath(pathname);
+  const navigation = useRef<HTMLDivElement>(null);
+  const measurements = useRef<HTMLDivElement>(null);
+  const [layout, setLayout] = useState<{ visible: readonly string[]; requireMenu: boolean }>({
+    visible: currentBoard ? [currentBoard.id] : [],
+    requireMenu: false,
+  });
+  const visibleBoards = benchmarkBoards.filter(
+    (board) =>
+      board.id === currentBoard?.id || (!layout.requireMenu && layout.visible.includes(board.id)),
+  );
+  const hiddenBoards = benchmarkBoards.filter((board) => !visibleBoards.includes(board));
+  const showMenu = hiddenBoards.length > 0 || layout.requireMenu;
+  const menu = useRef<HTMLDialogElement>(null);
+  const menuTrigger = useRef<HTMLButtonElement>(null);
+  const [open, setOpen] = useState(false);
+  const closeMenu = useCallback(() => {
+    const current = menu.current;
+    if (!current?.open) return;
+    current.close();
+    current.inert = true;
+    current.setAttribute('aria-hidden', 'true');
+    setOpen(false);
+    const focusTarget = menuTrigger.current?.offsetWidth
+      ? menuTrigger.current
+      : (navigation.current?.querySelector<HTMLElement>('a[aria-current="page"]') ??
+        navigation.current?.querySelector<HTMLElement>('a'));
+    focusTarget?.focus({ preventScroll: true });
+  }, []);
+  const positionMenu = useCallback(() => {
+    if (!menu.current?.open || !menuTrigger.current) return;
+    const trigger = menuTrigger.current.getBoundingClientRect();
+    const top =
+      (menuTrigger.current.closest('header')?.getBoundingClientRect().bottom ?? trigger.bottom) + 8;
+    menu.current.style.setProperty('--workspace-menu-top', `${top}px`);
+    menu.current.style.left = `${Math.max(16, Math.min(trigger.left, innerWidth - menu.current.offsetWidth - 16))}px`;
+  }, []);
+  useLayoutEffect(() => {
+    const container = navigation.current;
+    const ruler = measurements.current;
+    const more = ruler?.lastElementChild;
+    if (!container || !ruler || !more) return undefined;
+    const measure = () => {
+      const headerHeight = container.closest('header')?.getBoundingClientRect().height;
+      if (headerHeight)
+        document.documentElement.style.setProperty(
+          '--workspace-header-height',
+          `${headerHeight}px`,
+        );
+      const style = getComputedStyle(container);
+      const requireMenu = style.getPropertyValue('--workspace-menu-required').trim() === '1';
+      const sizes = [...ruler.children].map((item) => item.getBoundingClientRect().width);
+      const visibleIndices = requireMenu
+        ? []
+        : fitNavigationItems(
+            sizes.slice(0, -1),
+            benchmarkBoards.findIndex((board) => board.id === currentBoard?.id),
+            container.clientWidth,
+            more.getBoundingClientRect().width,
+            parseFloat(style.columnGap),
+            false,
+          );
+      const visible = benchmarkBoards
+        .filter((_, index) => visibleIndices.includes(index))
+        .map((board) => board.id);
+      setLayout((previous) =>
+        previous.requireMenu === requireMenu && previous.visible.join() === visible.join()
+          ? previous
+          : { visible, requireMenu },
+      );
+      positionMenu();
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    for (const item of ruler.children) observer.observe(item);
+    measure();
+    return () => observer.disconnect();
+  }, [currentBoard?.id, positionMenu]);
+  useEffect(() => {
+    closeMenu();
+  }, [pathname, closeMenu]);
+  useEffect(() => {
+    if (!showMenu) closeMenu();
+  }, [showMenu, closeMenu]);
+  return (
+    <>
+      <header className="workspace-header">
+        <div className="workspace-header-inner">
+          <Link className="research-brand" href="/" aria-label="AIQ home">
+            AIQ <span className="workspace-home-label">Overview</span>
+          </Link>
+          <div className="workspace-desktop-navigation" ref={navigation}>
+            <BoardLinks boards={visibleBoards} />
+            <button
+              ref={menuTrigger}
+              type="button"
+              aria-label="Open benchmark navigation"
+              aria-expanded={open}
+              aria-controls="benchmark-menu"
+              className="ui-action workspace-menu-trigger"
+              hidden={!showMenu}
+              onClick={() => {
+                const current = menu.current;
+                if (!current) return;
+                current.inert = false;
+                current.setAttribute('aria-hidden', 'false');
+                current.showModal();
+                positionMenu();
+                setOpen(true);
               }}
             >
-              {label}
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="header-tools">
-        <ThemeControl />
-        <span
-          className={`live-pill ${statusClass}`}
-          title={
-            configuration === 'live'
-              ? 'Published public data'
-              : configuration === 'invalid'
-                ? 'Public data configuration is invalid'
-                : 'Synthetic seed data'
-          }
-        >
-          <span aria-hidden="true" />
-          {configuration === 'live'
-            ? 'Live'
-            : configuration === 'invalid'
-              ? 'Config error'
-              : 'Seed'}
-        </span>
-      </div>
-    </header>
+              More <CaretDownIcon size={13} aria-hidden="true" />
+            </button>
+            <div
+              className="workspace-navigation-measure"
+              ref={measurements}
+              aria-hidden="true"
+              inert
+            >
+              {benchmarkBoards.map((board) => (
+                <span className="workspace-board-measure" key={board.id}>
+                  {board.title}
+                </span>
+              ))}
+              <span className="ui-action workspace-menu-trigger">
+                More <CaretDownIcon size={13} aria-hidden="true" />
+              </span>
+            </div>
+          </div>
+          <div className="workspace-header-actions">
+            <div className="workspace-desktop-information">
+              <WorkspaceLinks />
+            </div>
+            {!layout.requireMenu ? (
+              <div className="workspace-theme">
+                <ThemeControl theme={theme} />
+              </div>
+            ) : null}
+          </div>
+        </div>
+      </header>
+      <dialog
+        id="benchmark-menu"
+        className="workspace-mobile-menu"
+        ref={menu}
+        inert
+        aria-hidden="true"
+        onCancel={(event) => {
+          event.preventDefault();
+          closeMenu();
+        }}
+        aria-label="Benchmark navigation"
+        onClick={(event) => {
+          if (event.target !== event.currentTarget) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          if (
+            event.clientX < bounds.left ||
+            event.clientX > bounds.right ||
+            event.clientY < bounds.top ||
+            event.clientY > bounds.bottom
+          )
+            closeMenu();
+        }}
+      >
+        <div className="mobile-menu-heading">
+          <span>{hiddenBoards.length > 0 ? 'Switch benchmark' : 'Workspace'}</span>
+          <button
+            className="ui-action ui-icon-action"
+            type="button"
+            onClick={closeMenu}
+            aria-label="Close benchmark navigation"
+          >
+            <XIcon size={18} aria-hidden="true" />
+          </button>
+        </div>
+        {hiddenBoards.length > 0 ? (
+          <BoardLinks
+            boards={hiddenBoards}
+            label="More benchmarks"
+            onNavigate={(destination) => {
+              if (destination === pathname) closeMenu();
+            }}
+          />
+        ) : null}
+        <div className="workspace-menu-utilities" role="group" aria-label="Workspace utilities">
+          <div className="workspace-theme workspace-menu-theme">
+            <span>Theme</span>
+            <ThemeControl theme={theme} textLabels />
+          </div>
+          <WorkspaceLinks
+            onNavigate={(destination) => {
+              if (destination === pathname) closeMenu();
+            }}
+          />
+        </div>
+      </dialog>
+    </>
   );
 }

@@ -15,6 +15,11 @@ const settingLabels: Readonly<Record<ThemeSetting, string>> = {
   light: 'Use light theme',
   dark: 'Use dark theme',
 };
+const settingNames: Readonly<Record<ThemeSetting, string>> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+};
 
 function applyTheme(setting: ThemeSetting): ResolvedTheme {
   const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -26,7 +31,7 @@ function applyTheme(setting: ThemeSetting): ResolvedTheme {
   return resolved;
 }
 
-export function ThemeControl() {
+export function useColorTheme() {
   const [setting, setSetting] = useState<ThemeSetting>('system');
   const [resolved, setResolved] = useState<ResolvedTheme>('light');
 
@@ -44,22 +49,37 @@ export function ThemeControl() {
     return () => media.removeEventListener('change', updateSystem);
   }, []);
 
+  const changeSetting = (candidate: ThemeSetting) => {
+    persistThemeSetting(() => window.localStorage, candidate);
+    setSetting(candidate);
+    setResolved(applyTheme(candidate));
+  };
+  return { setting, resolved, changeSetting };
+}
+
+export function ThemeControl({
+  theme,
+  textLabels = false,
+}: {
+  theme: ReturnType<typeof useColorTheme>;
+  textLabels?: boolean;
+}) {
+  const { setting, resolved, changeSetting } = theme;
   return (
     <div className="theme-control" role="group" aria-label="Color theme">
       {settings.map((candidate) => (
         <button
           key={candidate}
           type="button"
+          className={textLabels ? 'ui-action' : 'ui-action ui-icon-action'}
           aria-pressed={setting === candidate}
           title={settingLabels[candidate]}
           aria-label={settingLabels[candidate]}
-          onClick={() => {
-            persistThemeSetting(() => window.localStorage, candidate);
-            setSetting(candidate);
-            setResolved(applyTheme(candidate));
-          }}
+          onClick={() => changeSetting(candidate)}
         >
-          {candidate === 'system' ? (
+          {textLabels ? (
+            settingNames[candidate]
+          ) : candidate === 'system' ? (
             <DesktopIcon aria-hidden="true" size={17} />
           ) : candidate === 'light' ? (
             <SunIcon aria-hidden="true" size={17} />

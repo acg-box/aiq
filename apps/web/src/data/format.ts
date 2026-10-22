@@ -48,7 +48,7 @@ export function formatLastObservation(lastSeenAt: string | null, now = new Date(
 }
 
 export function leaderboardRunHref(entry: LeaderboardEntry): string | null {
-  return entry.runId ? `/runs/${entry.runId}` : null;
+  return entry.runId ? `/benchmarks/intelligence/records/${entry.runId}` : null;
 }
 
 export interface RunCompleteness {

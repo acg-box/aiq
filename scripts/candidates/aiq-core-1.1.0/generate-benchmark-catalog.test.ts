@@ -610,7 +610,8 @@ await test('candidate.19 is exact rejected calibration evidence and candidate.1 
       'sha256:36633afa4103ddb893a6aef5df07653604c7410d4ac215baca4687db93fb5e54',
     task_semantics: 'candidate_19_complete_calibration_preserved_as_rejected_evidence',
     task_issue_closure_entries: 42,
-    semantic_retention_rule: 'candidate_19_preserved_immutable; only tool-use-02 response semantics advance',
+    semantic_retention_rule:
+      'candidate_19_preserved_immutable; only tool-use-02 response semantics advance',
   });
   deepStrictEqual(manifest.immutable_rejected_predecessors, [
     'aiq-core/1.1.0-candidate.1',
@@ -722,9 +723,15 @@ await test('every task has one candidate.20 identity and only tool-use-02 change
     deepStrictEqual(design.candidate_4_review, decision.candidate_4_review);
     deepStrictEqual(design.candidate_5_contract, decision.candidate_5_contract);
     if (task.task_id !== 'tool-use-02') {
-      strictEqual(digestValue(taskFacingSemantics(task)), decision.candidate_5_task_facing_semantics_sha256);
+      strictEqual(
+        digestValue(taskFacingSemantics(task)),
+        decision.candidate_5_task_facing_semantics_sha256,
+      );
     } else {
-      const response = jsonObject(design.candidate_20_response_contract, 'candidate.20 response contract');
+      const response = jsonObject(
+        design.candidate_20_response_contract,
+        'candidate.20 response contract',
+      );
       strictEqual(response.transport, 'final_response');
       deepStrictEqual(response.locations, ['final_response']);
     }
@@ -765,7 +772,10 @@ await test('candidate.9 to candidate.10 changes only the two rejected public con
   const toolUse = tasks.find((task) => task.task_id === 'tool-use-02');
   if (toolUse === undefined) throw new TypeError('tool-use-02 is missing.');
   const toolEvaluator = jsonObject(toolUse.evaluator, 'tool-use-02 evaluator');
-  toolEvaluator.pass_conditions = stringArray(toolEvaluator.pass_conditions, 'tool-use-02 pass conditions').slice(0, -2);
+  toolEvaluator.pass_conditions = stringArray(
+    toolEvaluator.pass_conditions,
+    'tool-use-02 pass conditions',
+  ).slice(0, -2);
   toolUse.tags = stringArray(toolUse.tags, 'tool-use-02 tags').slice(0, -2);
   const candidateProjection = publicContractProjection(tasks);
   const predecessorProjection = structuredClone(candidateProjection);
@@ -807,7 +817,10 @@ await test('candidate.20 changes only tool-use-02 response and evaluator semanti
   const toolUse = historical.find((task) => task.task_id === 'tool-use-02');
   if (toolUse === undefined) throw new TypeError('tool-use-02 is missing.');
   const evaluator = jsonObject(toolUse.evaluator, 'tool-use-02 evaluator');
-  evaluator.pass_conditions = stringArray(evaluator.pass_conditions, 'tool-use-02 pass conditions').slice(0, -2);
+  evaluator.pass_conditions = stringArray(
+    evaluator.pass_conditions,
+    'tool-use-02 pass conditions',
+  ).slice(0, -2);
   toolUse.tags = stringArray(toolUse.tags, 'tool-use-02 tags').slice(0, -2);
   strictEqual(
     digestValue(publicContractProjection(historical)),
@@ -1822,12 +1835,24 @@ await test('tracked candidate source contains no private payload or local author
     encoding: 'utf8',
   });
   strictEqual(tracked.status, 0);
+  const deleted = spawnSync('git', ['ls-files', '--deleted', '-z'], {
+    cwd: repositoryRoot,
+    encoding: 'utf8',
+  });
+  strictEqual(deleted.status, 0);
+  const deletedPaths = new Set(deleted.stdout.split('\0'));
   const userAbsolutePrefix = ['/', 'Users', '/'].join('');
   const privateAuthoringFragment = ['.local', 'share', 'aiq', 'authoring'].join('/');
   await Promise.all(
     tracked.stdout
       .split('\0')
       .filter(Boolean)
+      .filter((path) => !deletedPaths.has(path))
+      // Retained originals keep measured paths; check-studies checks their exact hashes.
+      .filter(
+        (path) =>
+          !/^apps\/web\/public\/evidence\/studies\/[a-f0-9]{64}\.(json|md|txt)$/u.test(path),
+      )
       .map(async (path) => {
         const bytes = await readFile(join(repositoryRoot, path));
         if (bytes.includes(0)) return;

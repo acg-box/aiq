@@ -1,0 +1,314 @@
+[
+  {
+    "effort": "medium",
+    "case_id": "post-combined-001",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": false,
+    "review": "The required current delivery mode is absent from the frozen retrieved context. The response reports that gap rather than completing the requested decision."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-doc-000",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-doc-001",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-0-0",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": false,
+    "review": "The required current delivery mode is absent from the frozen retrieved context. The response reports that gap rather than completing the requested decision."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-0-1",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-0-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-1-0",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-1-1",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "post-memory-1-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "pre-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "medium",
+    "case_id": "pre-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-combined-001",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": false,
+    "review": "The required current delivery mode is absent from the frozen retrieved context. The response reports that gap rather than completing the requested decision."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-doc-000",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-doc-001",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-0-0",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": false,
+    "review": "The required current delivery mode is absent from the frozen retrieved context. The response reports that gap rather than completing the requested decision."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-0-1",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-0-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-1-0",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-1-1",
+    "semantic_complete": true,
+    "all_quotes_bound": false,
+    "complete_with_bound_quotes": false,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct. One cited memory handle is absent from the supplied context. Its quote text matches a different project memory, so changing the handle alone would not prove correct subject binding."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "post-memory-1-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "pre-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "low",
+    "case_id": "pre-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-combined-001",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": false,
+    "review": "The required current delivery mode is absent from the frozen retrieved context. The response reports that gap rather than completing the requested decision."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-doc-000",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-doc-001",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-0-0",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": false,
+    "review": "The required current delivery mode is absent from the frozen retrieved context. The response reports that gap rather than completing the requested decision."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-0-1",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-0-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-1-0",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-1-1",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "post-memory-1-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "pre-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  },
+  {
+    "effort": "none",
+    "case_id": "pre-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "complete_with_bound_quotes": true,
+    "review": "Manual review: requested facts, subject, time, approved-versus-tested status, and unknown-owner handling are correct."
+  }
+]

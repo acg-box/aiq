@@ -1,0 +1,44 @@
+{
+  "formal_answers": 13,
+  "semantic_complete": 11,
+  "quote_bindings": {
+    "pass": 28,
+    "total": 28
+  },
+  "complete_answers_with_bound_quotes": 11,
+  "original_readback": {
+    "knowledge_originals": {
+      "pass": 6,
+      "total": 6
+    },
+    "raw_messages": {
+      "pass": 8,
+      "total": 8
+    }
+  },
+  "derived_parent_links": {
+    "pass": 18,
+    "total": 18
+  },
+  "query_mean_seconds": 4.7368461538461535,
+  "query_median_seconds": 4.319,
+  "context_max_bytes": 4906,
+  "dropped_context_entries": 0,
+  "all_finish_reasons_stop": true,
+  "failures": [
+    {
+      "phase": "post",
+      "case_id": "combined-001",
+      "correct": false,
+      "review": "The current delivery identifier STREAM-0-286 is omitted because it is absent from the retrieved context. The record exists in the native store. The reader reports a bounded unknown. This is the same missing-decision failure as the rc1 run.",
+      "quote_binding": true
+    },
+    {
+      "phase": "post",
+      "case_id": "memory-0-0",
+      "correct": false,
+      "review": "The current delivery identifier STREAM-0-286 is omitted because it is absent from the retrieved context. The record exists in the native store. The reader reports a bounded unknown. This is the same missing-decision failure as the rc1 run.",
+      "quote_binding": true
+    }
+  ]
+}

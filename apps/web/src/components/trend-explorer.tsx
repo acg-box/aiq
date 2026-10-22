@@ -1,11 +1,14 @@
 'use client';
 
+import { ExpandableTableRow, RowDetailContext, TableRowFacts } from './expandable-table-row.tsx';
+import { TableColumnHeading } from './table-column-heading.tsx';
 import type { EChartsCoreOption } from 'echarts/core';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useMemo, useTransition } from 'react';
+import { alphabetical } from '../display-order.ts';
 
-import { TREND_SERIES_STYLES } from '../data/trend-styles.ts';
+import { comparisonColor, configurationStyle } from '../data/comparison-palette.ts';
 import {
   presentScoreMetric,
   presentedScoreRange,
@@ -51,7 +54,7 @@ const ranges: ReadonlyArray<{ value: TrendRange; label: string }> = [
 type SeriesFilter = ModelFamily | 'All';
 type ReasoningFilter = LeaderboardEntry['reasoningTier'] | 'All';
 type TrendMetric = 'aiq' | 'duration' | 'cost';
-const seriesFilters: readonly SeriesFilter[] = ['All', 'Sol', 'Terra', 'Luna'];
+const seriesFilters: readonly SeriesFilter[] = ['All', 'Luna', 'Sol', 'Terra'];
 const reasoningFilters: readonly ReasoningFilter[] = [
   'All',
   'low',
@@ -63,8 +66,8 @@ const reasoningFilters: readonly ReasoningFilter[] = [
 ];
 const trendMetrics: ReadonlyArray<{ value: TrendMetric; label: string }> = [
   { value: 'aiq', label: 'AIQ' },
-  { value: 'duration', label: 'Time' },
   { value: 'cost', label: 'Cost' },
+  { value: 'duration', label: 'Time' },
 ];
 const TREND_ZOOM_DATE_COUNT = 12;
 const formatDate = (value: string) => value.slice(0, 10);
@@ -248,10 +251,13 @@ export function TrendExplorer({
   const [isPending, startTransition] = useTransition();
   const selectedEntries = useMemo(
     () =>
-      entries.filter(
-        (entry) =>
-          (seriesFilter === 'All' || entry.modelFamily === seriesFilter) &&
-          (reasoningFilter === 'All' || entry.reasoningTier === reasoningFilter),
+      alphabetical(
+        entries.filter(
+          (entry) =>
+            (seriesFilter === 'All' || entry.modelFamily === seriesFilter) &&
+            (reasoningFilter === 'All' || entry.reasoningTier === reasoningFilter),
+        ),
+        (entry) => entry.modelFamily,
       ),
     [entries, reasoningFilter, seriesFilter],
   );
@@ -342,7 +348,7 @@ export function TrendExplorer({
     if (isSingleObservationDate) {
       const visibleTime = zoomWindowTimes[0];
       const snapshotRows = selectedEntries
-        .flatMap((entry, styleIndex) => {
+        .flatMap((entry) => {
           const point = zoomWindowPoints.find(
             (candidate) =>
               candidate.entryId === entry.id &&
@@ -365,7 +371,7 @@ export function TrendExplorer({
               value,
               scoreMetric,
               strictPass,
-              color: TREND_SERIES_STYLES[styleIndex]?.color ?? '#83909c',
+              color: comparisonColor(entry.modelFamily),
             },
           ];
         })
@@ -507,7 +513,8 @@ export function TrendExplorer({
         ],
       };
     }
-    const series = selectedEntries.map((entry, index) => {
+    const series = selectedEntries.map((entry) => {
+      const style = configurationStyle(entry.reasoningTier);
       const byTime = new Map(
         zoomWindowPoints
           .filter((point) => point.entryId === entry.id)
@@ -522,13 +529,13 @@ export function TrendExplorer({
         barMaxWidth: TREND_BAR_MAX_WIDTH,
         barGap: 0,
         showSymbol: false,
-        symbol: ['circle', 'rect', 'triangle', 'diamond', 'roundRect'][index % 5],
+        symbol: style.symbol,
         symbolSize: 7,
         lineStyle: {
           width: 1.8,
-          type: index % 3 === 1 ? 'dashed' : index % 3 === 2 ? 'dotted' : 'solid',
+          type: style.dashArray ? style.dashArray.split(' ').map(Number) : 'solid',
         },
-        itemStyle: { color: TREND_SERIES_STYLES[index]?.color },
+        itemStyle: { color: comparisonColor(entry.modelFamily) },
         emphasis: { focus: 'series', scale: false, lineStyle: { width: 2.4 } },
         data: zoomWindowTimes.map((time) => {
           const point = byTime.get(time);
@@ -566,7 +573,7 @@ export function TrendExplorer({
     const intervalSeries =
       metric === 'aiq'
         ? selectedEntries.map((entry, seriesIndex) => {
-            const color = TREND_SERIES_STYLES[seriesIndex]?.color ?? '#83909c';
+            const color = comparisonColor(entry.modelFamily);
             return {
               type: 'custom',
               id: `trend-interval-${entry.id}`,
@@ -714,7 +721,7 @@ export function TrendExplorer({
               <Link
                 key={candidate.value}
                 aria-current={range === candidate.value ? 'page' : undefined}
-                href={`${hrefWithParams(pathname === '/' ? '/' : '/trends', searchParams, {
+                href={`${hrefWithParams(pathname, searchParams, {
                   range: candidate.value,
                   trendZoom: null,
                 })}${pathname === '/' ? '#trends' : ''}`}
@@ -772,7 +779,7 @@ export function TrendExplorer({
           <div className="chart-control">
             <span>View</span>
             <div className="chart-switch" role="group" aria-label="Trend chart mode">
-              {(['line', 'bar'] as const).map((candidate) => (
+              {(['bar', 'line'] as const).map((candidate) => (
                 <button
                   key={candidate}
                   type="button"
@@ -879,7 +886,7 @@ export function TrendExplorer({
         </div>
         {allTimes.length > 1 ? (
           <ul className="chart-legend" aria-label="Visible trend series">
-            {selectedEntries.map((entry, index) => {
+            {selectedEntries.map((entry) => {
               const series = zoomWindowPoints.filter((point) => point.entryId === entry.id);
               const scoringVersions = [...new Set(series.map((point) => point.scoringVersion))];
               return (
@@ -887,11 +894,17 @@ export function TrendExplorer({
                   key={entry.id}
                   title={`${seriesProvenance(series)} · scoring ${scoringVersions.join(', ') || 'unavailable'}`}
                 >
-                  <i
-                    className={`series-symbol series-symbol-${index + 1}`}
-                    style={{ background: TREND_SERIES_STYLES[index]?.color }}
+                  <svg
+                    className="comparison-series-key"
+                    viewBox="0 0 24 8"
+                    style={{ color: comparisonColor(entry.modelFamily) }}
                     aria-hidden="true"
-                  />
+                  >
+                    <path
+                      d="M 1 4 H 23"
+                      strokeDasharray={configurationStyle(entry.reasoningTier).dashArray}
+                    />
+                  </svg>
                   <strong>
                     {entry.modelFamily} · {entry.reasoningTier}
                   </strong>
@@ -943,7 +956,7 @@ export function TrendExplorer({
       <details className="data-disclosure">
         <summary>Evidence notes and visible values</summary>
         <p className="trend-resolution" role="note">
-          Showing {selectedEntries.length} configurations in canonical matrix order. Family and
+          Showing {selectedEntries.length} configurations in alphabetical family order. Family and
           reasoning are explicit filters, not point-estimate cutoffs. Published buckets retain the
           latest exact Official run; synthetic fixture buckets expose no run detail. Lines connect
           observations for continuity only; they do not interpolate or estimate values between
@@ -961,23 +974,70 @@ export function TrendExplorer({
           />
         ) : null}
         <div className="table-scroll" role="region" aria-label="Visible trend values" tabIndex={0}>
-          <table>
+          <table className="trend-values-table compact-table measurement-table">
             <thead>
               <tr>
-                <th scope="col">Recorded</th>
-                <th scope="col">Series</th>
-                <th scope="col">Primary metric</th>
-                <th scope="col">Primary interval</th>
-                <th scope="col">Strict pass</th>
-                <th scope="col">n</th>
-                <th scope="col">Run / bucket</th>
-                <th scope="col">Coverage</th>
-                <th scope="col">Runtime</th>
-                <th scope="col">Missing</th>
-                <th scope="col">Summed adapter duration</th>
-                <th scope="col">API-equivalent cost</th>
-                <th scope="col">Scoring</th>
-                <th scope="col">Evidence</th>
+                <th scope="col">
+                  <TableColumnHeading label="Recorded" unit="date" />
+                </th>
+                <th scope="col">
+                  <TableColumnHeading label="Series" unit="configuration" />
+                </th>
+                <th scope="col">
+                  <TableColumnHeading
+                    label={
+                      metric === 'aiq'
+                        ? latestVisibleMetric?.official
+                          ? 'Ability'
+                          : 'Quality'
+                        : metric === 'duration'
+                          ? 'Adapter time'
+                          : 'API ceiling'
+                    }
+                    unit={metric === 'aiq' ? '0–100' : metric === 'duration' ? 'cell sum' : 'USD'}
+                  />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading
+                    label="Interval"
+                    unit={
+                      latestVisibleMetric?.official ? 'conditional 95%' : 'task-mix sensitivity'
+                    }
+                  />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Strict pass" unit="% of scored tasks" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Sample" unit="tasks" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Run" unit="observation bucket" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Coverage" unit="% of tasks" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Runtime issues" unit="tasks" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Missing" unit="tasks" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Adapter time" unit="cell sum" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="API ceiling" unit="USD" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Scoring" unit="version" />
+                </th>
+                <th scope="col" className="compact-secondary">
+                  <TableColumnHeading label="Evidence" unit="provenance" />
+                </th>
+                <th scope="col" className="row-expand-cell">
+                  <span className="sr-only">Details</span>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -990,50 +1050,128 @@ export function TrendExplorer({
                   const context = scientificContexts.get(point) ?? unavailableTrendContext;
                   const scoreMetric = presentScoreMetric(point);
                   const selectedMetricValue = trendMetricValue(metric, point, context);
+                  const measurements = [
+                    { label: 'Recorded', unit: 'date', value: <>{formatDate(point.recordedAt)}</> },
+                    { label: 'Series', unit: 'configuration', value: <>{point.entryId}</> },
+                    {
+                      label:
+                        metric === 'aiq'
+                          ? scoreMetric.official
+                            ? 'Ability'
+                            : 'Quality'
+                          : metric === 'duration'
+                            ? 'Adapter time'
+                            : 'API ceiling',
+                      unit: metric === 'aiq' ? '0–100' : metric === 'duration' ? 'cell sum' : 'USD',
+                      value: (
+                        <>
+                          {selectedMetricValue === null
+                            ? 'Unavailable'
+                            : metric === 'aiq'
+                              ? scoreMetric.scoreText
+                              : metric === 'duration'
+                                ? formatHumanDuration(selectedMetricValue * 3_600_000)
+                                : `$${selectedMetricValue.toFixed(4)}`}
+                        </>
+                      ),
+                    },
+                    {
+                      label: 'Interval',
+                      unit: scoreMetric.official ? 'conditional 95%' : 'task-mix sensitivity',
+                      value: (
+                        <>
+                          {metric === 'aiq'
+                            ? scoreMetric.interval
+                            : 'Not applicable to auxiliary measures'}
+                        </>
+                      ),
+                    },
+                    {
+                      label: 'Strict pass',
+                      unit: '% of scored tasks',
+                      value: (
+                        <>
+                          {point.strictPassRate === null
+                            ? 'Unavailable'
+                            : `${(point.strictPassRate * 100).toFixed(1)}% (n=${point.strictPassSampleSize})`}
+                        </>
+                      ),
+                    },
+                    { label: 'Sample', unit: 'tasks', value: <>{point.sampleSize}</> },
+                    {
+                      label: 'Run',
+                      unit: 'observation bucket',
+                      value: (
+                        <>
+                          {point.runId === null ? (
+                            'Synthetic fixture · no run detail'
+                          ) : (
+                            <>
+                              <Link href={`/benchmarks/intelligence/records/${point.runId}`}>
+                                {point.runId}
+                              </Link>
+                              <br />
+                              Latest of {point.representedRunCount} run
+                              {point.representedRunCount === 1 ? '' : 's'}
+                            </>
+                          )}
+                        </>
+                      ),
+                    },
+                    { label: 'Coverage', unit: '% of tasks', value: <>{context.coverage}</> },
+                    { label: 'Runtime issues', unit: 'tasks', value: <>{context.runtime}</> },
+                    { label: 'Missing', unit: 'tasks', value: <>{context.missing}</> },
+                    { label: 'Adapter time', unit: 'cell sum', value: <>{context.duration}</> },
+                    { label: 'API ceiling', unit: 'USD', value: <>{context.cost}</> },
+                    { label: 'Scoring', unit: 'version', value: <>{point.scoringVersion}</> },
+                    { label: 'Evidence', unit: 'provenance', value: <>{pointProvenance(point)}</> },
+                  ] as const;
                   return (
-                    <tr key={`${point.entryId}-${point.recordedAt}`}>
-                      <td>{formatDate(point.recordedAt)}</td>
-                      <th scope="row">{point.entryId}</th>
+                    <ExpandableTableRow
+                      visibleColumns={3}
+                      label={`${point.entryId} ${formatDate(point.recordedAt)}`}
+                      details={
+                        <>
+                          <TableRowFacts
+                            items={measurements.filter((_, index) =>
+                              [2, 4, 5, 7, ...(metric === 'aiq' ? [3] : [])].includes(index),
+                            )}
+                          />
+                          <RowDetailContext>
+                            <TableRowFacts
+                              layout="rows"
+                              items={measurements.filter(
+                                (_, index) => ![2, 3, 4, 5, 7].includes(index),
+                              )}
+                            />
+                          </RowDetailContext>
+                        </>
+                      }
+                      key={`${point.entryId}-${point.recordedAt}`}
+                    >
+                      <td>{measurements[0].value}</td>
+                      <th scope="row">{measurements[1].value}</th>
                       <td>
-                        {selectedMetricValue === null
-                          ? 'Unavailable'
-                          : metric === 'aiq'
-                            ? `${scoreMetric.scoreText} · ${scoreMetric.scoreLabel}`
-                            : metric === 'duration'
-                              ? formatHumanDuration(selectedMetricValue * 3_600_000)
-                              : `$${selectedMetricValue.toFixed(4)}`}
+                        {measurements[2].value}
+                        {metric === 'aiq' ? (
+                          <small>
+                            {measurements[3].value} ·{' '}
+                            {scoreMetric.official ? '95% CI' : 'sensitivity'}
+                          </small>
+                        ) : null}
                       </td>
-                      <td>
-                        {metric === 'aiq'
-                          ? `${scoreMetric.interval} · ${scoreMetric.intervalLabel}`
-                          : 'Not applicable to auxiliary measures'}
-                      </td>
-                      <td>
-                        {point.strictPassRate === null
-                          ? 'Unavailable'
-                          : `${(point.strictPassRate * 100).toFixed(1)}% (n=${point.strictPassSampleSize})`}
-                      </td>
-                      <td>{point.sampleSize}</td>
-                      <td>
-                        {point.runId === null ? (
-                          'Synthetic fixture · no run detail'
-                        ) : (
-                          <>
-                            <Link href={`/runs/${point.runId}`}>{point.runId}</Link>
-                            <br />
-                            Latest of {point.representedRunCount} run
-                            {point.representedRunCount === 1 ? '' : 's'}
-                          </>
-                        )}
-                      </td>
-                      <td>{context.coverage}</td>
-                      <td>{context.runtime}</td>
-                      <td>{context.missing}</td>
-                      <td>{context.duration}</td>
-                      <td>{context.cost}</td>
-                      <td>{point.scoringVersion}</td>
-                      <td>{pointProvenance(point)}</td>
-                    </tr>
+                      <td className="compact-secondary">{measurements[3].value}</td>
+                      <td className="compact-secondary">{measurements[4].value}</td>
+                      <td className="compact-secondary">{measurements[5].value}</td>
+                      <td className="compact-secondary">{measurements[6].value}</td>
+                      <td className="compact-secondary">{measurements[7].value}</td>
+                      <td className="compact-secondary">{measurements[8].value}</td>
+                      <td className="compact-secondary">{measurements[9].value}</td>
+                      <td className="compact-secondary">{measurements[10].value}</td>
+                      <td className="compact-secondary">{measurements[11].value}</td>
+                      <td className="compact-secondary">{measurements[12].value}</td>
+                      <td className="compact-secondary">{measurements[13].value}</td>
+                    </ExpandableTableRow>
                   );
                 })}
             </tbody>

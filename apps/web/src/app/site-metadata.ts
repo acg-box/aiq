@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 export const SITE_NAME = 'AIQ';
 export const SITE_ORIGIN = new URL('https://aiq.wiki');
 export const SITE_DESCRIPTION =
-  'Transparent, reproducible fixed-fixture benchmarks for practical AI and agent work.';
+  'Explore AI Intelligence, Mem, and other benchmark boards, each with its own tests, comparisons, cases, and evidence.';
 
 type PageMetadataOptions = {
   title: string;
