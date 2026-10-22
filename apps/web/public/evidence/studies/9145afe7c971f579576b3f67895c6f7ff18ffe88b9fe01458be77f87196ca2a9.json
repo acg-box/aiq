@@ -1,0 +1,14 @@
+[
+  {
+    "effort": "low",
+    "case_id": "post-memory-1-1",
+    "citation": {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:22",
+      "quote": "The delivery choice made on August 15, 2026, is to remain in force."
+    },
+    "handle_exists": false,
+    "text_matches_at_other_handles": [
+      "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16"
+    ]
+  }
+]

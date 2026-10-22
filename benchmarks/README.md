@@ -1,4 +1,18 @@
-# AIQ Core benchmark contract
+# Benchmark ownership
+
+AIQ groups benchmarks into peer capability boards: AI Intelligence, Harness Rank, and Mem.
+Each board contains its own tests, leaderboards or comparisons, and evidence.
+`apps/web/src/benchmarks/boards.ts` owns board membership. The
+[study records and evidence contract](studies/README.md) own the retained memory
+comparisons. The fixed matrix, private task bank, scoring, Calibration, and
+Official requirements below apply to AIQ Core only. They do not gate independent
+research display.
+
+[Harness Rank](harness-rank/README.md) defines the first model–harness study
+with Codex, Hermes, and Pi. It is a design-only draft, separate from the Core
+publication contract. No benchmark execution or measured ranking is included.
+
+## AIQ Core benchmark contract
 
 Repository source targets AIQ Core `1.1.0`, task scorer
 `1.0.6`, aggregate scorer `1.0.8`, and measurement `2.0.0`. It is a fixed

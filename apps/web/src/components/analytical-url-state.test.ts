@@ -79,31 +79,37 @@ void describe('analytical URL state codecs', () => {
 
   void it('preserves unrelated state and emits deterministic links', () => {
     assert.equal(
-      hrefWithParams('/trends', new URLSearchParams('tf=Terra&range=week&tz=3'), {
+      hrefWithParams('/benchmarks/intelligence', new URLSearchParams('tf=Terra&range=week&tz=3'), {
         range: 'month',
         tz: null,
       }),
-      '/trends?range=month&tf=Terra',
+      '/benchmarks/intelligence?range=month&tf=Terra',
     );
   });
 
   void it('pushes state, publishes the URL change, and restores popstate snapshots', () => {
-    const host = new FakeUrlHost('https://aiq.wiki/trends?range=week&trendFamily=Sol#chart');
+    const host = new FakeUrlHost(
+      'https://aiq.wiki/benchmarks/intelligence?range=week&trendFamily=Sol#chart',
+    );
     const store = createAnalyticalUrlStore(host);
     const snapshots: string[] = [];
     const unsubscribe = store.subscribe(() => snapshots.push(store.getSnapshot()));
 
     store.push({ trendFamily: 'Terra', trendEncoding: 'bar' });
-    assert.deepEqual(host.pushed, ['/trends?range=week&trendEncoding=bar&trendFamily=Terra#chart']);
+    assert.deepEqual(host.pushed, [
+      '/benchmarks/intelligence?range=week&trendEncoding=bar&trendFamily=Terra#chart',
+    ]);
     assert.deepEqual(snapshots, ['?range=week&trendEncoding=bar&trendFamily=Terra']);
 
-    host.restore('https://aiq.wiki/trends?range=week&trendFamily=Sol#chart');
+    host.restore('https://aiq.wiki/benchmarks/intelligence?range=week&trendFamily=Sol#chart');
     assert.deepEqual(snapshots, [
       '?range=week&trendEncoding=bar&trendFamily=Terra',
       '?range=week&trendFamily=Sol',
     ]);
 
-    host.restore('https://aiq.wiki/trends?range=week&trendEncoding=bar&trendFamily=Terra#chart');
+    host.restore(
+      'https://aiq.wiki/benchmarks/intelligence?range=week&trendEncoding=bar&trendFamily=Terra#chart',
+    );
     assert.deepEqual(snapshots, [
       '?range=week&trendEncoding=bar&trendFamily=Terra',
       '?range=week&trendFamily=Sol',
@@ -111,7 +117,7 @@ void describe('analytical URL state codecs', () => {
     ]);
 
     unsubscribe();
-    host.restore('https://aiq.wiki/trends?range=month&trendFamily=Luna#chart');
+    host.restore('https://aiq.wiki/benchmarks/intelligence?range=month&trendFamily=Luna#chart');
     assert.equal(snapshots.length, 3);
   });
 

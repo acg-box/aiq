@@ -1,7 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { ExpandableTableRow, RowDetailContext, TableRowFacts } from './expandable-table-row.tsx';
+import { TableNotes } from './table-notes.tsx';
+import { TableColumnHeading } from './table-column-heading.tsx';
 import type { EChartsCoreOption } from 'echarts/core';
+import { alphabetical } from '../display-order.ts';
+import { comparisonColor } from '../data/comparison-palette.ts';
 
 import type { PublicCalibrationScore } from '../data/types.ts';
 import { formatHumanDuration, formatTaskDuration } from '../data/format-duration.ts';
@@ -43,12 +48,6 @@ function comparisonGroup(score: PublicCalibrationScore, metric: Metric): string 
     score.pricingCurrency,
     score.pricingProcessingTier,
   ].join('|');
-}
-
-function calibrationFamilyColor(family: PublicCalibrationScore['modelFamily']): string {
-  if (family === 'sol') return 'var(--data-lime)';
-  if (family === 'terra') return 'var(--data-cyan)';
-  return 'var(--data-violet)';
 }
 
 function readCalibrationDatum(value: unknown): readonly (number | string)[] | null {
@@ -132,7 +131,7 @@ function Scatter({
       top: 0,
       right: 12,
       selectedMode: false,
-      data: ['sol', 'terra', 'luna'],
+      data: ['luna', 'sol', 'terra'],
       textStyle: { color: 'var(--muted)' },
     },
     tooltip: {
@@ -156,7 +155,7 @@ function Scatter({
     xAxis: {
       type: 'value',
       min: 0,
-      name: label,
+      name: metric === 'cost' ? 'Estimated API cost (USD)' : 'Median adapter time (s)',
       nameLocation: 'middle',
       nameGap: 42,
       axisLabel: { color: 'var(--muted)' },
@@ -219,13 +218,13 @@ function Scatter({
           };
         },
       },
-      ...(['sol', 'terra', 'luna'] as const).map((family, index) => ({
+      ...(['luna', 'sol', 'terra'] as const).map((family, index) => ({
         type: 'scatter',
         name: family,
         symbol: ['circle', 'diamond', 'triangle'][index],
         symbolSize: 12,
         itemStyle: {
-          color: calibrationFamilyColor(family),
+          color: comparisonColor(family),
           borderColor: 'var(--panel)',
           borderWidth: 1.5,
         },
@@ -256,12 +255,7 @@ function Scatter({
         label={`Calibration scatter of descriptive quality against ${label} for ${points.length} configurations, with visible task-mix sensitivity intervals; scoring ${scoringVersion ?? 'unavailable'}.`}
       />
       <figcaption>
-        Higher descriptive quality and a smaller horizontal value are preferable. Vertical bars show
-        fixed-fixture task-resampling sensitivity intervals. They are not calibrated ability
-        intervals. Rings mark a descriptive frontier only inside one calibration run, which fixes
-        the fixture, scoring, runtime, and concurrency. Cost also requires identical pricing and
-        evidence bindings. Incomplete usage is excluded. This is not a combined ranking or an
-        API-frontier claim.
+        Higher quality, lower resource use. Bars: task-mix sensitivity; rings: descriptive frontier.
       </figcaption>
     </figure>
   );
@@ -296,18 +290,6 @@ export function CalibrationEfficiency({
           Descriptive quality versus {calibrationMetricLabel(metric)}
         </h2>
       </div>
-      <p className="calibration-warning">
-        <strong>Evidence levels differ by metric.</strong> The verifier replays score evidence; wall
-        Codex adapter elapsed time is runner-observed. Token counters are provider-reported, while
-        their aggregation and the cost estimate are verifier-recomputed. Standard API equivalent is
-        estimated, not actual subscription billing or necessarily an exact API invoice. Unknown or
-        insufficient inputs display as unavailable, never as zero.
-      </p>
-      <p>
-        Pricing binding: {pricingBindings.length === 0 ? 'Unavailable' : pricingBindings.join('; ')}{' '}
-        · <a href="https://developers.openai.com/api/docs/pricing">official source</a> · scoring{' '}
-        {scoringVersion ?? 'Unavailable'}
-      </p>
       <div className="chart-controls calibration-metric-control">
         <span id="calibration-metric-label">Horizontal metric</span>
         <div className="chart-switch" role="group" aria-labelledby="calibration-metric-label">
@@ -337,120 +319,371 @@ export function CalibrationEfficiency({
         aria-label="Calibration model efficiency"
         tabIndex={0}
       >
-        <table>
+        <table className="calibration-efficiency-table compact-table measurement-table">
           <caption>
             Descriptive calibration scores, intervals, coverage, efficiency, scoring, and evidence.
           </caption>
           <thead>
             <tr>
-              <th scope="col">Run</th>
-              <th scope="col">Model / effort</th>
-              <th scope="col">Quality score</th>
-              <th scope="col">Sample / coverage</th>
-              <th scope="col">Observed Codex adapter elapsed time</th>
-              <th scope="col">Estimated Standard API equivalent token cost</th>
-              <th scope="col">Token usage coverage</th>
-              <th scope="col">Scoring / evidence</th>
+              <th scope="col" className="compact-secondary">
+                <TableColumnHeading label="Run" unit="identifier" />
+              </th>
+              <th scope="col">
+                <TableColumnHeading label="Model" unit="effort" />
+              </th>
+              <th scope="col">
+                <TableColumnHeading label="Quality" unit="0–100" />
+              </th>
+              <th scope="col">
+                <TableColumnHeading label="Coverage" unit="tasks / %" />
+              </th>
+              <th scope="col" className="compact-secondary">
+                <TableColumnHeading label="Adapter time" unit="cell sum" />
+              </th>
+              <th scope="col" className="compact-secondary">
+                <TableColumnHeading label="API cost" unit="USD estimate" />
+              </th>
+              <th scope="col" className="compact-secondary">
+                <TableColumnHeading label="Token coverage" unit="tasks / %" />
+              </th>
+              <th scope="col" className="compact-secondary">
+                <TableColumnHeading label="Scoring" unit="version / evidence" />
+              </th>
+              <th scope="col" className="row-expand-cell">
+                <span className="sr-only">Details</span>
+              </th>
             </tr>
           </thead>
           <tbody>
-            {scores.map((score) => (
-              <tr key={`${score.runId}-${score.modelFamily}-${score.reasoningEffort}`}>
-                <td title={score.runId}>{score.runId.slice(0, 16)}…</td>
-                <td>
-                  {score.modelFamily} · {score.reasoningEffort}
-                  {score.synthetic ? <small>Synthetic seed</small> : null}
-                </td>
-                <td>
-                  {score.qualityScore === null ? 'Unavailable' : score.qualityScore.toFixed(2)}
-                  {score.taskResamplingSensitivityLower !== null &&
-                  score.taskResamplingSensitivityUpper !== null ? (
-                    <small>
-                      {score.taskResamplingSensitivityLower.toFixed(2)}–
-                      {score.taskResamplingSensitivityUpper.toFixed(2)} fixed-fixture sensitivity ·{' '}
-                      {score.taskResamplingSensitivityMethod}
-                    </small>
-                  ) : null}
-                </td>
-                <td>
-                  {score.sampleSize} / {score.coveragePercent.toFixed(1)}%
-                  <small>
-                    Adapter invocation: {score.invokedResultCount}/{score.attemptedResultCount}{' '}
-                    attempted · elapsed observed {score.adapterElapsedObservedResultCount}
-                  </small>
-                  <small>
-                    Runtime issues:{' '}
-                    {executionContext.get(`${score.modelFamily}:${score.reasoningEffort}`)
-                      ?.runtimeIssues ?? 'Unavailable'}{' '}
-                    · missing{' '}
-                    {executionContext.get(`${score.modelFamily}:${score.reasoningEffort}`)
-                      ?.missing ?? 'Unavailable'}
-                  </small>
-                </td>
-                <td>
-                  {score.observedTotalWallMs === null
-                    ? 'Unavailable'
-                    : `${formatHumanDuration(score.observedTotalWallMs)} summed cell time`}
-                  <small>
-                    {score.observedMedianWallMs === null
-                      ? 'median unavailable'
-                      : `${formatTaskDuration(score.observedMedianWallMs)} median`}{' '}
-                    ·{' '}
-                    {score.observedP95WallMs === null
-                      ? 'p95 unavailable'
-                      : `${formatTaskDuration(score.observedP95WallMs)} p95`}{' '}
-                    · {score.observedTimeSampleCount} samples ·{' '}
-                    {score.observedTimeCoveragePercent.toFixed(1)}% coverage
-                    {score.durationEvidenceLevel === null
-                      ? ''
-                      : ` · ${score.durationEvidenceLevel.replaceAll('_', '-')}`}
-                  </small>
-                </td>
-                <td>
-                  {score.standardApiEquivalentUsdNanos === null
-                    ? 'Unavailable'
-                    : `$${(score.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(4)}`}
-                  <small>{score.costEstimatorStatus.replaceAll('_', ' ')}</small>
-                  <small>
-                    {score.pricedResultCount} priced / {score.resultCount} selected result cells ·{' '}
-                    {score.pricingCurrency} · {score.pricingProcessingTier} processing tier
-                  </small>
-                  {score.costEstimatorLimitations.length > 0 ? (
-                    <small>{score.costEstimatorLimitations.join(' ')}</small>
-                  ) : null}
-                </td>
-                <td>
-                  {score.tokenUsageCoveragePercent === null
-                    ? 'Unavailable'
-                    : `${score.tokenUsageCoveragePercent.toFixed(1)}%`}
-                  <small>{score.tokenObservedResultCount} token-observed result cells</small>
-                  <small>
-                    source {score.tokenUsageSourceLevel?.replaceAll('_', '-') ?? 'unavailable'} ·{' '}
-                    aggregation evidence{' '}
-                    {score.tokenUsageEvidenceLevel?.replaceAll('_', '-') ?? 'unavailable'}
-                  </small>
-                </td>
-                <td>
-                  {scoringVersion ?? 'Scoring unavailable'}
-                  <small>{score.descriptiveStatus.replaceAll('_', ' ')}</small>
-                  <small>{score.synthetic ? 'Synthetic seed' : 'Published calibration'}</small>
-                  <small>Untrusted · not Official · not ranking eligible</small>
-                </td>
-              </tr>
-            ))}
+            {alphabetical(scores, (score) => score.modelFamily).map((score) => {
+              const measurements = [
+                { label: 'Run', value: <code>{score.runId}</code> },
+                {
+                  label: 'Model / effort',
+                  value: (
+                    <>
+                      {score.modelFamily} · {score.reasoningEffort}
+                      {score.synthetic ? <small>Synthetic seed</small> : null}
+                    </>
+                  ),
+                },
+                {
+                  label: 'Quality score',
+                  value: (
+                    <>
+                      {score.qualityScore === null ? 'Unavailable' : score.qualityScore.toFixed(2)}
+                      {score.taskResamplingSensitivityLower !== null &&
+                      score.taskResamplingSensitivityUpper !== null ? (
+                        <small>
+                          {score.taskResamplingSensitivityLower.toFixed(2)}–
+                          {score.taskResamplingSensitivityUpper.toFixed(2)} fixed-fixture
+                          sensitivity · {score.taskResamplingSensitivityMethod}
+                        </small>
+                      ) : null}
+                    </>
+                  ),
+                },
+                {
+                  label: 'Sample / coverage',
+                  value: (
+                    <>
+                      {score.sampleSize} / {score.coveragePercent.toFixed(1)}%
+                      <small>
+                        Adapter invocation: {score.invokedResultCount}/{score.attemptedResultCount}{' '}
+                        attempted · elapsed observed {score.adapterElapsedObservedResultCount}
+                      </small>
+                      <small>
+                        Runtime issues:{' '}
+                        {executionContext.get(`${score.modelFamily}:${score.reasoningEffort}`)
+                          ?.runtimeIssues ?? 'Unavailable'}{' '}
+                        · missing{' '}
+                        {executionContext.get(`${score.modelFamily}:${score.reasoningEffort}`)
+                          ?.missing ?? 'Unavailable'}
+                      </small>
+                    </>
+                  ),
+                },
+                {
+                  label: 'Observed Codex adapter elapsed time',
+                  value: (
+                    <>
+                      {score.observedTotalWallMs === null
+                        ? 'Unavailable'
+                        : `${formatHumanDuration(score.observedTotalWallMs)} summed cell time`}
+                      <small>
+                        {score.observedMedianWallMs === null
+                          ? 'median unavailable'
+                          : `${formatTaskDuration(score.observedMedianWallMs)} median`}{' '}
+                        ·{' '}
+                        {score.observedP95WallMs === null
+                          ? 'p95 unavailable'
+                          : `${formatTaskDuration(score.observedP95WallMs)} p95`}{' '}
+                        · {score.observedTimeSampleCount} samples ·{' '}
+                        {score.observedTimeCoveragePercent.toFixed(1)}% coverage
+                        {score.durationEvidenceLevel === null
+                          ? ''
+                          : ` · ${score.durationEvidenceLevel.replaceAll('_', '-')}`}
+                      </small>
+                    </>
+                  ),
+                },
+                {
+                  label: 'Estimated Standard API equivalent token cost',
+                  value: (
+                    <>
+                      {score.standardApiEquivalentUsdNanos === null
+                        ? 'Unavailable'
+                        : `$${(score.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(4)}`}
+                      <small>{score.costEstimatorStatus.replaceAll('_', ' ')}</small>
+                      <small>
+                        {score.pricedResultCount} priced / {score.resultCount} selected result cells
+                        · {score.pricingCurrency} · {score.pricingProcessingTier} processing tier
+                      </small>
+                      {score.costEstimatorLimitations.length > 0 ? (
+                        <small>{score.costEstimatorLimitations.join(' ')}</small>
+                      ) : null}
+                    </>
+                  ),
+                },
+                {
+                  label: 'Token usage coverage',
+                  value: (
+                    <>
+                      {score.tokenUsageCoveragePercent === null
+                        ? 'Unavailable'
+                        : `${score.tokenObservedResultCount} / ${score.tokenUsageCoveragePercent.toFixed(1)}%`}
+                      <small>{score.tokenObservedResultCount} token-observed result cells</small>
+                      <small>
+                        source {score.tokenUsageSourceLevel?.replaceAll('_', '-') ?? 'unavailable'}{' '}
+                        · aggregation evidence{' '}
+                        {score.tokenUsageEvidenceLevel?.replaceAll('_', '-') ?? 'unavailable'}
+                      </small>
+                    </>
+                  ),
+                },
+                {
+                  label: 'Scoring / evidence',
+                  value: (
+                    <>
+                      {scoringVersion ?? 'Scoring unavailable'}
+                      <small>{score.descriptiveStatus.replaceAll('_', ' ')}</small>
+                      <small>{score.synthetic ? 'Synthetic seed' : 'Published calibration'}</small>
+                      <small>Untrusted · not Official · not ranking eligible</small>
+                    </>
+                  ),
+                },
+              ] as const;
+              return (
+                <ExpandableTableRow
+                  label={`${score.modelFamily} ${score.reasoningEffort}`}
+                  visibleColumns={3}
+                  details={
+                    <>
+                      <TableRowFacts
+                        items={[
+                          {
+                            label: 'Quality',
+                            unit: '0–100',
+                            value: score.qualityScore?.toFixed(2) ?? 'Unavailable',
+                          },
+                          {
+                            label: 'Coverage',
+                            unit: 'tasks / %',
+                            value: `${score.sampleSize} / ${score.coveragePercent.toFixed(1)}%`,
+                          },
+                          {
+                            label: 'Adapter time',
+                            unit: 'cell sum',
+                            value:
+                              score.observedTotalWallMs === null
+                                ? 'Unavailable'
+                                : formatHumanDuration(score.observedTotalWallMs),
+                          },
+                          {
+                            label: 'API cost',
+                            unit: 'USD estimate',
+                            value:
+                              score.standardApiEquivalentUsdNanos === null
+                                ? 'Unavailable'
+                                : `$${(score.standardApiEquivalentUsdNanos / 1_000_000_000).toFixed(4)}`,
+                          },
+                          {
+                            label: 'Token coverage',
+                            unit: 'tasks / %',
+                            value:
+                              score.tokenUsageCoveragePercent === null
+                                ? 'Unavailable'
+                                : `${score.tokenObservedResultCount} / ${score.tokenUsageCoveragePercent.toFixed(1)}%`,
+                          },
+                          {
+                            label: 'Sensitivity interval',
+                            unit: 'fixed fixture · 0–100',
+                            value:
+                              score.taskResamplingSensitivityLower !== null &&
+                              score.taskResamplingSensitivityUpper !== null
+                                ? `${score.taskResamplingSensitivityLower.toFixed(2)}–${score.taskResamplingSensitivityUpper.toFixed(2)}`
+                                : 'Unavailable',
+                          },
+                          {
+                            label: 'Median time',
+                            unit: 'per task',
+                            value:
+                              score.observedMedianWallMs === null
+                                ? 'Unavailable'
+                                : formatTaskDuration(score.observedMedianWallMs),
+                          },
+                          {
+                            label: 'P95 time',
+                            unit: 'per task',
+                            value:
+                              score.observedP95WallMs === null
+                                ? 'Unavailable'
+                                : formatTaskDuration(score.observedP95WallMs),
+                          },
+                        ]}
+                      />
+                      <p className="row-detail-status">
+                        Untrusted · not Official · not ranking eligible
+                      </p>
+                      <RowDetailContext>
+                        <TableRowFacts
+                          layout="rows"
+                          items={[
+                            { label: 'Run', unit: 'identifier', value: <code>{score.runId}</code> },
+                            {
+                              label: 'Model',
+                              unit: 'effort',
+                              value: `${score.modelFamily} · ${score.reasoningEffort}`,
+                            },
+                            {
+                              label: 'Scoring',
+                              unit: 'version',
+                              value: scoringVersion ?? 'Unavailable',
+                            },
+                            {
+                              label: 'Evidence',
+                              value: score.synthetic ? 'Synthetic seed' : 'Published calibration',
+                            },
+                            {
+                              label: 'Score status',
+                              value: score.descriptiveStatus.replaceAll('_', ' '),
+                            },
+                            {
+                              label: 'Sensitivity method',
+                              value: score.taskResamplingSensitivityMethod ?? 'Unavailable',
+                            },
+                            {
+                              label: 'Adapter invocation',
+                              unit: 'invoked / attempted',
+                              value: `${score.invokedResultCount}/${score.attemptedResultCount}`,
+                            },
+                            {
+                              label: 'Runtime issues',
+                              unit: 'tasks',
+                              value:
+                                executionContext.get(
+                                  `${score.modelFamily}:${score.reasoningEffort}`,
+                                )?.runtimeIssues ?? 'Unavailable',
+                            },
+                            {
+                              label: 'Missing',
+                              unit: 'tasks',
+                              value:
+                                executionContext.get(
+                                  `${score.modelFamily}:${score.reasoningEffort}`,
+                                )?.missing ?? 'Unavailable',
+                            },
+                            {
+                              label: 'Time coverage',
+                              unit: 'samples / %',
+                              value: `${score.observedTimeSampleCount} / ${score.observedTimeCoveragePercent.toFixed(1)}%`,
+                            },
+                            {
+                              label: 'Time evidence',
+                              value:
+                                score.durationEvidenceLevel?.replaceAll('_', ' ') ?? 'Unavailable',
+                            },
+                            {
+                              label: 'Token source',
+                              value:
+                                score.tokenUsageSourceLevel?.replaceAll('_', ' ') ?? 'Unavailable',
+                            },
+                            {
+                              label: 'Token aggregation',
+                              value:
+                                score.tokenUsageEvidenceLevel?.replaceAll('_', ' ') ??
+                                'Unavailable',
+                            },
+                            {
+                              label: 'Priced tasks',
+                              unit: 'priced / selected',
+                              value: `${score.pricedResultCount}/${score.resultCount}`,
+                            },
+                            {
+                              label: 'Cost status',
+                              value: score.costEstimatorStatus.replaceAll('_', ' '),
+                            },
+                            {
+                              label: 'Pricing tier',
+                              value: `${score.pricingCurrency} · ${score.pricingProcessingTier}`,
+                            },
+                            {
+                              label: 'Cost limits',
+                              value: score.costEstimatorLimitations.join(' ') || 'None recorded',
+                            },
+                          ]}
+                        />
+                      </RowDetailContext>
+                    </>
+                  }
+                  key={`${score.runId}-${score.modelFamily}-${score.reasoningEffort}`}
+                >
+                  <td className="compact-secondary">{measurements[0].value}</td>
+                  <th scope="row">{measurements[1].value}</th>
+                  <td className="compact-value">{measurements[2].value}</td>
+                  <td className="compact-value">{measurements[3].value}</td>
+                  <td className="compact-secondary">{measurements[4].value}</td>
+                  <td className="compact-secondary">{measurements[5].value}</td>
+                  <td className="compact-secondary">{measurements[6].value}</td>
+                  <td className="compact-secondary">{measurements[7].value}</td>
+                </ExpandableTableRow>
+              );
+            })}
           </tbody>
         </table>
       </div>
-      <p className="formula-note">
-        No score/$ or score/hour aggregate is used. If derived externally: score/$ = descriptive
-        quality ÷ estimated API-equivalent USD; score/hour = descriptive quality ÷ observed hours.
-        The denominator and token coverage must accompany the value. Runtime-issue attempts remain
-        in observed usage totals; missing or non-invoked cells do not. Adapter elapsed time measures
-        model and allowed-tool invocation only. It excludes workspace setup, artifact sealing, and
-        evaluator replay. Concurrent model order and local contention affect the observed resource
-        profile. Missing usage makes cost unavailable and excludes it from the frontier; it is not
-        displayed as zero.
-      </p>
+      <TableNotes label="Calibration efficiency" hint="Descriptive only · estimated API cost.">
+        <p>
+          Evidence levels differ by metric. The verifier replays score evidence; wall Codex adapter
+          elapsed time is runner-observed. Token counters are provider-reported, while their
+          aggregation and the cost estimate are verifier-recomputed. Standard API equivalent is
+          estimated, not actual subscription billing or necessarily an exact API invoice. Unknown or
+          insufficient inputs display as unavailable, never as zero.
+        </p>
+        <p>
+          Pricing binding:{' '}
+          {pricingBindings.length === 0 ? 'Unavailable' : pricingBindings.join('; ')} ·{' '}
+          <a href="https://developers.openai.com/api/docs/pricing">official source</a> · scoring{' '}
+          {scoringVersion ?? 'Unavailable'}
+        </p>
+        <p>
+          Vertical bars show fixed-fixture task-resampling sensitivity intervals. They are not
+          calibrated ability intervals. Rings mark a descriptive frontier only inside one
+          calibration run, which fixes the fixture, scoring, runtime, and concurrency. Cost also
+          requires identical pricing and evidence bindings. Incomplete usage is excluded. This is
+          not a combined ranking or an API-frontier claim.
+        </p>
+        <p>
+          No score/$ or score/hour aggregate is used. If derived externally: score/$ = descriptive
+          quality ÷ estimated API-equivalent USD; score/hour = descriptive quality ÷ observed hours.
+          The denominator and token coverage must accompany the value. Runtime-issue attempts remain
+          in observed usage totals; missing or non-invoked cells do not. Adapter elapsed time
+          measures model and allowed-tool invocation only. It excludes workspace setup, artifact
+          sealing, and evaluator replay. Concurrent model order and local contention affect the
+          observed resource profile. Missing usage makes cost unavailable and excludes it from the
+          frontier; it is not displayed as zero.
+        </p>
+      </TableNotes>
     </section>
   );
 }

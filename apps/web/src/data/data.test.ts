@@ -68,7 +68,7 @@ import {
   seedRuns,
   seedTrendPoints,
 } from './seed.ts';
-import { TREND_SERIES_STYLES } from './trend-styles.ts';
+import { comparisonColor, configurationStyle } from './comparison-palette.ts';
 import { classifyDataProvenance } from './provenance.ts';
 import {
   CALIBRATION_OUTCOMES,
@@ -571,7 +571,10 @@ void describe('seed repository', () => {
     assert.equal(joined.find((entry) => entry.id === official.id)?.score, official.score);
     const joinedOfficial = joined.find((entry) => entry.id === official.id);
     assert.ok(joinedOfficial);
-    assert.equal(leaderboardRunHref(joinedOfficial), `/runs/${canonicalRunId(official.id)}`);
+    assert.equal(
+      leaderboardRunHref(joinedOfficial),
+      `/benchmarks/intelligence/records/${canonicalRunId(official.id)}`,
+    );
     assert.equal(
       joined.find((entry) => entry.id === notApplicable.id)?.scoreStatus,
       'not_applicable',
@@ -1541,6 +1544,72 @@ void describe('presentation aggregates', () => {
         Response.json(Array.from({ length: SPEED_TREND_MAX_POINTS + 1 }, () => speedTrendRow)),
     );
     await assert.rejects(oversized.listSpeedTrendPoints(), /response exceeded 680 rows/);
+  });
+
+  void it('reads the historical version separately while active run reads still reject it', async () => {
+    const source: RunRow = {
+      ...runSummaryRow(1),
+      benchmark_version: 'aiq-core@1.0.7',
+      correct_count: 72,
+      partial_count: 0,
+      incorrect_count: 0,
+      runtime_issue_count: 0,
+      completed_count: 72,
+      observed_count: 72,
+      coverage_percent: 100,
+      run_class: 'official',
+      corpus_release_id: 'corpus_2026.08.28',
+      corpus_commitment_sha256: `sha256:${'1'.repeat(64)}`,
+      catalog_digest: `sha256:${'2'.repeat(64)}`,
+      task_set_digest: `sha256:${'3'.repeat(64)}`,
+      preflight_digest: `sha256:${'4'.repeat(64)}`,
+      runtime_digest: `sha256:${'5'.repeat(64)}`,
+      permission_evidence_digest: `sha256:${'6'.repeat(64)}`,
+    };
+    const matrix = seedLeaderboard.map((entry) => ({
+      id: entry.id,
+      model_family: entry.modelFamily,
+      model_name: entry.modelName,
+      reasoning_tier: entry.reasoningTier,
+    }));
+    const entries = joinModelMatrixWithLeaderboard(matrix, [
+      {
+        ...officialLeaderboardRowEvidence,
+        matrix_id: 'sol-low',
+        run_id: source.id,
+        score: 70,
+        sensitivity_low: 60,
+        sensitivity_high: 80,
+        sample_size: 72,
+        coverage_percent: 100,
+        runtime_issues: 0,
+        missing: 0,
+        scoring_version: '1.0.8',
+        score_status: 'official',
+        synthetic: false,
+      },
+    ]);
+    const requests: URL[] = [];
+    const repository = new SupabaseAiqRepository(
+      'https://example.supabase.co',
+      'sb_publishable_public_example',
+      async (input) => {
+        requests.push(new URL(input instanceof Request ? input.url : input.toString()));
+        return Response.json([source]);
+      },
+    );
+    const archive = await repository.listHistoricalCoreResults(entries);
+    assert.equal(archive.length, 1);
+    assert.equal(archive[0]?.run.benchmarkVersion, 'aiq-core@1.0.7');
+    assert.deepEqual(archive[0]?.source, source);
+    assert.equal(requests[0]?.searchParams.get('benchmark_version'), 'eq.aiq-core@1.0.7');
+    await assert.rejects(repository.listRunSummaries([source.id]), /invalid response shape/);
+    await assert.rejects(
+      runSummaryRepository(() =>
+        Response.json([{ ...source, matrix_id: 'luna-low' }]),
+      ).listHistoricalCoreResults(entries),
+      /mismatched result identity/,
+    );
   });
 
   void it('reads exact run summaries in bounded, deduplicated batches', async () => {
@@ -2968,17 +3037,23 @@ void describe('presentation aggregates', () => {
   });
 
   void it('provides distinct color and line-pattern encodings for all 17 trend series', () => {
-    assert.equal(TREND_SERIES_STYLES.length, 17);
+    const configurations = [
+      ...['low', 'medium', 'high', 'xhigh', 'max'].map((effort) => ['Luna', effort]),
+      ...['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((effort) => ['Sol', effort]),
+      ...['low', 'medium', 'high', 'xhigh', 'max', 'ultra'].map((effort) => ['Terra', effort]),
+    ];
     assert.equal(
       new Set(
-        TREND_SERIES_STYLES.map(
-          (style) => `${style.color}:${style.dashArray ?? 'solid'}:${style.pattern}`,
+        configurations.map(
+          ([family = '', effort = '']) =>
+            `${comparisonColor(family)}:${configurationStyle(effort).dashArray ?? 'solid'}`,
         ),
       ).size,
       17,
     );
-    assert.ok(TREND_SERIES_STYLES.some((style) => style.pattern === 'dashed'));
-    assert.ok(TREND_SERIES_STYLES.some((style) => style.pattern === 'dotted'));
+    assert.equal(comparisonColor('Sol low'), comparisonColor('sol'));
+    assert.equal(configurationStyle('low').pattern, 'dashed');
+    assert.equal(configurationStyle('max').pattern, 'dotted');
   });
 
   void it('labels mixed provenance and keeps synthetic radar evidence explicitly unverified', () => {
@@ -3002,7 +3077,9 @@ void describe('presentation aggregates', () => {
     );
     assert.equal(formatTrustLevel('signed_community'), 'signed community');
     assert.ok(
-      seedLeaderboard.every((entry) => leaderboardRunHref(entry) === `/runs/${entry.runId}`),
+      seedLeaderboard.every(
+        (entry) => leaderboardRunHref(entry) === `/benchmarks/intelligence/records/${entry.runId}`,
+      ),
     );
   });
 

@@ -1,0 +1,74 @@
+{
+  "id": "writer-orbit-conditional",
+  "kind": "writer",
+  "seconds": 5.076066124951467,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 683,
+    "completion_tokens": 594,
+    "total_tokens": 1277,
+    "cost": 0.0009177,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0009177,
+      "upstream_inference_prompt_cost": 0.0002049,
+      "upstream_inference_completions_cost": 0.0007128
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 188,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "semantic": [
+      {
+        "content": "Project ORBIT-NIGHTLY approves delivery mode STREAM-93 for staging only after audit AUDIT-62 passes.",
+        "valid_at": "2026-10-20",
+        "invalid_at": ""
+      },
+      {
+        "content": "Until audit AUDIT-62 passes, staging for project ORBIT-NIGHTLY must retain delivery mode POLL-71.",
+        "valid_at": "2026-10-20",
+        "invalid_at": ""
+      },
+      {
+        "content": "Mira is the owner of project ORBIT-NIGHTLY.",
+        "valid_at": "2026-10-20",
+        "invalid_at": ""
+      },
+      {
+        "content": "No production rollout is authorized for project ORBIT-NIGHTLY.",
+        "valid_at": "2026-10-20",
+        "invalid_at": ""
+      }
+    ],
+    "episodic": [
+      {
+        "content": "On 2026-10-20, project ORBIT-NIGHTLY approved delivery mode STREAM-93 in staging only, contingent on audit AUDIT-62 passing, while staging must retain POLL-71 until the audit passes.",
+        "valid_at": "2026-10-20",
+        "invalid_at": ""
+      }
+    ],
+    "procedural": [
+      {
+        "content": "To enable delivery mode STREAM-93 in staging for project ORBIT-NIGHTLY, first ensure audit AUDIT-62 has passed; until then, keep staging on delivery mode POLL-71.",
+        "valid_at": "2026-10-20",
+        "invalid_at": ""
+      },
+      {
+        "content": "Do not perform any production rollout for project ORBIT-NIGHTLY unless explicitly authorized.",
+        "valid_at": "2026-10-20",
+        "invalid_at": ""
+      }
+    ]
+  },
+  "raw_content": "{\n  \"semantic\": [\n    {\n      \"content\": \"Project ORBIT-NIGHTLY approves delivery mode STREAM-93 for staging only after audit AUDIT-62 passes.\",\n      \"valid_at\": \"2026-10-20\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"Until audit AUDIT-62 passes, staging for project ORBIT-NIGHTLY must retain delivery mode POLL-71.\",\n      \"valid_at\": \"2026-10-20\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"Mira is the owner of project ORBIT-NIGHTLY.\",\n      \"valid_at\": \"2026-10-20\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"No production rollout is authorized for project ORBIT-NIGHTLY.\",\n      \"valid_at\": \"2026-10-20\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"episodic\": [\n    {\n      \"content\": \"On 2026-10-20, project ORBIT-NIGHTLY approved delivery mode STREAM-93 in staging only, contingent on audit AUDIT-62 passing, while staging must retain POLL-71 until the audit passes.\",\n      \"valid_at\": \"2026-10-20\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"procedural\": [\n    {\n      \"content\": \"To enable delivery mode STREAM-93 in staging for project ORBIT-NIGHTLY, first ensure audit AUDIT-62 has passed; until then, keep staging on delivery mode POLL-71.\",\n      \"valid_at\": \"2026-10-20\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"Do not perform any production rollout for project ORBIT-NIGHTLY unless explicitly authorized.\",\n      \"valid_at\": \"2026-10-20\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}"
+}

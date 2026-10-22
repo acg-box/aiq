@@ -4,17 +4,18 @@ import test from 'node:test';
 import robots from './robots.ts';
 import { SITE_ORIGIN, createPageMetadata } from './site-metadata.ts';
 import sitemap from './sitemap.ts';
+import { listStudies } from '../studies/repository.ts';
 
 void test('public metadata uses the canonical AIQ origin', () => {
   const metadata = createPageMetadata({
     title: 'Run history',
-    path: '/runs',
+    path: '/benchmarks/intelligence',
     description: 'Public run history.',
   });
 
   assert.equal(SITE_ORIGIN.href, 'https://aiq.wiki/');
-  assert.equal(metadata.alternates?.canonical, '/runs');
-  assert.equal(metadata.openGraph?.url, '/runs');
+  assert.equal(metadata.alternates?.canonical, '/benchmarks/intelligence');
+  assert.equal(metadata.openGraph?.url, '/benchmarks/intelligence');
   assert.deepEqual(metadata.robots, { index: true, follow: true });
 });
 
@@ -31,12 +32,17 @@ void test('sitemap includes each static public route on the canonical origin', (
     sitemap().map((entry) => entry.url),
     [
       'https://aiq.wiki/',
-      'https://aiq.wiki/runs',
-      'https://aiq.wiki/calibrations',
-      'https://aiq.wiki/compare',
-      'https://aiq.wiki/trends',
-      'https://aiq.wiki/radar',
-      'https://aiq.wiki/method',
+      'https://aiq.wiki/about',
+      'https://aiq.wiki/benchmarks/intelligence/calibrations',
+      'https://aiq.wiki/benchmarks/intelligence/verification',
+      'https://aiq.wiki/benchmarks/intelligence',
+      'https://aiq.wiki/benchmarks/harness',
+      'https://aiq.wiki/benchmarks/memory',
+      ...listStudies().flatMap((study) =>
+        study.cases.map(
+          (item) => `https://aiq.wiki/benchmarks/memory/records/${study.id}/${item.id}`,
+        ),
+      ),
     ],
   );
 });

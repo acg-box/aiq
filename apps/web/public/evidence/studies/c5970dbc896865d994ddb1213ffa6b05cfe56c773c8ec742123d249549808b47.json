@@ -1,0 +1,75 @@
+{
+  "product": "ragflow",
+  "scope": "formal",
+  "phase": "post",
+  "case_id": "memory-1-0",
+  "question": "As of August 22, what delivery mode and retry policy apply to Ivo's Cobalt project?",
+  "answer": {
+    "answer": "As of August 22, Cobalt’s approved delivery choice remains STREAM-1-286. For the next outage, use REPLAY-1-632, the recovery procedure validated on August 8. The retry policy is RETRY-1-907, which superseded RETRY-1-108.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "quote": "Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286. This supersedes the August 1 delivery decision."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "quote": "Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8."
+      },
+      {
+        "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+        "quote": "The team tested REPLAY-1-632, which restored the missing updates."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "quote": "The retry policy is now RETRY-1-907, superseding RETRY-1-108."
+      }
+    ]
+  },
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+      "quote_bound": true
+    }
+  ],
+  "retrieval_seconds": 0.128,
+  "total_seconds": 6.134,
+  "context_bytes": 4506,
+  "context_entries": 11,
+  "dropped": [],
+  "usage": {
+    "prompt_tokens": 1739,
+    "completion_tokens": 516,
+    "total_tokens": 2255,
+    "cost": 0.0004753,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1736,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0004753,
+      "upstream_inference_prompt_cost": 0.0002173,
+      "upstream_inference_completions_cost": 0.000258
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 165,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "finish_reason": "stop"
+}

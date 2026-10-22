@@ -1,0 +1,67 @@
+{
+  "product": "ragflow",
+  "scope": "formal",
+  "phase": "post",
+  "case_id": "memory-0-0",
+  "question": "As of August 22, what delivery mode and retry policy apply to Mara's Larch project?",
+  "answer": {
+    "answer": "As of August 22, Larch’s delivery mode is not established: it began with batch delivery BATCH-0-741, but the August 22 note says to keep an August 15 choice, and the supplied evidence does not identify that choice for Larch. The retry policy is RETRY-0-907, superseding RETRY-0-108.",
+    "citations": [
+      {
+        "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+        "quote": "They chose BATCH-0-741 for batch delivery. The initial retry policy was RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16",
+        "quote": "The delivery choice made on August 15, 2026, is to remain in force."
+      }
+    ]
+  },
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16",
+      "quote_bound": true
+    }
+  ],
+  "retrieval_seconds": 0.264,
+  "total_seconds": 6.632,
+  "context_bytes": 4506,
+  "context_entries": 11,
+  "dropped": [],
+  "usage": {
+    "prompt_tokens": 1738,
+    "completion_tokens": 544,
+    "total_tokens": 2282,
+    "cost": 0.000489175,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1735,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000489175,
+      "upstream_inference_prompt_cost": 0.000217175,
+      "upstream_inference_completions_cost": 0.000272
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 214,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "finish_reason": "stop"
+}

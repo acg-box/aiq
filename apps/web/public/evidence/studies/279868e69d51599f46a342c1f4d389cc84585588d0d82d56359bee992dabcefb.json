@@ -1,0 +1,71 @@
+{
+  "id": "post-memory-0-0",
+  "kind": "reader",
+  "seconds": 12.079904999991413,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1809,
+    "completion_tokens": 2536,
+    "total_tokens": 4345,
+    "cost": 0.0035859,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0035859,
+      "upstream_inference_prompt_cost": 0.0005427,
+      "upstream_inference_completions_cost": 0.0030432
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 2214,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "As of August 22, Mara's Larch retry policy is RETRY-0-907, superseding RETRY-0-108. The delivery mode as of August 22 is not established by the supplied evidence: the last explicit approved delivery mode was BATCH-0-741, chosen August 1; the August 8 REPLAY-0-632 test did not approve a delivery-mode change; and the August 22 record says to keep the August 15 delivery choice but does not identify that choice.",
+    "citations": [
+      {
+        "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+        "quote": "They chose BATCH-0-741 for batch delivery."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "Keep the August 15 delivery choice."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "The retry policy is now RETRY-0-907, superseding RETRY-0-108."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"As of August 22, Mara's Larch retry policy is RETRY-0-907, superseding RETRY-0-108. The delivery mode as of August 22 is not established by the supplied evidence: the last explicit approved delivery mode was BATCH-0-741, chosen August 1; the August 8 REPLAY-0-632 test did not approve a delivery-mode change; and the August 22 record says to keep the August 15 delivery choice but does not identify that choice.\",\"citations\":[{\"handle\":\"ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199\",\"quote\":\"They chose BATCH-0-741 for batch delivery.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"No change of delivery mode was approved at this meeting.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"Keep the August 15 delivery choice.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"The retry policy is now RETRY-0-907, superseding RETRY-0-108.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

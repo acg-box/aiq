@@ -1,0 +1,45 @@
+{
+  "id": "medium-writer-orbit-conditional-zh",
+  "kind": "writer",
+  "seconds": 6.57604266598355,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 665,
+    "completion_tokens": 304,
+    "total_tokens": 969,
+    "cost": 0.0002185,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0002185,
+      "upstream_inference_prompt_cost": 6.65e-05,
+      "upstream_inference_completions_cost": 0.000152
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 177,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "semantic": [],
+    "episodic": [],
+    "procedural": [
+      {
+        "content": "ORBIT-NIGHTLY 项目只有在审计 AUDIT-62 通过后，才可批准在预发布环境采用交付模式 STREAM-93；审计通过前，预发布环境必须继续使用 POLL-71。Mira 仍是负责人，且未授权任何生产环境发布。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      }
+    ]
+  },
+  "raw_content": "{\n  \"semantic\": [],\n  \"episodic\": [],\n  \"procedural\": [\n    {\n      \"content\": \"ORBIT-NIGHTLY 项目只有在审计 AUDIT-62 通过后，才可批准在预发布环境采用交付模式 STREAM-93；审计通过前，预发布环境必须继续使用 POLL-71。Mira 仍是负责人，且未授权任何生产环境发布。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}",
+  "effort": "medium",
+  "source_case_id": "writer-orbit-conditional-zh",
+  "block": 2
+}

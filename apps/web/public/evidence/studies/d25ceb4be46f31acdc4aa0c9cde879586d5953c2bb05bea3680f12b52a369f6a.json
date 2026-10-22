@@ -1,0 +1,63 @@
+{
+  "id": "post-memory-0-2",
+  "kind": "reader",
+  "seconds": 3.8011922080186196,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1868,
+    "completion_tokens": 606,
+    "total_tokens": 2474,
+    "cost": 0.0012876,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0012876,
+      "upstream_inference_prompt_cost": 0.0005604,
+      "upstream_inference_completions_cost": 0.0007272
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 359,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "Immediately after the August 8 meeting, Mara's Larch project was still approved for batch delivery using BATCH-0-741. The August 8 meeting tested REPLAY-0-632 but did not approve any change of delivery mode; the switch to STREAM-0-286 came later, on August 15.",
+    "citations": [
+      {
+        "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+        "quote": "They chose BATCH-0-741 for batch delivery."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+        "quote": "2026-08-15. Mara approved switching Larch from BATCH-0-741 to STREAM-0-286."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"Immediately after the August 8 meeting, Mara's Larch project was still approved for batch delivery using BATCH-0-741. The August 8 meeting tested REPLAY-0-632 but did not approve any change of delivery mode; the switch to STREAM-0-286 came later, on August 15.\",\"citations\":[{\"handle\":\"ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199\",\"quote\":\"They chose BATCH-0-741 for batch delivery.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"No change of delivery mode was approved at this meeting.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11\",\"quote\":\"2026-08-15. Mara approved switching Larch from BATCH-0-741 to STREAM-0-286.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

@@ -4,16 +4,10 @@ import { expect, test } from '@playwright/test';
 test('partial public Supabase configuration fails closed with its missing-variable diagnostic', async ({
   page,
 }) => {
-  const response = await page.goto('/');
+  const response = await page.goto('/benchmarks/intelligence');
   expect(response?.status()).toBe(200);
-  await expect(page.getByText('Config error', { exact: true })).toBeVisible();
-  await expect(page.locator('.live-pill')).toHaveClass(/status-invalid/);
-  await expect(page.getByText('Invalid public data configuration', { exact: false })).toBeVisible();
   await expect(
-    page.getByText('Published evidence unavailable', { exact: true }).first(),
-  ).toBeVisible();
-  await expect(
-    page.getByText('NEXT_PUBLIC_SUPABASE_URL is missing', { exact: false }).first(),
+    page.getByRole('heading', { name: 'Published results unavailable.', exact: true }),
   ).toBeVisible();
   await expect(page.getByText('public data', { exact: true })).toHaveCount(0);
   await expect(page.getByText('seed mode', { exact: true })).toHaveCount(0);

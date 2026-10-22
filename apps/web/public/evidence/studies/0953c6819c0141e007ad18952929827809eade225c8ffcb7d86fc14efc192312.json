@@ -1,0 +1,71 @@
+{
+  "id": "post-memory-1-1",
+  "kind": "reader",
+  "seconds": 4.869101083022542,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1907,
+    "completion_tokens": 795,
+    "total_tokens": 2702,
+    "cost": 0.0015261,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0015261,
+      "upstream_inference_prompt_cost": 0.0005721,
+      "upstream_inference_completions_cost": 0.000954
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 501,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "For Cobalt’s next outage, Ivo should use REPLAY-1-632—the recovery procedure validated on August 8. The delivery-mode change was caused by the GATE-1-519 outages recorded on August 8; on August 15 Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "quote": "For the next outage, use the recovery procedure validated on August 8."
+      },
+      {
+        "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+        "quote": "The team tested REPLAY-1-632, which restored the missing updates."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "quote": "Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "quote": "The cause was the GATE-1-519 outages recorded on August 8"
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"For Cobalt’s next outage, Ivo should use REPLAY-1-632—the recovery procedure validated on August 8. The delivery-mode change was caused by the GATE-1-519 outages recorded on August 8; on August 15 Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286.\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23\",\"quote\":\"For the next outage, use the recovery procedure validated on August 8.\"},{\"handle\":\"ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657\",\"quote\":\"The team tested REPLAY-1-632, which restored the missing updates.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20\",\"quote\":\"Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20\",\"quote\":\"The cause was the GATE-1-519 outages recorded on August 8\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

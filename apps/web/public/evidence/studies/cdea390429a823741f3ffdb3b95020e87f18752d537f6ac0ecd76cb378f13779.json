@@ -1,0 +1,35 @@
+{
+  "purpose": "Separate native Agent integration probe; excluded from the historical 13-question score.",
+  "frozen_before_model_calls": true,
+  "records": [
+    {
+      "id": "initial",
+      "text": "2026-10-01. Project ORBIT-NIGHTLY uses delivery mode POLL-71 in staging. Mira owns the rollout. Production is unchanged."
+    },
+    {
+      "id": "conditional-update",
+      "text": "2026-10-20. Project ORBIT-NIGHTLY approves delivery mode STREAM-93 in staging only after audit AUDIT-62 passes. Until that audit passes, staging must retain POLL-71. Mira remains the owner. No production rollout is authorized."
+    }
+  ],
+  "questions": [
+    {
+      "id": "before-audit",
+      "question": "For ORBIT-NIGHTLY after the October 20 decision but before AUDIT-62 passes, which delivery mode must staging use, who owns the rollout, and is production authorized?"
+    },
+    {
+      "id": "historical",
+      "question": "Which delivery mode was in effect for ORBIT-NIGHTLY staging as of October 10, 2026, and who owned it?"
+    },
+    {
+      "id": "after-audit",
+      "question": "For ORBIT-NIGHTLY, after AUDIT-62 passes, which delivery mode is approved, for which environment, who owns the rollout, and does this authorize production?"
+    }
+  ],
+  "acceptance": {
+    "before-audit": ["POLL-71", "Mira", "production not authorized", "AUDIT-62 pending"],
+    "historical": ["POLL-71", "Mira", "October 10 cutoff"],
+    "after-audit": ["STREAM-93", "staging only", "Mira", "production not authorized", "AUDIT-62 passed"]
+  },
+  "additional_checks": ["Message component creates raw and derived memory", "Fresh session per question", "Native Retrieval memory tool appears in execution evidence", "Original records remain exactly readable"],
+  "not_claimed": ["Customer production acceptance", "Arbitrary tenant isolation", "Hy-Memory model integration"]
+}

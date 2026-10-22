@@ -1,0 +1,66 @@
+{
+  "id": "none-post-memory-0-1",
+  "kind": "reader",
+  "seconds": 5.573346540972125,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1836,
+    "completion_tokens": 321,
+    "total_tokens": 2157,
+    "cost": 0.000389925,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1833,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000389925,
+      "upstream_inference_prompt_cost": 0.000229425,
+      "upstream_inference_completions_cost": 0.0001605
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "For the next Larch outage, Mara should use REPLAY-0-632, the recovery procedure tested on August 8 that restored the missing updates. The delivery-mode change was attributed to the GATE-0-519 outages; Mara approved switching Larch from BATCH-0-741 to STREAM-0-286 on August 15. The August 8 meeting itself approved no delivery-mode change.",
+    "citations": [
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "Mara reported that BATCH-0-741 lost updates during GATE-0-519 outages. The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "For the next outage, use the recovery procedure validated on August 8."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+        "quote": "Mara approved switching Larch from BATCH-0-741 to STREAM-0-286. This supersedes the August 1 delivery decision. The cause was the GATE-0-519 outages recorded on August 8; keep the successful recovery procedure from that incident."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"For the next Larch outage, Mara should use REPLAY-0-632, the recovery procedure tested on August 8 that restored the missing updates. The delivery-mode change was attributed to the GATE-0-519 outages; Mara approved switching Larch from BATCH-0-741 to STREAM-0-286 on August 15. The August 8 meeting itself approved no delivery-mode change.\",\"citations\":[{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"Mara reported that BATCH-0-741 lost updates during GATE-0-519 outages. The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"For the next outage, use the recovery procedure validated on August 8.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11\",\"quote\":\"Mara approved switching Larch from BATCH-0-741 to STREAM-0-286. This supersedes the August 1 delivery decision. The cause was the GATE-0-519 outages recorded on August 8; keep the successful recovery procedure from that incident.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:11",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "none",
+  "source_case_id": "post-memory-0-1",
+  "block": 0
+}
