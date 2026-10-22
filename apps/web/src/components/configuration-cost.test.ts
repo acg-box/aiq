@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { configurationWorkbenchFixture } from './configuration-workbench.fixture.ts';
+import { scientificEvidenceFixture } from './scientific-evidence.fixture.ts';
 import {
   describeConfigurationCost,
   formatConfigurationCost,
@@ -10,7 +10,7 @@ import {
 
 void describe('configuration cost presentation', () => {
   void it('preserves a verifier-recomputed exact total', () => {
-    const candidate = configurationWorkbenchFixture({
+    const candidate = scientificEvidenceFixture({
       id: 'exact',
       cost: 1_250_000_000,
     });
@@ -26,7 +26,7 @@ void describe('configuration cost presentation', () => {
   });
 
   void it('turns aggregate long-context ambiguity into an honest published-rate range', () => {
-    const candidate = configurationWorkbenchFixture({ id: 'bounded', boundedCost: true });
+    const candidate = scientificEvidenceFixture({ id: 'bounded', boundedCost: true });
     const cost = resolveConfigurationCost(candidate.row);
     assert.deepEqual(cost, {
       kind: 'bounded',
@@ -40,7 +40,7 @@ void describe('configuration cost presentation', () => {
   });
 
   void it('keeps genuinely missing provider usage unavailable instead of fabricating zero', () => {
-    const candidate = configurationWorkbenchFixture({ id: 'missing' });
+    const candidate = scientificEvidenceFixture({ id: 'missing' });
     const cost = resolveConfigurationCost(candidate.row);
     assert.equal(cost.kind, 'unavailable');
     assert.equal(formatConfigurationCost(cost), 'Unavailable');

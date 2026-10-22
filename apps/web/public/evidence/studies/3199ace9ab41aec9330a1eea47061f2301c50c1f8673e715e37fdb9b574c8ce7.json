@@ -1,0 +1,58 @@
+{
+  "id": "none-post-memory-0-0",
+  "kind": "reader",
+  "seconds": 5.2628796670469455,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1738,
+    "completion_tokens": 271,
+    "total_tokens": 2009,
+    "cost": 0.000352675,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1735,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000352675,
+      "upstream_inference_prompt_cost": 0.000217175,
+      "upstream_inference_completions_cost": 0.0001355
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "As of August 22, Mara’s Larch project retains the delivery choice approved on August 15; the supplied evidence does not state what that delivery mode was. The retry policy is RETRY-0-907, superseding RETRY-0-108. For the next outage, use the recovery procedure validated on August 8; the August 8 evidence says REPLAY-0-632 was tested and restored missing updates, but does not establish that it was approved as a delivery-mode change.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"As of August 22, Mara’s Larch project retains the delivery choice approved on August 15; the supplied evidence does not state what that delivery mode was. The retry policy is RETRY-0-907, superseding RETRY-0-108. For the next outage, use the recovery procedure validated on August 8; the August 8 evidence says REPLAY-0-632 was tested and restored missing updates, but does not establish that it was approved as a delivery-mode change.\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "none",
+  "source_case_id": "post-memory-0-0",
+  "block": 0
+}

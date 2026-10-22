@@ -209,10 +209,10 @@ void describe('production efficiency evidence', () => {
 
 void describe('production page evidence', () => {
   void it('allows only the named separate Calibration empty states on the overview', () => {
-    const expectation = productionPageEvidenceExpectation('/');
+    const expectation = productionPageEvidenceExpectation('/benchmarks/intelligence/calibrations');
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
-        [...overviewPublishedPageEvidence, emptyPageEvidence('Calibration status')],
+        [...overviewPublishedPageEvidence, emptyPageEvidence('Calibration register status')],
         expectation,
       ),
     );
@@ -221,7 +221,7 @@ void describe('production page evidence', () => {
         validateProductionPageEvidence(
           [
             ...overviewPublishedPageEvidence,
-            emptyPageEvidence('Calibration status'),
+            emptyPageEvidence('Calibration register status'),
             emptyPageEvidence('Official efficiency status'),
           ],
           expectation,
@@ -231,7 +231,7 @@ void describe('production page evidence', () => {
   });
 
   void it('rejects unavailable, synthetic, or mixed secondary evidence', () => {
-    const expectation = productionPageEvidenceExpectation('/');
+    const expectation = productionPageEvidenceExpectation('/benchmarks/intelligence?view=data');
     for (const note of [
       { label: 'Calibration status', state: 'Published evidence unavailable' },
       { label: 'Calibration status', state: 'Synthetic / seed data' },
@@ -245,7 +245,9 @@ void describe('production page evidence', () => {
   });
 
   void it('requires run-detail Official efficiency to be published', () => {
-    const expectation = productionPageEvidenceExpectation(`/runs/run_${'1'.repeat(64)}`);
+    const expectation = productionPageEvidenceExpectation(
+      `/benchmarks/intelligence/records/run_${'1'.repeat(64)}`,
+    );
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
         [
@@ -271,7 +273,9 @@ void describe('production page evidence', () => {
   });
 
   void it('requires every Official Trends evidence subject to be published', () => {
-    const expectation = productionPageEvidenceExpectation('/trends?range=all');
+    const expectation = productionPageEvidenceExpectation(
+      '/benchmarks/intelligence?view=records&range=all',
+    );
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
         [
@@ -297,7 +301,7 @@ void describe('production page evidence', () => {
   });
 
   void it('allows the separate calibration register to be explicitly empty', () => {
-    const expectation = productionPageEvidenceExpectation('/calibrations');
+    const expectation = productionPageEvidenceExpectation('/benchmarks/intelligence/calibrations');
     assert.doesNotThrow(() =>
       validateProductionPageEvidence(
         [emptyPageEvidence('Calibration register status')],

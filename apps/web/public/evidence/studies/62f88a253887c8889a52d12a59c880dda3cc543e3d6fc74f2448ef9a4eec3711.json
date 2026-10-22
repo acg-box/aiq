@@ -1,0 +1,32 @@
+{
+  "frozen_at": "2026-10-20T07:17:22.671538+00:00",
+  "model": "deepseek/deepseek-v4.1-flash-1017",
+  "provider": "deepseek",
+  "reasoning_effort": "low",
+  "maximum_output_tokens": 393216,
+  "force_full_provider_output_allowance": true,
+  "price_caps_usd_per_million": {
+    "input": 0.3,
+    "output": 1.2
+  },
+  "parent_budget_ledger": "/Users/x/code/acg-box/ELF/tmp/elf-real-project-pilot/budget-ledger.json",
+  "cumulative_ceiling_usd": 10,
+  "tranche_usd": 0.75,
+  "reader_cases": 13,
+  "paired_writer_cases": 3,
+  "separate_chinese_writer_cases": 1,
+  "calibration_cases": 1,
+  "paid_answer_retries": 0,
+  "embedding_calls": 0,
+  "frozen_context_origin": "Prior native RAGFlow nightly run with Qwen3-Embedding-8B full 4096-dimensional indexes. Exact contexts reused; no retrieval or re-embedding performed.",
+  "baseline": "Retained GPT-6-Luna medium reasoning results from the same contexts and messages. This is a practical profile comparison, not equal reasoning compute or a simultaneous repeated latency experiment.",
+  "source_cases_sha256": "ff4e1381c4023e5809f8355f2a088ae1a56e82c53d2b675b532f60879b00d2db",
+  "oracle_sha256": "8ac3caf4055989d319ef143eb1fad280d3372c6c85113bbd639498fdc7871644",
+  "calibration_sha256": "0451a4308487842b7c16502175c1411f76b85f3947f8a2bed3c8c2a99dadfcb3",
+  "not_claimed": [
+    "End-to-end RAGFlow rerun",
+    "Changed retrieval quality",
+    "Native Agent tool-use acceptance",
+    "New competitor score"
+  ]
+}

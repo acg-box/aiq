@@ -578,7 +578,7 @@ void test('one CLI command invokes fake psql once without disclosing its URL', a
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
   const secretUrl =
-    'postgresql://postgres:secret-value@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres';
+    'postgresql://postgres.xxnszykaeapolqdnhalx:secret-value@aws-0-ca-central-1.pooler.supabase.com:5432/postgres';
   const environment = {
     ...process.env,
     AIQ_DATABASE_URL: secretUrl,
@@ -598,10 +598,10 @@ void test('one CLI command invokes fake psql once without disclosing its URL', a
   assert.equal(Array.isArray(invokedArguments), true);
   assert.doesNotMatch(JSON.stringify(invokedArguments), /operator|secret-value|database\.invalid/);
   const childEnvironment = object(JSON.parse(await readFile(fake.environmentPath, 'utf8')));
-  strictEqual(childEnvironment.PGHOST, 'db.xxnszykaeapolqdnhalx.supabase.co');
+  strictEqual(childEnvironment.PGHOST, 'aws-0-ca-central-1.pooler.supabase.com');
   strictEqual(childEnvironment.PGPORT, '5432');
   strictEqual(childEnvironment.PGDATABASE, 'postgres');
-  strictEqual(childEnvironment.PGUSER, 'postgres');
+  strictEqual(childEnvironment.PGUSER, 'postgres.xxnszykaeapolqdnhalx');
   strictEqual(childEnvironment.PGPASSWORD, 'secret-value');
   strictEqual(childEnvironment.AIQ_DATABASE_URL, undefined);
   strictEqual(childEnvironment.AIQ_PRODUCTION_REFERENCE, undefined);
@@ -625,7 +625,7 @@ void test('initializer parses readiness from a fake psql executable', async () =
     environment: {
       ...process.env,
       AIQ_DATABASE_URL:
-        'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+        'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
     },
   });
 
@@ -643,14 +643,8 @@ void test('initializer parses readiness from a fake psql executable', async () =
   strictEqual(Object.keys(receipt.node_ids).length, 3);
 });
 
-void test('database target guard binds the exact direct or session-pooler tuple', () => {
+void test('database target guard accepts only the exact production Session Pooler tuple', () => {
   const productionEnvironment = { NODE_ENV: 'production' };
-  assert.doesNotThrow(() =>
-    assertDatabaseTarget(
-      'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres',
-      productionEnvironment,
-    ),
-  );
   assert.doesNotThrow(() =>
     assertDatabaseTarget(
       'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
@@ -658,13 +652,13 @@ void test('database target guard binds the exact direct or session-pooler tuple'
     ),
   );
   for (const target of [
-    'postgresql://postgres:private@db.otherproject.supabase.co/postgres',
-    'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/other_database',
-    'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co:6543/postgres',
-    'postgresql://operator:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+    'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co:5432/postgres',
+    'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:5432/other_database',
+    'postgresql://postgres:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
     'postgresql://postgres.otherproject:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
     'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-us-east-1.pooler.supabase.com:5432/postgres',
     'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:6543/postgres',
+    'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com/postgres',
   ]) {
     assert.throws(
       () => assertDatabaseTarget(target, productionEnvironment),
@@ -724,7 +718,7 @@ void test('rejects malformed corpus provenance before psql starts', async () => 
       psqlCommand: fake.command,
       environment: {
         AIQ_DATABASE_URL:
-          'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+          'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
       },
     }),
     /corpus/,
@@ -745,7 +739,7 @@ void test('file preparation rejects missing, malformed, and invalid references b
     environment: {
       ...process.env,
       AIQ_DATABASE_URL:
-        'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+        'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
     },
   };
   await rejects(
@@ -793,7 +787,7 @@ void test('file preparation is transitively immutable and can be reused by initi
     environment: {
       ...process.env,
       AIQ_DATABASE_URL:
-        'postgresql://postgres:private@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+        'postgresql://postgres.xxnszykaeapolqdnhalx:private@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
     },
   });
   deepStrictEqual(receipt, preparedSnapshot.receipt);
@@ -811,7 +805,8 @@ void test('CLI accepts the reference path environment fallback without disclosin
     cwd: repositoryRoot,
     env: {
       ...process.env,
-      AIQ_DATABASE_URL: 'postgresql://postgres:secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+      AIQ_DATABASE_URL:
+        'postgresql://postgres.xxnszykaeapolqdnhalx:secret@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
       AIQ_PRODUCTION_REFERENCE: referencePath,
       PATH: `${root}:${process.env.PATH ?? ''}`,
     },
@@ -1040,7 +1035,7 @@ void test('failed psql gives fail-closed greenfield retry guidance without URL d
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
   const secretUrl =
-    'postgresql://postgres:failure-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
+    'postgresql://postgres.xxnszykaeapolqdnhalx:failure-secret@aws-0-ca-central-1.pooler.supabase.com:5432/postgres';
 
   await rejects(
     initializeDatabase({
@@ -1068,7 +1063,7 @@ void test('the controlled preflight marker reports rejected reuse without URL di
   const referencePath = join(root, 'reference.json');
   await writeFile(referencePath, JSON.stringify(await referenceFixture()));
   const secretUrl =
-    'postgresql://postgres:reuse-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres';
+    'postgresql://postgres.xxnszykaeapolqdnhalx:reuse-secret@aws-0-ca-central-1.pooler.supabase.com:5432/postgres';
 
   await rejects(
     initializeDatabase({
@@ -1103,7 +1098,7 @@ void test('an incidental reuse marker in a connection error stays a generic fail
       psqlCommand: command,
       environment: {
         AIQ_DATABASE_URL:
-          'postgresql://postgres:collision-secret@db.xxnszykaeapolqdnhalx.supabase.co/postgres',
+          'postgresql://postgres.xxnszykaeapolqdnhalx:collision-secret@aws-0-ca-central-1.pooler.supabase.com:5432/postgres',
       },
     }),
     (error: unknown) =>

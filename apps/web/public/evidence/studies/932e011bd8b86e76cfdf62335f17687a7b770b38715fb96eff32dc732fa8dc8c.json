@@ -1,0 +1,36 @@
+{
+  "new_paid_usd": 0.008500544999999526,
+  "cumulative_paid_usd": 2.024643551,
+  "conservative_exposure_usd": 2.096824250999998,
+  "ceiling_usd": 10,
+  "tranche_usd": 0.5,
+  "requests": 45,
+  "states": {
+    "completed": 45
+  },
+  "tokens": {
+    "prompt_tokens": 34190,
+    "completion_tokens": 9212,
+    "total_tokens": 43402
+  },
+  "by_kind": {
+    "chat": {
+      "requests": 31,
+      "paid_usd": 0.008491375
+    },
+    "embedding": {
+      "requests": 14,
+      "paid_usd": 9.17e-06
+    }
+  },
+  "embedding_cache": {
+    "hit_requests": 53,
+    "reused_vectors": 53,
+    "available_unique_texts": 170,
+    "dimensions": 4096
+  },
+  "new_provider_embedding_widths": {
+    "4096": 27
+  },
+  "formal_elapsed_seconds": 175.981
+}

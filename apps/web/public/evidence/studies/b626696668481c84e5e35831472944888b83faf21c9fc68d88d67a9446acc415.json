@@ -1,0 +1,63 @@
+{
+  "id": "post-memory-1-2",
+  "kind": "reader",
+  "seconds": 3.5593763749930076,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1869,
+    "completion_tokens": 491,
+    "total_tokens": 2360,
+    "cost": 0.0011499,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0011499,
+      "upstream_inference_prompt_cost": 0.0005607,
+      "upstream_inference_completions_cost": 0.0005892
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 245,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "Immediately after the August 8 meeting, Ivo’s Cobalt project was still approved for batch delivery using BATCH-1-741. At that meeting the team tested REPLAY-1-632, but no delivery-mode change was approved; Cobalt was not switched to STREAM until August 15.",
+    "citations": [
+      {
+        "handle": "ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e",
+        "quote": "They chose BATCH-1-741 for batch delivery."
+      },
+      {
+        "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+        "quote": "No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "quote": "2026-08-15. Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"Immediately after the August 8 meeting, Ivo’s Cobalt project was still approved for batch delivery using BATCH-1-741. At that meeting the team tested REPLAY-1-632, but no delivery-mode change was approved; Cobalt was not switched to STREAM until August 15.\",\"citations\":[{\"handle\":\"ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e\",\"quote\":\"They chose BATCH-1-741 for batch delivery.\"},{\"handle\":\"ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657\",\"quote\":\"No change of delivery mode was approved at this meeting.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20\",\"quote\":\"2026-08-15. Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

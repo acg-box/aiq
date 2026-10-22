@@ -1,0 +1,163 @@
+{
+  "medium": {
+    "reader": {
+      "completed": 13,
+      "mean_seconds": 4.5681233589241925,
+      "median_seconds": 3.9079334580455907,
+      "paid_usd": 0.004726775,
+      "prompt_tokens": 22362,
+      "completion_tokens": 3865,
+      "reasoning_tokens": 1137,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 22323,
+      "plain_input_output_cost_estimate_usd": 0.004168700000000001,
+      "direct_json_valid": 13,
+      "bound_quotes": {
+        "pass": 30,
+        "total": 30
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "semantic_complete": 11,
+      "complete_with_bound_quotes": 11,
+      "cost_reduction_vs_medium_fraction": 0.0,
+      "mean_latency_reduction_vs_medium_fraction": 0.0
+    },
+    "writer": {
+      "completed": 4,
+      "mean_seconds": 7.719547676751972,
+      "median_seconds": 7.210369186999742,
+      "paid_usd": 0.0011196000000000001,
+      "prompt_tokens": 2626,
+      "completion_tokens": 1714,
+      "reasoning_tokens": 1049,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "plain_input_output_cost_estimate_usd": 0.0011196,
+      "direct_json_valid": 4,
+      "bound_quotes": {
+        "pass": 0,
+        "total": 0
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "memory_atoms": 9,
+      "cost_reduction_vs_medium_fraction": 0.0,
+      "mean_latency_reduction_vs_medium_fraction": 0.0
+    }
+  },
+  "low": {
+    "reader": {
+      "completed": 13,
+      "mean_seconds": 3.629287429467345,
+      "median_seconds": 3.5470552089973353,
+      "paid_usd": 0.004360275,
+      "prompt_tokens": 22362,
+      "completion_tokens": 3132,
+      "reasoning_tokens": 203,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 22323,
+      "plain_input_output_cost_estimate_usd": 0.0038022000000000004,
+      "direct_json_valid": 13,
+      "bound_quotes": {
+        "pass": 31,
+        "total": 32
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "semantic_complete": 11,
+      "complete_with_bound_quotes": 10,
+      "cost_reduction_vs_medium_fraction": 0.07753700990633139,
+      "mean_latency_reduction_vs_medium_fraction": 0.20551895290278377
+    },
+    "writer": {
+      "completed": 4,
+      "mean_seconds": 6.107402218738571,
+      "median_seconds": 6.5114811249950435,
+      "paid_usd": 0.0009986,
+      "prompt_tokens": 2626,
+      "completion_tokens": 1472,
+      "reasoning_tokens": 664,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "plain_input_output_cost_estimate_usd": 0.0009986,
+      "direct_json_valid": 4,
+      "bound_quotes": {
+        "pass": 0,
+        "total": 0
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "memory_atoms": 11,
+      "cost_reduction_vs_medium_fraction": 0.10807431225437658,
+      "mean_latency_reduction_vs_medium_fraction": 0.2088393679941255
+    }
+  },
+  "none": {
+    "reader": {
+      "completed": 13,
+      "mean_seconds": 4.950125775613392,
+      "median_seconds": 5.078380958002526,
+      "paid_usd": 0.004149275,
+      "prompt_tokens": 22362,
+      "completion_tokens": 2710,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 22323,
+      "plain_input_output_cost_estimate_usd": 0.0035912,
+      "direct_json_valid": 13,
+      "bound_quotes": {
+        "pass": 26,
+        "total": 26
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "semantic_complete": 11,
+      "complete_with_bound_quotes": 11,
+      "cost_reduction_vs_medium_fraction": 0.12217632529578837,
+      "mean_latency_reduction_vs_medium_fraction": -0.08362348970785294
+    },
+    "writer": {
+      "completed": 4,
+      "mean_seconds": 3.518266468992806,
+      "median_seconds": 3.3963862505042925,
+      "paid_usd": 0.0007091,
+      "prompt_tokens": 2626,
+      "completion_tokens": 893,
+      "reasoning_tokens": 0,
+      "cached_input_tokens": 0,
+      "cache_write_tokens": 0,
+      "plain_input_output_cost_estimate_usd": 0.0007091,
+      "direct_json_valid": 4,
+      "bound_quotes": {
+        "pass": 0,
+        "total": 0
+      },
+      "finish_reasons": [
+        "stop"
+      ],
+      "memory_atoms": 13,
+      "cost_reduction_vs_medium_fraction": 0.36664880314397996,
+      "mean_latency_reduction_vs_medium_fraction": 0.5442392979075259
+    }
+  },
+  "saved_results": 53,
+  "new_paid_usd": 0.016351425,
+  "budget": {
+    "new_paid_usd": 0.016351424999998976,
+    "cumulative_paid_usd": 2.065450099999999,
+    "conservative_exposure_usd": 2.137630799999997,
+    "ceiling_usd": 10,
+    "requests": 53,
+    "states": {
+      "completed": 53
+    },
+    "prompt_tokens": 76222,
+    "completion_tokens": 14110
+  }
+}

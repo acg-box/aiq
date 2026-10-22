@@ -57,6 +57,7 @@ export function EChartsChart({
   useEffect(() => {
     if (!host.current) return undefined;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const fontFamily = window.getComputedStyle(host.current).fontFamily;
     const instance = init(host.current, undefined, { renderer: 'svg' });
     chart.current = instance;
     const syncDescription = () => {
@@ -69,6 +70,7 @@ export function EChartsChart({
     const render = () => {
       const motionEnabled = !reducedMotion.matches;
       const themedOption: EChartsCoreOption = {
+        textStyle: { fontFamily },
         ...optionRef.current,
         animation: motionEnabled,
         animationDuration: motionEnabled ? 260 : 0,
@@ -108,10 +110,11 @@ export function EChartsChart({
 
   useEffect(() => {
     const instance = chart.current;
-    if (!instance || appliedOptionRef.current === option) return;
+    if (!instance || !host.current || appliedOptionRef.current === option) return;
     const motionEnabled = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     instance.setOption(
       {
+        textStyle: { fontFamily: window.getComputedStyle(host.current).fontFamily },
         ...option,
         animation: motionEnabled,
         animationDuration: motionEnabled ? 260 : 0,

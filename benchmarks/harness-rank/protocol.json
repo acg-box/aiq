@@ -1,0 +1,1319 @@
+{
+  "schema_version": "aiq.harness-study-plan.v1",
+  "protocol_version": "0.3.0",
+  "status": "design_only",
+  "reviewed_at": "2026-10-21",
+  "scope": "A design-only same-model comparison of Codex, Hermes, and Pi on 24 bounded coding and local-workflow tasks. Task specifications exist; workspace packages, graders, compatibility, and difficulty are not validated.",
+  "harnesses": [
+    {
+      "id": "codex",
+      "name": "Codex",
+      "documentation": "https://learn.chatgpt.com/docs/config-file/config-advanced",
+      "observation": "Custom provider configuration exposes a model ID, base URL, Responses wire API, and reasoning effort.",
+      "study_control": "Use an isolated CLI profile with model=gpt-6-sol, model_reasoning_effort=medium, a named provider, and wire_api=responses. Qualify HTTP/SSE, the model catalog, effective limits, native instructions, and disabled optional services for the pinned release.",
+      "adapter": "Isolated Codex CLI profile; native tools and system instructions.",
+      "qualification_status": "not_run"
+    },
+    {
+      "id": "hermes",
+      "name": "Hermes",
+      "documentation": "https://hermes-agent.nousresearch.com/docs/user-guide/configuration",
+      "observation": "Main and auxiliary inference have separate configuration; fallback chains and reasoning recovery can change requests.",
+      "study_control": "Pin model.default, model.base_url, api_mode=codex_responses, and agent.reasoning_effort. Audit compression separately. Disable optional auxiliary slots and all fallback chains; reject an omitted or remapped reasoning field. Exact release behavior remains unqualified.",
+      "adapter": "Isolated Hermes CLI profile; explicit Responses transport for main and required compression calls.",
+      "qualification_status": "not_run"
+    },
+    {
+      "id": "pi",
+      "name": "Pi",
+      "documentation": "https://pi.dev/docs/latest/models-configuration",
+      "observation": "Provider configuration exposes baseUrl and openai-responses; model settings include context, output limits, and reasoning mappings.",
+      "study_control": "Use an isolated Pi profile and explicit model ID, baseUrl, and api=openai-responses. Audit effective reasoning mappings, context/output limits, native tools, package loading, and compaction calls for the pinned release.",
+      "adapter": "Isolated Pi CLI profile; explicit Responses provider with native context handling.",
+      "qualification_status": "not_run"
+    }
+  ],
+  "comparisons": [
+    {
+      "id": "model-harness",
+      "name": "Model × harness",
+      "question": "Which model–harness combination completes these tasks within the recorded limits?",
+      "description": "Deferred in V1; no execution or budget is allocated. Future cohorts compare complete, explicitly pinned model–harness combinations.",
+      "interpretation": "A difference belongs to the complete combination. It cannot be attributed to the harness alone.",
+      "status": "deferred"
+    },
+    {
+      "id": "same-model",
+      "name": "Same model",
+      "question": "What changes when the same model uses a different harness?",
+      "description": "Same model, provider route, tasks, and limits. Native harness instructions and context handling remain part of the comparison.",
+      "interpretation": "Evidence is conditional on this model and task cohort. It does not establish a model-independent harness winner.",
+      "status": "proposed"
+    }
+  ],
+  "workloads": [
+    {
+      "id": "repair",
+      "name": "Bug repair",
+      "planned_tasks": 6,
+      "acceptance": "Fix the stated defect and pass all three task gates, including boundary and regression cases. A plausible patch or completion claim is insufficient."
+    },
+    {
+      "id": "feature",
+      "name": "Feature work",
+      "planned_tasks": 6,
+      "acceptance": "Implement the stated interface and behavior; pass all three gates for requirements, errors, and compatibility. Partial implementation is diagnostic only."
+    },
+    {
+      "id": "workflow",
+      "name": "Local workflow",
+      "planned_tasks": 6,
+      "acceptance": "Produce the specified files or local database state. Pass all three gates for selection, consistency, and safe repeat or recovery behavior."
+    },
+    {
+      "id": "migration",
+      "name": "Refactor and migration",
+      "planned_tasks": 6,
+      "acceptance": "Change the stated boundary or format, update its consumers, and pass all three gates for compatibility, preservation, and the specified new contract."
+    }
+  ],
+  "baseline": [
+    {
+      "name": "Auxiliary inference",
+      "rule": "Disable optional title generation, background review, delegation, memory learning, and skill lookup. Required in-session compression must use the same model, endpoint, effort, and budget. No hidden model or parameter fallback."
+    },
+    {
+      "name": "Fresh state",
+      "rule": "Use a fresh checkout, HOME/profile, session, and writable temporary directory per attempt. No user configuration, prior session, cross-task memory, third-party skills/plugins, or resumed failed task. Record all bundled tools and disabled features."
+    },
+    {
+      "name": "Instructions and tools",
+      "rule": "Give each harness the same task prompt, repository instructions, files, and local capabilities: read/search/edit/shell. Retain and hash native prompts and tool schemas. Record automatic instruction loading. No harness-specific task hints, user intervention, browser, MCP, hosted tools, or subagents."
+    },
+    {
+      "name": "Model identity",
+      "rule": "Use the proposed exact model string, one upstream API project and processing tier, and one recording route. Verify actual main and auxiliary request fields, responses, and provider metadata. A label, model list, or successful text reply is insufficient."
+    },
+    {
+      "name": "Network and grading",
+      "rule": "Agent-side egress reaches only the study inference route. Offline dependencies and common Linux x86_64 image are prepared before the timer. Hidden tests, reference patches, grader secrets, host files, and provider credentials are outside agent access. Grade the frozen final state after termination."
+    },
+    {
+      "name": "Task and environment",
+      "rule": "Use identical commits, dependency/image digests, 4 vCPU, 8 GiB RAM, 10 GiB writable disk, and resource ceilings. Run one evaluated attempt at a time on one reserved worker. Keep setup and independent grading outside the agent timer and report them separately."
+    }
+  ],
+  "analysis": {
+    "planned_repetitions_per_task": 3,
+    "repetition_policy": "Three fresh attempts per task and harness; use all outcomes, never best-of-three. The main plan contains 24 tasks x 3 harnesses x 3 repeats = 216 attempts, not 216 independent tasks.",
+    "ordering_policy": "Freeze a seeded schedule with 72 matched task/repeat triplets. Within each of the 12 stack-by-family cells, use each of the six harness-order permutations once; each permutation appears 12 times overall. Spread each task's repeats across the schedule and execute each triplet close in time on one reserved worker.",
+    "primary_metric": "Require normal completion within all limits and all three independent binary requirement gates. Average the three repeats per task, two tasks per workspace, then 12 workspaces equally. Complete balanced coverage equals accepted/72 valid attempts per harness. Report all 24 tasks and each family separately.",
+    "failure_policy": "Wrong work, malformed tool arguments, agent/harness crashes, unsupported requests caused by the harness, and exhausted task limits are unsuccessful valid attempts. Only independently evidenced provider/worker outages or a reference-grader failure are infrastructure-invalid. A protocol-identity violation stops the cohort; it is not silently repaired or scored as a semantic zero.",
+    "replacement_policy": "If one attempt is infrastructure-invalid, retain and exclude its whole matched triplet from the primary paired analysis, then repeat all three profiles from fresh state. Permit one replacement per original block and at most five replacement blocks total. If a replacement also fails or a sixth block needs replacement, stop; do not rank incomplete coverage. Preserve original and replacement links and every billed call.",
+    "uncertainty_policy": "Use 10,000 paired bootstrap draws over workspace-family IDs, stratified by stack (four workspaces per stack). Keep each sampled workspace's two tasks, repeats, and harnesses together. Publish marginal 95% score intervals and the three matched differences with confidence exactly 1 - 0.05/3 (display 98.333%). These 12 authored workspace families support a limited screening result, not population coverage. If a statistic has no bootstrap variation, mark its interval unavailable rather than certain.",
+    "ranking_policy": "Rank only a complete qualified cohort by the primary point estimate; equal recorded scores share rank and ties display alphabetically. Do not blend cost, time, and success into one score. A practical advantage requires a paired lower bound above the predeclared five-percentage-point margin. No model-independent winner or pooled Model x harness ranking is inferred.",
+    "adjudication_policy": "No LLM judge or subjective answer rubric enters the score. All 24 tasks use three executable requirement gates. A reviewer audits discrepancies between the prompt and grader before unblinding harness labels where possible; an unresolved grader defect invalidates the affected matched block under the common replacement rule. Never silently change a grader or task after observing results."
+  },
+  "metrics": [
+    {
+      "name": "Cost",
+      "unit": "USD / attempt; USD total",
+      "definition": "Publish reference cost, token-based billed estimate, and reconciled provider spend as distinct quantities. Include main, compression, retry, excluded, replacement, and cancelled calls. Report estimate/settled/unavailable status and reconciliation scope; missing usage is never zero."
+    },
+    {
+      "name": "Elapsed time",
+      "unit": "seconds / attempt",
+      "definition": "Measure from launch with the complete task to final termination, including model/tool waits and retries. Report median and nearest-rank p95 for all valid attempts and a separate successful-attempt slice. Report timeouts as cap-limited/censored, and setup/grading separately."
+    },
+    {
+      "name": "Failures and overhead",
+      "unit": "counts with denominators",
+      "definition": "Publish failure taxonomy, invalid and missing attempts, tool/model calls, transport retries, compactions, input/cache/reasoning/output tokens, and maximum context. Agent iteration counts differ across clients and are diagnostics only."
+    },
+    {
+      "name": "Requirements fulfilled",
+      "unit": "passed gates / 3 per task; task-balanced percent",
+      "definition": "Diagnostic only: each gate passes when all its checks pass. Average three equally weighted gates per task, then tasks equally; retain gate IDs and failures. More test assertions do not increase a task's weight. This is not the primary ranking score."
+    },
+    {
+      "name": "Task success",
+      "unit": "workspace-balanced percent; accepted / valid attempts",
+      "definition": "Primary independent acceptance under the common limits: all three requirement gates and normal completion. Show the 24-task, 12-workspace specification, actual coverage, raw counts, and separate outcomes for all four families. Difficulty is estimated, not measured."
+    },
+    {
+      "name": "Uncertainty",
+      "unit": "95% score interval; 98.333% paired difference interval",
+      "definition": "Resample matched workspace-family clusters within stack, not individual calls, assertions, or repeated attempts. Publish three pairwise differences and the practical margin. These authored projects do not represent every real codebase or model revision."
+    }
+  ],
+  "evidence": [
+    {
+      "name": "Accounting and review",
+      "contents": "Per-request token/usage evidence, actual requested and returned model/tier, conservative reservations, reference cost, private billing reconciliation, original/replacement lineage, and all initial and final grades."
+    },
+    {
+      "name": "Attempt record",
+      "contents": "Cohort/block/task/repeat/profile IDs, start/end times, fresh-state and environment digests, stop reason, native visible session/tool artifacts, final answer, final repository patch, and independent grade. Provider-hidden reasoning is not required or reconstructed."
+    },
+    {
+      "name": "Configuration identity",
+      "contents": "Exact harness release/source/binary digest, model/route/tier/effort and capability limits, sanitized resolved config, native instructions/tool schemas and hashes, bundled features, auxiliary routes, and qualification report."
+    },
+    {
+      "name": "Task identity",
+      "contents": "Task ID, workspace family/immutable snapshot, stack, estimated difficulty, provenance/license, prompt/instructions, dependency/image digests, three gate IDs and grader hashes, reference commitments, and review history."
+    }
+  ],
+  "unresolved": [
+    "Select and record exact Codex, Hermes, and Pi release/source/binary digests; documentation alone does not qualify them.",
+    "Build the 12 workspace fixtures and all 24 task packages from the authored specifications. Supply visible examples, reference solutions, independent graders, hashes, licenses, and six separate development tasks. None is built or validated yet.",
+    "Review the estimated difficulty on separate development tasks after a later execution decision; formal-task discriminating power has not been measured. Freeze the formal set before results.",
+    "Freeze provider access, model revision binding or explicit alias limitation, request limits, and sanitized profiles; build and qualify accounting and disposable worker/grader images.",
+    "A later execution decision must approve the proposed cash/time envelope before qualification or provider calls. Model x harness stays deferred with no budget."
+  ],
+  "cohort": {
+    "id": "harness-rank-v1-sol-medium",
+    "comparison": "same-model",
+    "model": "gpt-6-sol",
+    "provider": "OpenAI direct API",
+    "upstream": "https://api.openai.com/v1/responses",
+    "transport": "HTTP with incremental SSE; no API translation or alternate provider",
+    "reasoning_effort": "medium",
+    "service_tier": "default (Standard); verify the returned tier",
+    "model_identity_status": "proposed_not_qualified",
+    "snapshot_policy": "Use a provider-pinned revision if available. The reviewed model page lists gpt-6-sol without a dated snapshot. Preserve requested and returned model IDs and any provider revision metadata; do not invent a revision. Without an immutable binding, label results as a time-bounded matched-route cohort, not proof of identical weights.",
+    "revision_policy": "Freeze harness releases and source commits before qualification. Keep one cohort within seven days. Abort on a known provider model change or routing/configuration drift; publish the incomplete cohort and start a new one instead of pooling it.",
+    "sampling": "Omit temperature and top_p on all clients. Require reasoning.effort=medium on every main and compression request. No requested seed is treated as deterministic.",
+    "auxiliary": "Disable optional title generation, background review, delegation, memory learning, and skill lookup. Required in-session compression must use the same model, endpoint, effort, and budget. No hidden model or parameter fallback.",
+    "treatment": "Native system instructions, file/search/edit/shell tool implementations, tool schemas, orchestration, and in-session context management remain harness behavior. Equal task inputs and resource ceilings do not mean equal prompts or equal compute.",
+    "profile_scope": "This is a controlled common-capability profile, not a test of every product default. A custom-provider path or reduced context ceiling can change native behavior; conclusions apply to the frozen profiles only."
+  },
+  "task_set": {
+    "status": "specifications_authored_packages_not_built",
+    "planned_tasks": 24,
+    "planned_workspaces": 12,
+    "runtime_stacks": 3,
+    "development_tasks": 6,
+    "repetitions_per_task": 3,
+    "planned_scored_attempts": 216,
+    "validated_packages": 0,
+    "measured_attempts": 0,
+    "selection": "Use 12 bounded project workspaces, four per stack: Go, Python, and TypeScript. Each workspace has two independent starting snapshots for two different tasks; each stack has two tasks per family. The 12 entries below are authored project specifications, not selected public repositories or implemented fixtures. Reuse three stack images. Keep six development tasks in separate workspace families and outside the score.",
+    "strata": [
+      {
+        "name": "Go",
+        "workspaces": 4,
+        "repair": 2,
+        "feature": 2,
+        "workflow": 2,
+        "migration": 2,
+        "tasks": 8
+      },
+      {
+        "name": "Python",
+        "workspaces": 4,
+        "repair": 2,
+        "feature": 2,
+        "workflow": 2,
+        "migration": 2,
+        "tasks": 8
+      },
+      {
+        "name": "TypeScript",
+        "workspaces": 4,
+        "repair": 2,
+        "feature": 2,
+        "workflow": 2,
+        "migration": 2,
+        "tasks": 8
+      }
+    ],
+    "inclusion": "Build small multi-file workspaces from realistic CLI, library, data, and local-service workflows. Keep the relevant behavior in roughly two to six modules. If public code is used, record its license, URL, immutable commit, and overlap with public issues/benchmarks. New task authorship is not proof of no training exposure. No existing external repository or task package is claimed by these specifications.",
+    "exclusions": "Exclude Core/Mem evidence, public benchmark answer packs, private archives, external accounts, live web facts, paid services, GPU workloads, subjective visual judging, and specialist puzzles. Do not remove a formal task because a target harness performs poorly or the observed score gap is small.",
+    "validation": "Future package review must match every scored requirement to the task prompt, accept the reference implementation, reject the unmodified baseline and a plausible incomplete implementation, and repeat deterministic grader checks five times. Test behavior rather than an arbitrary implementation. Freeze prompts, fixtures, graders, and analysis before any main attempt. These checks have not run.",
+    "difficulty_policy": "Difficulty is an author estimate of coordination demand, not a measured pass rate or a promised completion time. All levels share the same 20-minute and USD 2 attempt ceilings. Use separate development tasks to review difficulty after a later execution decision. Never select formal tasks from the observed Codex/Hermes/Pi winner or widen a score gap after seeing results.",
+    "difficulty_levels": [
+      {
+        "id": "basic",
+        "name": "Basic",
+        "planned_tasks": 6,
+        "definition": "One local behavior or interface, usually one or two relevant modules, with explicit examples and limited state."
+      },
+      {
+        "id": "medium",
+        "name": "Medium",
+        "planned_tasks": 12,
+        "definition": "Two to four relevant modules or interacting rules; requires boundary checks, compatibility, or consistency across outputs."
+      },
+      {
+        "id": "hard",
+        "name": "Hard",
+        "planned_tasks": 6,
+        "definition": "Three to six relevant modules with coupled state, recovery, or migration invariants. The work remains bounded and uses no obscure domain knowledge."
+      }
+    ],
+    "grading_contract": "Each specification has exactly three binary requirement gates. Each gate passes only when all its frozen assertions pass. Primary success requires all three gates, normal completion, and all common limits. Report passed gates / 3 as a separate diagnostic, averaged equally per task; do not rank by the number of assertions or blend partial credit, cost, and success.",
+    "fixture_contract": "Each package will include the task prompt, a clean workspace snapshot, visible examples, independent hidden checks, a reference patch or procedure, and a manifest with hashes. Keep references and hidden checks outside agent access. Preinstall dependencies. Use fixed clocks, deterministic ordering, integer minor currency units, and local services where specified. No web account, browser, live service, GPU, or multi-agent dependency is needed.",
+    "manifest_fields": [
+      "acceptance gate IDs and grader hash",
+      "family, difficulty estimate, and language stack",
+      "license, provenance, and benchmark overlap",
+      "prompt and instruction hashes",
+      "reference solution hash",
+      "task ID, workspace family ID, and immutable snapshot",
+      "visible and hidden check hashes",
+      "workspace, dependency, and image digests"
+    ],
+    "disclosure": "The full task requirements and three acceptance gates are public in this design. Future hidden tests may vary inputs only within those requirements; they may not add secret requirements. Publish package commitments before execution and release reproducible artifacts after the cohort, subject to licenses.",
+    "workspaces": [
+      {
+        "id": "go-archive",
+        "name": "Archive utility",
+        "stack": "Go",
+        "starting_state": "Archive listing and extraction commands with nested files, include rules, and a destination directory.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "ts-cache",
+        "name": "Cache library",
+        "stack": "TypeScript",
+        "starting_state": "A cache with an injected clock, a memory backend, and two existing consumers.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "ts-catalog",
+        "name": "Catalog service",
+        "stack": "TypeScript",
+        "starting_state": "A local catalog API and CLI over records ordered by creation time and ID.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "go-config",
+        "name": "Configuration loader",
+        "stack": "Go",
+        "starting_state": "A CLI and library that read defaults, a JSON file, and environment overrides.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "py-import",
+        "name": "Dataset importer",
+        "stack": "Python",
+        "starting_state": "A CSV import CLI, validation module, and local SQLite database.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "ts-export",
+        "name": "Export utility",
+        "stack": "TypeScript",
+        "starting_state": "A local export CLI with an output schema and a paginated fixture service.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "go-jobs",
+        "name": "Job processor",
+        "stack": "Go",
+        "starting_state": "A local queue processor with JSONL input, a job ledger, and file-based output.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "py-ledger",
+        "name": "Ledger tools",
+        "stack": "Python",
+        "starting_state": "Ledger calculations plus a CLI for reconciling CSV, JSON, and SQLite records.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "go-logs",
+        "name": "Log processor",
+        "stack": "Go",
+        "starting_state": "A CLI and library for rotated log parsing, event normalization, and aggregation.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "py-manifest",
+        "name": "Manifest utility",
+        "stack": "Python",
+        "starting_state": "A filesystem manifest scanner and serializer with a CLI and library consumer.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "py-report",
+        "name": "Report pipeline",
+        "stack": "Python",
+        "starting_state": "A report CLI and library that filter dated records, aggregate totals, and serialize reports.",
+        "status": "specified_not_built"
+      },
+      {
+        "id": "ts-settings",
+        "name": "Settings tools",
+        "stack": "TypeScript",
+        "starting_state": "A library and CLI that read, migrate, merge, and export application settings.",
+        "status": "specified_not_built"
+      }
+    ]
+  },
+  "qualification": {
+    "status": "not_run",
+    "checks_per_harness": 4,
+    "checks": [
+      {
+        "name": "Cancellation and failure",
+        "requirement": "On a disposable fixture, capture controlled provider failure, bounded retry, cancellation, process-tree termination, budget reservation, and no model/effort fallback. Count all upstream calls."
+      },
+      {
+        "name": "Continuation and compression",
+        "requirement": "Exercise a multi-turn replay and required native compaction. Check that tool IDs, opaque reasoning items, model/effort, usage, and final completion survive; no auxiliary route escapes the ledger."
+      },
+      {
+        "name": "Identity and parameters",
+        "requirement": "Capture actual requests and returned model/tier metadata through the final route. Verify task/instruction loading, configured context and output ceilings, sampling omission, and effective medium reasoning."
+      },
+      {
+        "name": "Tool loop",
+        "requirement": "Complete a read/edit/shell/function-result/final-answer loop on a disposable fixture. A /models listing or a text-only response is insufficient."
+      }
+    ],
+    "admission": "All three pinned releases must pass the same four checks before the three-way cohort starts. A client that cannot meet the common wire, limits, or accounting contract is ineligible; do not substitute Chat Completions, OAuth/subscription routing, another model, or an unrecorded adapter.",
+    "development": "After qualification, allow six separate development tasks, one attempt per harness/task, for integration review. Apply a common rule change to every harness, then freeze profiles and graders before any main result. Any later tuning requires a new cohort.",
+    "wall_seconds_per_check": 300
+  },
+  "limits": {
+    "wall_seconds_per_attempt": 1200,
+    "grading_seconds_per_attempt": 300,
+    "max_request_input_tokens": 128000,
+    "max_request_output_tokens": 16000,
+    "reference_usd_per_attempt": 2,
+    "transport_retries_per_logical_call": 2,
+    "limits_policy": "All ceilings cover main, compression, retry, and shutdown requests. Native compaction may trigger earlier, but every request must satisfy the shared input/output ceilings. An agent-attributable crash, timeout, or budget stop is a primary failure even if its retained patch passes; preserve that independent grade as a separate diagnostic.",
+    "admission_policy": "Before dispatch, reserve a validated upper bound for input and maximum possible output in the shared ledger. Include cached/replayed input, opaque continuation state, reasoning output, and any paid endpoint. Never guess token counts from character ratios. If a safe bound or final usage cannot be established, hold the full reservation and pause; an unenforceable budget is a qualification failure.",
+    "reference_cost_policy": "Budget reference cost is (all input tokens * 2.50 + all output tokens * 10) / 1,000,000 USD. Apply the same conservative input rate to cached and uncached input so prior cache warmth does not buy extra attempts. Do not add reasoning output twice. Record provider-billed and reference costs separately; this reference is not an invoice."
+  },
+  "budget": {
+    "status": "proposal_not_spending_authority",
+    "currency": "USD",
+    "api_ceiling": 534,
+    "compute_ceiling": 50,
+    "total_cash_ceiling_before_tax": 584,
+    "reviewer_hours_ceiling": 16,
+    "reference_rates": {
+      "input_upper_per_million": 2.5,
+      "output_per_million": 10,
+      "reviewed_at": "2026-10-20",
+      "source": "https://developers.openai.com/api/docs/models/gpt-6-sol"
+    },
+    "phases": [
+      {
+        "name": "Compatibility qualification",
+        "units": 12,
+        "unit": "fixture checks",
+        "usd_per_unit": 1,
+        "ceiling_usd": 12
+      },
+      {
+        "name": "Development tasks",
+        "units": 18,
+        "unit": "unscored attempts",
+        "usd_per_unit": 2,
+        "ceiling_usd": 36
+      },
+      {
+        "name": "Infrastructure replacement",
+        "units": 15,
+        "unit": "attempts in at most five matched replacement blocks",
+        "usd_per_unit": 2,
+        "ceiling_usd": 30
+      },
+      {
+        "name": "Main cohort",
+        "units": 216,
+        "unit": "scored attempts",
+        "usd_per_unit": 2,
+        "ceiling_usd": 432
+      },
+      {
+        "name": "Reconciliation reserve",
+        "units": 1,
+        "unit": "accounting buffer; no additional experiments",
+        "usd_per_unit": 24,
+        "ceiling_usd": 24
+      }
+    ],
+    "stop_policy": "Ceilings are proposals, not forecasts or authorization. Revalidate prices, tier, taxes, and billing behavior before any paid phase. The 24 USD reserve covers unresolved accounting only; it does not authorize more tasks, models, repeats, or reruns. If the API/compute cap, review-time cap, replacement limit, or seven-day cohort window cannot be met, stop and publish the incomplete state.",
+    "exclusions": "Human fixture/task authoring, independent grader construction/review, and engineering labor are outside the cash ceiling and must be tracked separately. The 16-hour review cap covers result/evidence review, not task creation. No paid grader model or subscription inference is included. Local reserved compute adds no cloud charge.",
+    "time_bound": "249 capped main/development/replacement attempts imply at most 83 agent-worker hours plus 20.75 independent-grading hours; allow up to one further hour for the 12 qualification checks. These are planning maxima, not observations."
+  },
+  "artifacts": [
+    {
+      "path": "accounting.json",
+      "purpose": "All request IDs, usage, cost statuses, reservation release, billing scope, exclusions, and replacement linkage."
+    },
+    {
+      "path": "answer.md",
+      "purpose": "The retained final visible answer, including unsuccessful or interrupted output."
+    },
+    {
+      "path": "attempt.json",
+      "purpose": "Attempt identity, frozen inputs, schedule block, wall time, resource observations, exit/stop reason, and grade reference."
+    },
+    {
+      "path": "config.json",
+      "purpose": "Sanitized effective profile, provider/model/effort, limits, native prompt/tool hashes, and release/source identity."
+    },
+    {
+      "path": "grade.json",
+      "purpose": "Three binary requirement-gate results with assertion evidence, overall acceptance, and grader/environment hashes. Keep later corrections as appended records."
+    },
+    {
+      "path": "manifest.json",
+      "purpose": "Artifact paths, SHA-256, byte counts, schema versions, provenance, and public-copy derivation/redaction references."
+    },
+    {
+      "path": "originals/",
+      "purpose": "Native session files and tool outputs in original formats. Keep protected originals separate from explicitly derived public copies; never normalize over an original."
+    },
+    {
+      "path": "repository.diff",
+      "purpose": "Final repository state, forbidden-path changes, and patch hash, captured even on failure."
+    },
+    {
+      "path": "task.json",
+      "purpose": "Task specification ID, family, stack, estimated difficulty, workspace snapshot/image/input hashes, and the three gate commitments."
+    },
+    {
+      "path": "transport.jsonl",
+      "purpose": "Visible request/response and completion/error/usage events through the recording route; no Authorization headers or provider secrets. Preserve opaque items without decrypting hidden reasoning."
+    }
+  ],
+  "evidence_policy": "Record the input/configuration commitments before launch; append attempts and later corrections without overwriting originals. Check artifact hashes, request/usage reconciliation, grading links, and complete matched coverage before publication. Publish redacted, licensed reproductions after the cohort; label derived copies and retain protected originals under explicit custody. Do not publish provider receipts, private profiles, hidden reasoning, or the ELF private archive. A hash proves file identity, not semantic correctness.",
+  "references": [
+    {
+      "name": "Codex gateway compatibility",
+      "url": "https://learn.chatgpt.com/docs/enterprise/gateway-compatibility",
+      "use": "Responses streaming, continuation, tool-loop and model-route qualification."
+    },
+    {
+      "name": "GPT-6 Sol model and rates",
+      "url": "https://developers.openai.com/api/docs/models/gpt-6-sol",
+      "use": "Proposed model, medium effort, Responses tool calling, and dated reference rates. No dated snapshot is asserted."
+    },
+    {
+      "name": "Harness-Bench task construction",
+      "url": "https://arxiv.org/html/2605.27922v2",
+      "use": "Borrow realistic workflow requirements, matched native-harness environments, and artifact-based requirement checks. This is not an import of that benchmark or evidence for the proposed task counts."
+    },
+    {
+      "name": "Hermes model configuration",
+      "url": "https://hermes-agent.nousresearch.com/docs/user-guide/configuring-models",
+      "use": "Main versus auxiliary model slots and explicit route configuration."
+    },
+    {
+      "name": "Hermes provider transports",
+      "url": "https://hermes-agent.nousresearch.com/docs/developer-guide/adding-providers",
+      "use": "Responses transport identifier and provider runtime; this does not qualify a released profile."
+    },
+    {
+      "name": "Separating signal from noise in coding evaluations",
+      "url": "https://openai.com/index/separating-signal-from-noise-coding-evaluations/",
+      "use": "Align prompts and tests; audit underspecified, overly strict, and low-coverage acceptance. No published benchmark is assumed error-free."
+    },
+    {
+      "name": "Terminal-Bench task design",
+      "url": "https://arxiv.org/html/2601.11868v1",
+      "use": "Borrow isolated task environments, reference solutions, and independent behavioral tests. Difficulty labels are estimates until measured; 24 tasks and the 6/12/6 mix are local design choices."
+    }
+  ],
+  "analysis_parameters": {
+    "schedule_seed": 20261020,
+    "bootstrap_seed": 20261020,
+    "bootstrap_draws": 10000,
+    "marginal_confidence": 0.95,
+    "paired_confidence": 0.9833333333333333,
+    "practical_margin_percentage_points": 5
+  },
+  "tasks": [
+    {
+      "id": "archive-exclusion",
+      "name": "Archive exclusion rules",
+      "workload_id": "feature",
+      "workspace_id": "go-archive",
+      "stack": "Go",
+      "difficulty": "basic",
+      "difficulty_reason": "One option must behave consistently in listing and extraction.",
+      "summary": "Add repeatable archive exclusion rules without changing default extraction.",
+      "prompt": "Add repeatable --exclude=<prefix> flags to the archive CLI. Prefixes use slash-separated, root-relative path segments; a prefix excludes that path and its descendants. A trailing slash is equivalent to no trailing slash. Apply the rules to both list and extract. An empty or absolute prefix, or a prefix containing .., is invalid. With no flag, preserve existing behavior.",
+      "deliverables": ["Patch the archive CLI and shared path-selection code."],
+      "acceptance": [
+        {
+          "id": "archive-exclusion-g1",
+          "name": "Selection",
+          "criterion": "Exclude an exact path and descendants in list and extract; repeated flags form a union. Excluding data must not exclude database."
+        },
+        {
+          "id": "archive-exclusion-g2",
+          "name": "Errors",
+          "criterion": "Reject empty, absolute, and parent-traversal prefixes with nonzero exit status before extraction writes any output."
+        },
+        {
+          "id": "archive-exclusion-g3",
+          "name": "Compatibility",
+          "criterion": "Without --exclude, retain the baseline member list and extracted bytes. Keep unrelated entries and input archive bytes unchanged."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Tool use"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "archive-containment",
+      "name": "Archive extraction containment",
+      "workload_id": "repair",
+      "workspace_id": "go-archive",
+      "stack": "Go",
+      "difficulty": "medium",
+      "difficulty_reason": "Path normalization and filesystem state interact across validation and extraction.",
+      "summary": "Prevent an archive member from writing outside its extraction directory.",
+      "prompt": "Repair extraction so that every written member stays inside the selected destination. Reject absolute names, names containing a parent-traversal segment, and entries whose resolved target crosses an existing symlink out of the destination. Validate the full member list before writing member data. A rejected archive must leave the destination unchanged. Keep valid nested extraction and list output compatible.",
+      "deliverables": ["Patch extraction and path validation; preserve the existing CLI."],
+      "acceptance": [
+        {
+          "id": "archive-containment-g1",
+          "name": "Valid extraction",
+          "criterion": "Extract ordinary nested files with identical bytes and retain existing list output for a valid archive."
+        },
+        {
+          "id": "archive-containment-g2",
+          "name": "Containment",
+          "criterion": "Reject absolute, parent-traversal, and symlink-escape members. No file outside the destination may change."
+        },
+        {
+          "id": "archive-containment-g3",
+          "name": "Atomic rejection",
+          "criterion": "If any member is invalid, write none of the archive members; preserve pre-existing destination files and source archive bytes."
+        }
+      ],
+      "demands": ["Evidence selection", "Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "cache-adapter",
+      "name": "Cache adapter separation",
+      "workload_id": "migration",
+      "workspace_id": "ts-cache",
+      "stack": "TypeScript",
+      "difficulty": "basic",
+      "difficulty_reason": "A narrow internal boundary changes while public behavior stays fixed.",
+      "summary": "Extract cache storage behind a small adapter and retain existing callers.",
+      "prompt": "Move the cache storage boundary behind an injected adapter with get(key), set(key, entry), and delete(key), where entry contains the value and absolute expiry. Supply the existing in-memory adapter as the default. Keep the public cache API and both existing callers compatible. The clock stays injectable; do not change expiration behavior. The adapter is synchronous: get returns an entry or undefined; set and delete return void.",
+      "deliverables": [
+        "Patch cache storage, the default adapter, and the two callers only where required."
+      ],
+      "acceptance": [
+        {
+          "id": "cache-adapter-g1",
+          "name": "Adapter contract",
+          "criterion": "A recording adapter observes get/set/delete through the injected interface; the cache does not bypass it with a second private store."
+        },
+        {
+          "id": "cache-adapter-g2",
+          "name": "Default compatibility",
+          "criterion": "Both existing consumers and all baseline cache behaviors work without explicit adapter configuration."
+        },
+        {
+          "id": "cache-adapter-g3",
+          "name": "State isolation",
+          "criterion": "Two default cache instances keep separate storage; injected clock and expiry semantics remain unchanged."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "cache-expiry",
+      "name": "Cache expiration boundary",
+      "workload_id": "repair",
+      "workspace_id": "ts-cache",
+      "stack": "TypeScript",
+      "difficulty": "basic",
+      "difficulty_reason": "A deterministic time boundary and one cleanup rule define the defect.",
+      "summary": "Expire cache entries at the exact deadline and remove stale reads.",
+      "prompt": "Fix cache expiration so an entry is valid only while now < expiresAt. At equality it is expired and get must remove it from storage. A set with TTL zero or a negative TTL must not leave a retrievable entry. Use the supplied clock instead of wall time. Preserve overwrite and instance-isolation behavior. Clock values, expiresAt, and TTL use integer milliseconds.",
+      "deliverables": ["Patch cache expiration logic."],
+      "acceptance": [
+        {
+          "id": "cache-expiry-g1",
+          "name": "Deadline",
+          "criterion": "With the injected clock, return the value before its deadline and undefined at or after it; remove the expired entry."
+        },
+        {
+          "id": "cache-expiry-g2",
+          "name": "Nonpositive TTL",
+          "criterion": "Zero and negative TTL never expose a value, including when they overwrite a live entry."
+        },
+        {
+          "id": "cache-expiry-g3",
+          "name": "Regression",
+          "criterion": "A later set replaces the old value/deadline, separate instances remain isolated, and tests require no real sleeps."
+        }
+      ],
+      "demands": ["Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "catalog-cursor",
+      "name": "Catalog cursor stability",
+      "workload_id": "repair",
+      "workspace_id": "ts-catalog",
+      "stack": "TypeScript",
+      "difficulty": "medium",
+      "difficulty_reason": "Ordering, continuation tokens, and page boundaries must agree.",
+      "summary": "Stop cursor pagination from dropping records with equal timestamps.",
+      "prompt": "Repair the local catalog API and CLI pagination. Order records ascending by the tuple (created_at, id); timestamps are UTC instants and IDs are unique strings. A cursor denotes an exclusive position in that total order. On a fixed dataset, concatenating pages must return every matching record exactly once, including equal timestamps. Malformed cursors return the existing structured error and no records.",
+      "deliverables": ["Patch shared pagination logic and affected API/CLI consumers."],
+      "acceptance": [
+        {
+          "id": "catalog-cursor-g1",
+          "name": "Coverage",
+          "criterion": "Pages of sizes 1, 2, and 5 concatenate to the same complete ordered dataset, including timestamp ties, with no omission or duplicate."
+        },
+        {
+          "id": "catalog-cursor-g2",
+          "name": "Cursor contract",
+          "criterion": "Continue exclusively after the cursor tuple, return an empty final page, and reject malformed cursor structure or timestamp before returning records."
+        },
+        {
+          "id": "catalog-cursor-g3",
+          "name": "Interface parity",
+          "criterion": "API and CLI return the same IDs/order for the same inputs; valid single-page behavior and existing error envelope remain compatible."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "catalog-filter",
+      "name": "Catalog filter parity",
+      "workload_id": "feature",
+      "workspace_id": "ts-catalog",
+      "stack": "TypeScript",
+      "difficulty": "medium",
+      "difficulty_reason": "Shared selection rules must precede pagination in two interfaces.",
+      "summary": "Add identical status and minimum-price filters to the API and CLI.",
+      "prompt": "Add optional status and min_price filters to the catalog API and CLI. status is active or archived. min_price is a nonnegative integer in minor currency units and is inclusive. Combine supplied filters with AND, then paginate using the existing total order. Missing filters keep existing behavior. Reject unknown status or malformed/negative min_price with the existing error envelope. The API query keys are status and min_price; the CLI flags are --status and --min-price.",
+      "deliverables": ["Patch filter parsing, shared selection, and API/CLI wiring."],
+      "acceptance": [
+        {
+          "id": "catalog-filter-g1",
+          "name": "Filtering",
+          "criterion": "Apply each filter and their intersection before pagination; include prices equal to min_price and produce the correct empty result."
+        },
+        {
+          "id": "catalog-filter-g2",
+          "name": "Validation",
+          "criterion": "Reject unknown status, negative price, fractional price, and nonnumeric price; return no data on invalid input."
+        },
+        {
+          "id": "catalog-filter-g3",
+          "name": "Parity and regression",
+          "criterion": "API/CLI return identical filtered IDs and cursor traversal; requests without filters retain the baseline result and shape."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Tool use", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "config-precedence",
+      "name": "Configuration precedence",
+      "workload_id": "repair",
+      "workspace_id": "go-config",
+      "stack": "Go",
+      "difficulty": "basic",
+      "difficulty_reason": "A single explicit precedence rule covers two typed fields.",
+      "summary": "Fix defaults, file, and environment precedence without treating zero as missing.",
+      "prompt": "Repair configuration resolution for timeout_ms and retries. Apply defaults, then present JSON file fields, then present TIMEOUT_MS and RETRIES environment variables. timeout_ms must be a positive integer; retries must be a nonnegative integer, so zero is a real override. An absent environment variable does not override the file. An invalid winning value must produce an error rather than silently fall back.",
+      "deliverables": ["Patch shared configuration resolution used by the CLI and library."],
+      "acceptance": [
+        {
+          "id": "config-precedence-g1",
+          "name": "Precedence",
+          "criterion": "Resolve all defaults/file/environment combinations with environment highest; preserve retries=0 from file or environment."
+        },
+        {
+          "id": "config-precedence-g2",
+          "name": "Validation",
+          "criterion": "Reject invalid integers, timeout_ms <= 0, and retries < 0 at the winning layer, with a field-specific error."
+        },
+        {
+          "id": "config-precedence-g3",
+          "name": "Consistency",
+          "criterion": "CLI and library expose the same resolved values; input files and process environment are not mutated."
+        }
+      ],
+      "demands": ["Evidence selection", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "config-schema",
+      "name": "Configuration schema upgrade",
+      "workload_id": "migration",
+      "workspace_id": "go-config",
+      "stack": "Go",
+      "difficulty": "medium",
+      "difficulty_reason": "Version conversion, precedence, and a writer must share one canonical form.",
+      "summary": "Read legacy flat configuration and write a canonical versioned format.",
+      "prompt": "Support unversioned V1 JSON {timeout_ms, retries} and V2 JSON {version:2, network:{timeout_ms,retries}}. Convert either to one internal representation, then apply the existing defaults/file/environment precedence and value validation. The export command writes V2 only, with both resolved fields. Reject unsupported versions and any V2 document containing legacy top-level timeout_ms or retries; do not rewrite the source file.",
+      "deliverables": [
+        "Patch configuration readers, the internal boundary, and the export command."
+      ],
+      "acceptance": [
+        {
+          "id": "config-schema-g1",
+          "name": "Read compatibility",
+          "criterion": "Equivalent V1 and V2 inputs resolve identically under the same overrides, including retries=0 and omitted file fields."
+        },
+        {
+          "id": "config-schema-g2",
+          "name": "Canonical export",
+          "criterion": "Export produces valid V2 with version=2 and both resolved network fields; re-reading that export preserves the resolved configuration."
+        },
+        {
+          "id": "config-schema-g3",
+          "name": "Ambiguity and preservation",
+          "criterion": "Reject unsupported versions and mixed V1/V2 fields with nonzero status; leave source bytes unchanged and retain baseline invalid-value errors."
+        }
+      ],
+      "demands": ["Context retention", "Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "import-transaction",
+      "name": "Dataset import transaction",
+      "workload_id": "workflow",
+      "workspace_id": "py-import",
+      "stack": "Python",
+      "difficulty": "medium",
+      "difficulty_reason": "Staging, rollback, and duplicate handling must preserve existing records.",
+      "summary": "Implement an atomic import and prove that replay creates no extra rows.",
+      "prompt": "Implement the importer so a supplied CSV batch is fully validated before changes become visible in SQLite. A row has id, email, and amount_minor: id is nonempty; email has exactly one @ with nonempty local and domain parts; amount_minor is an integer >= 0. Duplicate IDs inside a batch or an existing ID with different field values reject the entire batch. An existing ID with identical values is skipped. Write summary.json with inserted, skipped, and rejected counts. A controlled database write failure must roll back all changes. The summary shape is {inserted:integer,skipped:integer,rejected:integer}. Every later duplicate ID within the batch is an invalid source row, even if its values match. Do not overwrite a previous summary until the current result can be written completely.",
+      "deliverables": [
+        "Patch the import path; produce the specified SQLite state and summary.json."
+      ],
+      "acceptance": [
+        {
+          "id": "import-transaction-g1",
+          "name": "Successful state",
+          "criterion": "Insert each new valid row once, preserve unrelated existing rows, and report exact inserted/skipped counts with rejected=0."
+        },
+        {
+          "id": "import-transaction-g2",
+          "name": "Atomic failure",
+          "criterion": "An invalid row, conflicting ID, or controlled mid-write failure leaves table contents unchanged; report inserted=0 and a nonzero exit. rejected counts invalid/conflicting source rows, or 0 for a storage failure."
+        },
+        {
+          "id": "import-transaction-g3",
+          "name": "Replay",
+          "criterion": "A second successful import of the same batch inserts zero rows, skips all batch rows, preserves stored values, and reports the exact counts."
+        }
+      ],
+      "demands": ["Error recovery", "State management", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "import-validation",
+      "name": "Dataset import validation",
+      "workload_id": "feature",
+      "workspace_id": "py-import",
+      "stack": "Python",
+      "difficulty": "basic",
+      "difficulty_reason": "One input contract needs row-level validation and stable reporting.",
+      "summary": "Validate CSV imports and report bad rows without writing to the database.",
+      "prompt": "Add a validate subcommand for CSV rows with id, email, and amount_minor. id must be a nonempty string, email must contain exactly one @ with nonempty local and domain parts, and amount_minor must be an integer >= 0. Treat a repeated nonempty id after its first occurrence as a duplicate. Write validation.json with accepted IDs and rejected rows; row numbers start at 2 after the header. This command never mutates SQLite. The JSON shape is {accepted_ids:[id,...],rejected:[{row,errors:[code,...]},...]}; sort each errors list alphabetically. The header must contain id, email, and amount_minor exactly once; extra columns are ignored.",
+      "deliverables": [
+        "Patch the validation module and CLI; produce validation.json when invoked."
+      ],
+      "acceptance": [
+        {
+          "id": "import-validation-g1",
+          "name": "Classification",
+          "criterion": "Accept rows that satisfy all three fields and first-occurrence identity; reject empty IDs, malformed emails, invalid amounts, and later duplicate IDs."
+        },
+        {
+          "id": "import-validation-g2",
+          "name": "Report contract",
+          "criterion": "Emit accepted IDs in source order and rejected rows in row-number order with all applicable error codes from empty_id, invalid_email, invalid_amount, duplicate_id."
+        },
+        {
+          "id": "import-validation-g3",
+          "name": "No import side effect",
+          "criterion": "Leave database bytes and source CSV unchanged; an invalid header exits nonzero without overwriting an existing validation.json."
+        }
+      ],
+      "demands": ["Evidence selection", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "export-fields",
+      "name": "Export field selection",
+      "workload_id": "feature",
+      "workspace_id": "ts-export",
+      "stack": "TypeScript",
+      "difficulty": "medium",
+      "difficulty_reason": "Column projection, ordering, and CSV escaping share a serialized interface.",
+      "summary": "Add ordered column selection to the existing CSV exporter.",
+      "prompt": "Add --fields=id,name,total_minor to the CSV exporter. Accept any nonempty, duplicate-free ordered subset of id, name, and total_minor. Emit exactly that header and field order using RFC 4180 CSV escaping and UTF-8. The default remains the existing full field order. Reject unknown, repeated, or empty field names before replacing the output file.",
+      "deliverables": ["Patch option parsing and serialization; preserve the existing export CLI."],
+      "acceptance": [
+        {
+          "id": "export-fields-g1",
+          "name": "Projection",
+          "criterion": "Emit only selected fields in requested order for single and multiple columns; keep row order and minor-unit values unchanged."
+        },
+        {
+          "id": "export-fields-g2",
+          "name": "CSV behavior",
+          "criterion": "Correctly quote embedded comma, quote, CR, and LF; double embedded quotes and retain Unicode data when parsed back."
+        },
+        {
+          "id": "export-fields-g3",
+          "name": "Errors and compatibility",
+          "criterion": "Invalid selections exit nonzero and preserve existing output bytes; no flag preserves the baseline full-schema export."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "export-resume",
+      "name": "Export resume and deduplication",
+      "workload_id": "workflow",
+      "workspace_id": "ts-export",
+      "stack": "TypeScript",
+      "difficulty": "hard",
+      "difficulty_reason": "Committed output, a continuation cursor, and restart must form one consistent state.",
+      "summary": "Resume an interrupted export without omitting or duplicating records.",
+      "prompt": "Complete an export from a supplied checkpoint against the frozen local paginated service. Service pages are stable and adjacent pages may repeat a boundary record with the same ID and identical payload. Preserve the first occurrence of each ID in service order. A controlled stop occurs after a page is durably checkpointed; restart from that checkpoint. A later occurrence with the same ID but different payload is an error. Produce rows.jsonl and summary.json; retain committed progress on an error. The local service returns {records:[...],next_cursor:string-or-null}. Each record has an id. Treat a page as one commit unit. The checkpoint shape is {next_cursor,committed_ids,complete}; the summary shape is {complete:boolean,unique_rows:integer,error:string-or-null}. Compare duplicate payloads by decoded JSON values.",
+      "deliverables": [
+        "Patch resumable export; produce rows.jsonl, checkpoint.json, and summary.json."
+      ],
+      "acceptance": [
+        {
+          "id": "export-resume-g1",
+          "name": "Complete output",
+          "criterion": "Against the fixed service dataset, write each unique ID once in first-occurrence order, with exact payload values after JSON decoding and exact unique-row count in summary.json."
+        },
+        {
+          "id": "export-resume-g2",
+          "name": "Resume consistency",
+          "criterion": "The controlled checkpoint stop followed by resume produces the same final rows and count as an uninterrupted export. Re-running a complete export makes no duplicate rows."
+        },
+        {
+          "id": "export-resume-g3",
+          "name": "Failure boundary",
+          "criterion": "A conflicting repeated ID exits nonzero, keeps the last committed output/checkpoint consistent, and writes an error summary. Do not mark incomplete output as complete or modify the service fixture."
+        }
+      ],
+      "demands": ["Context retention", "Error recovery", "State management"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "jobs-incremental",
+      "name": "Incremental job execution",
+      "workload_id": "feature",
+      "workspace_id": "go-jobs",
+      "stack": "Go",
+      "difficulty": "hard",
+      "difficulty_reason": "Job identity, durable effects, and interrupted attempts span several modules.",
+      "summary": "Add resumable processing with durable job identity and conflict detection.",
+      "prompt": "Add --resume to the job processor. Jobs have unique id and payload, and each successful job creates one named output file plus a completed ledger entry. Skip a completed ID only when its stored payload digest matches. A conflicting payload for a known ID is an error before that job executes. The fixture can interrupt immediately after an output file is atomically committed but before the ledger update; on resume recover that matching output without performing its effect twice. Job payloads are UTF-8 strings. Their digest is lowercase SHA-256 of the exact UTF-8 bytes. A successful job writes outputs/<id>.txt containing the uppercase payload and one final newline. Ledger entries contain id, payload_sha256, and status=completed.",
+      "deliverables": ["Patch processor, durable ledger, and output commit/recovery paths."],
+      "acceptance": [
+        {
+          "id": "jobs-incremental-g1",
+          "name": "Completion and skip",
+          "criterion": "Complete every valid job once, with matching output and ledger digest; --resume skips completed identical jobs without rewriting their output."
+        },
+        {
+          "id": "jobs-incremental-g2",
+          "name": "Interrupted commit",
+          "criterion": "After the supplied post-output/pre-ledger interruption, resume recognizes and records the matching committed output, then completes remaining jobs without a duplicate effect."
+        },
+        {
+          "id": "jobs-incremental-g3",
+          "name": "Conflict and regression",
+          "criterion": "A changed payload for a known ID fails without overwriting its old result; preserve unrelated outputs and the existing non-resume clean-run behavior."
+        }
+      ],
+      "demands": ["Error recovery", "Multi-file consistency", "State management"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "jobs-recovery",
+      "name": "Job recovery ledger",
+      "workload_id": "workflow",
+      "workspace_id": "go-jobs",
+      "stack": "Go",
+      "difficulty": "medium",
+      "difficulty_reason": "Existing partial progress must be classified before any work is repeated.",
+      "summary": "Repair a supplied job ledger and execute only unfinished local jobs.",
+      "prompt": "Using the documented job processor interface, reconcile a frozen jobs.jsonl, ledger.json, and output directory. The inputs contain a completed job, a matching committed output with a missing ledger entry, a pending job with no output, and an unrelated historical output. Recover the matching orphan into the ledger, execute only pending work, and create recovery.json listing recovered, executed, skipped, and conflicting IDs alphabetically. A conflicting orphan must be preserved and reported, not overwritten. Job payloads are UTF-8 strings; compare lowercase SHA-256 of their exact bytes. Expected output is outputs/<id>.txt containing the uppercase payload and one final newline. recovery.json has arrays recovered, executed, skipped, and conflicting. Ledger entries contain id, payload_sha256, and status=completed.",
+      "deliverables": [
+        "Produce the reconciled ledger, required job outputs, and recovery.json; retain a reproducible local procedure."
+      ],
+      "acceptance": [
+        {
+          "id": "jobs-recovery-g1",
+          "name": "Classification",
+          "criterion": "Recover matching orphan output, skip the completed job, execute the pending job, and classify conflicting orphan output by the documented digest rule."
+        },
+        {
+          "id": "jobs-recovery-g2",
+          "name": "Preservation",
+          "criterion": "Never rewrite a completed output or conflicting orphan; preserve unrelated historical output bytes. If any conflict exists, report nonzero status while retaining successfully committed nonconflicting work."
+        },
+        {
+          "id": "jobs-recovery-g3",
+          "name": "Replay and accounting",
+          "criterion": "Report exact alphabetical ID lists, with no ID in two lists. Repeating the procedure executes no completed job and leaves output bytes unchanged."
+        }
+      ],
+      "demands": ["Evidence selection", "State management", "Tool use"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "ledger-reconcile",
+      "name": "Ledger reconciliation",
+      "workload_id": "workflow",
+      "workspace_id": "py-ledger",
+      "stack": "Python",
+      "difficulty": "basic",
+      "difficulty_reason": "A short deterministic selection and aggregation procedure defines success.",
+      "summary": "Reconcile three local data sources into a stable ledger report.",
+      "prompt": "Create reconciliation.json from customers.csv, payments.json, and refunds.sqlite. Join by exact customer_id. Payments and refunds use integer minor units; net_minor equals completed payments minus completed refunds. Include every customer from customers.csv once, ordered by customer_id, including zero totals. List unknown-customer transaction IDs alphabetically under unmatched. Only status=completed affects totals. Preserve all three sources. Transactions have transaction_id, customer_id, status, and amount_minor fields. The output shape is {customers:[{customer_id,payments_minor,refunds_minor,net_minor},...],unmatched:[transaction_id,...]}. All transaction IDs are unique within the supplied sources.",
+      "deliverables": [
+        "Create reconciliation.json and a repeatable local script or command procedure."
+      ],
+      "acceptance": [
+        {
+          "id": "ledger-reconcile-g1",
+          "name": "Totals",
+          "criterion": "Compute exact per-customer payment, refund, and net minor-unit totals using completed transactions only, including zero-activity customers."
+        },
+        {
+          "id": "ledger-reconcile-g2",
+          "name": "Coverage and order",
+          "criterion": "Include each roster customer once in ID order and every unknown-customer transaction ID once in the alphabetical unmatched list."
+        },
+        {
+          "id": "ledger-reconcile-g3",
+          "name": "Repeatability",
+          "criterion": "The same input yields byte-identical JSON output on repeat; source file/database bytes and unrelated workspace files remain unchanged."
+        }
+      ],
+      "demands": ["Evidence selection", "Tool use", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "ledger-refunds",
+      "name": "Ledger refund accounting",
+      "workload_id": "repair",
+      "workspace_id": "py-ledger",
+      "stack": "Python",
+      "difficulty": "medium",
+      "difficulty_reason": "Transaction identity, partial refunds, and currency isolation interact.",
+      "summary": "Correct partial-refund totals without counting duplicate events twice.",
+      "prompt": "Repair ledger totals for completed payment and refund events. Deduplicate events by event_id. A refund has its own positive amount_minor and references an existing payment; subtract that amount only, not the whole payment. Keep totals separate by currency. Reject a conflicting repeated event_id, a refund for an unknown payment, a currency mismatch, and cumulative refunds greater than the payment. Non-completed events do not affect totals.",
+      "deliverables": ["Patch event validation, refund calculation, and the CLI report path."],
+      "acceptance": [
+        {
+          "id": "ledger-refunds-g1",
+          "name": "Accounting",
+          "criterion": "Compute full, partial, and multiple-refund balances exactly in integer minor units; identical repeated events affect totals once."
+        },
+        {
+          "id": "ledger-refunds-g2",
+          "name": "Invalid relationships",
+          "criterion": "Reject conflicting repeated IDs, unknown payment references, mismatched currencies, and over-refunds with a nonzero exit and a stable error code."
+        },
+        {
+          "id": "ledger-refunds-g3",
+          "name": "Regression",
+          "criterion": "Keep currencies separate, ignore non-completed events, retain baseline no-refund results, and never mutate source transactions."
+        }
+      ],
+      "demands": ["Context retention", "Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "logs-normalize",
+      "name": "Log event normalization",
+      "workload_id": "migration",
+      "workspace_id": "go-logs",
+      "stack": "Go",
+      "difficulty": "hard",
+      "difficulty_reason": "Two readers and a writer must preserve one event meaning across legacy formats.",
+      "summary": "Move text and JSON log readers onto one canonical event representation.",
+      "prompt": "Refactor legacy text and JSONL readers to emit the same internal event {timestamp, level, message, request_id}. The text input form is [timestamp] level request=<id-or-dash> message; JSONL input uses timestamp, level, message, and optional request_id. Normalize timestamps to UTC RFC3339, levels to uppercase, and a missing/dash request_id to null. Keep the existing text format parser and public CLI flags compatible. A --format=jsonl output path writes the canonical schema only. Invalid input lines are reported with source path and line number and do not suppress valid lines. Use UTC timestamps with a Z suffix and no redundant fractional zeroes. Invalid-line reports contain path, line, and error; line numbers start at 1.",
+      "deliverables": ["Patch both readers, shared event handling, and the JSONL writer."],
+      "acceptance": [
+        {
+          "id": "logs-normalize-g1",
+          "name": "Semantic parity",
+          "criterion": "Equivalent text and JSONL events produce equal canonical events, including time-zone offsets, escaped message text, and absent request IDs."
+        },
+        {
+          "id": "logs-normalize-g2",
+          "name": "Complete migration",
+          "criterion": "Both readers and downstream aggregation use the canonical event contract; JSONL output contains exactly the four specified fields in deterministic order."
+        },
+        {
+          "id": "logs-normalize-g3",
+          "name": "Error and compatibility",
+          "criterion": "Report each invalid source/line while retaining valid events, return the documented nonzero status when any line is invalid, and retain existing text CLI behavior for valid input."
+        }
+      ],
+      "demands": ["Context retention", "Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "logs-rotation",
+      "name": "Log rotation aggregation",
+      "workload_id": "workflow",
+      "workspace_id": "go-logs",
+      "stack": "Go",
+      "difficulty": "medium",
+      "difficulty_reason": "Ordering and duplicate boundaries must be handled across several files.",
+      "summary": "Aggregate rotated logs with deterministic deduplication and error reporting.",
+      "prompt": "Produce summary.json and rejected.jsonl from supplied app.log and rotated app.log.N files. Events have event_id, UTC timestamp, level, and service. Exact repeated event IDs count once; the fixture defines no conflicting duplicates. Count ERROR events in the inclusive-start/exclusive-end interval given in task.json, grouped by service. Include listed services with zero errors. Write malformed source lines to rejected.jsonl with source path and 1-based line number; preserve inputs. summary.json has {services:{service:count,...},total_errors:integer}; rejected.jsonl has one {path,line,text} object per malformed source line. Service names come from task.json.",
+      "deliverables": ["Create summary.json, rejected.jsonl, and a repeatable local procedure."],
+      "acceptance": [
+        {
+          "id": "logs-rotation-g1",
+          "name": "Counts",
+          "criterion": "Deduplicate by event_id across all rotations and compute exact ERROR totals for the stated [start,end) interval, including listed zero-count services."
+        },
+        {
+          "id": "logs-rotation-g2",
+          "name": "Rejections and ordering",
+          "criterion": "List malformed lines exactly once in path/line order; sort summary service keys alphabetically and preserve valid data from all files."
+        },
+        {
+          "id": "logs-rotation-g3",
+          "name": "Repeatability",
+          "criterion": "Reordering directory enumeration does not change outputs, reruns are byte-identical, and no source or unrelated file changes."
+        }
+      ],
+      "demands": ["Evidence selection", "Tool use", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "manifest-containment",
+      "name": "Manifest path containment",
+      "workload_id": "repair",
+      "workspace_id": "py-manifest",
+      "stack": "Python",
+      "difficulty": "hard",
+      "difficulty_reason": "Resolved paths, symlinks, and directory cycles require consistent traversal.",
+      "summary": "Keep manifest scanning inside the chosen root and stop symlink loops.",
+      "prompt": "Repair manifest scanning so every recorded target resolves inside the requested root. Follow in-root symlinks to files and directories while preserving the logical relative path in each entry. Reject an escape outside root and a cycle in the current traversal ancestry. Distinct noncyclic aliases may produce distinct logical paths. On rejection, exit nonzero without replacing an existing manifest. Preserve regular-file size and SHA-256 behavior.",
+      "deliverables": ["Patch scanner, traversal state, and the CLI write boundary."],
+      "acceptance": [
+        {
+          "id": "manifest-containment-g1",
+          "name": "Valid scan",
+          "criterion": "List regular files and in-root symlink targets under their logical slash-separated relative paths with correct sizes and SHA-256 values."
+        },
+        {
+          "id": "manifest-containment-g2",
+          "name": "Containment and cycles",
+          "criterion": "Reject direct/chained escapes and ancestry cycles; allow distinct noncyclic aliases. Do not read fixture targets outside the root."
+        },
+        {
+          "id": "manifest-containment-g3",
+          "name": "Failure preservation",
+          "criterion": "On an invalid path, preserve any previous manifest and source bytes. Valid output remains deterministically ordered and regular-file behavior stays compatible."
+        }
+      ],
+      "demands": ["Context retention", "Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "manifest-format",
+      "name": "Manifest serialization migration",
+      "workload_id": "migration",
+      "workspace_id": "py-manifest",
+      "stack": "Python",
+      "difficulty": "medium",
+      "difficulty_reason": "Reader compatibility and canonical byte output must agree.",
+      "summary": "Read the legacy manifest and write a deterministic versioned schema.",
+      "prompt": "Migrate the manifest writer from the legacy flat list to {version:2, files:[...]}. Readers accept either form. Each file entry has path, size, and sha256 with unchanged meaning. Canonical V2 output sorts files by slash-separated path, uses UTF-8 JSON with no insignificant whitespace, and ends in one newline. Field order is version then files at the top level, and path, size, sha256 inside each entry. Reject duplicate paths and unsupported versions. Re-serializing valid V2 must be byte-identical. Write SHA-256 values as lowercase hexadecimal and size as an integer byte count.",
+      "deliverables": ["Patch manifest readers, writer, and its library/CLI consumers."],
+      "acceptance": [
+        {
+          "id": "manifest-format-g1",
+          "name": "Legacy reading",
+          "criterion": "Read equivalent V1 and V2 files into equal records without changing paths, sizes, or digests; keep existing consumers functional."
+        },
+        {
+          "id": "manifest-format-g2",
+          "name": "Canonical bytes",
+          "criterion": "Write V2 only with path-sorted records, compact UTF-8 JSON, fixed top-level/entry field order as stated, and exactly one final newline; serializing again yields identical bytes."
+        },
+        {
+          "id": "manifest-format-g3",
+          "name": "Invalid inputs",
+          "criterion": "Reject duplicate logical paths and unsupported versions before replacing an existing output; preserve source manifest bytes."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "report-dates",
+      "name": "Report date filtering",
+      "workload_id": "feature",
+      "workspace_id": "py-report",
+      "stack": "Python",
+      "difficulty": "medium",
+      "difficulty_reason": "CLI parsing, UTC conversion, and aggregation need one interval rule.",
+      "summary": "Add a UTC date interval filter without changing report aggregation.",
+      "prompt": "Add optional --from and --until RFC3339 timestamps to the report CLI. Include records where from <= timestamp < until, converting input offsets to UTC. Either bound may be absent. Reject an invalid timestamp or from >= until. Apply filtering before aggregation, and preserve the existing report schema, group order, and integer totals when no bounds are supplied.",
+      "deliverables": ["Patch argument parsing, record selection, and report pipeline wiring."],
+      "acceptance": [
+        {
+          "id": "report-dates-g1",
+          "name": "Interval",
+          "criterion": "Include exact lower-bound records, exclude exact upper-bound records, support open bounds, and compare offset timestamps by their UTC instant."
+        },
+        {
+          "id": "report-dates-g2",
+          "name": "Validation",
+          "criterion": "Reject invalid calendar timestamps and reversed/equal bounds before replacing any existing report output."
+        },
+        {
+          "id": "report-dates-g3",
+          "name": "Regression",
+          "criterion": "Aggregate only selected records, preserve the baseline schema/group ordering, and reproduce no-flag output exactly."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "report-pipeline",
+      "name": "Report pipeline extraction",
+      "workload_id": "migration",
+      "workspace_id": "py-report",
+      "stack": "Python",
+      "difficulty": "hard",
+      "difficulty_reason": "Two entry points and error paths must survive a real module-boundary change.",
+      "summary": "Separate loading, calculation, and rendering while preserving both entry points.",
+      "prompt": "Refactor the report system into explicit load_records(source), aggregate(records), and render(report, format) stages. Keep the existing CLI and library report entry points, accepted CSV/JSON sources, JSON/CSV output formats, and documented errors compatible. aggregate must be a pure function: no filesystem, environment, or clock reads and no mutation of its input records. Do not add a second aggregation implementation for one entry point.",
+      "deliverables": ["Patch pipeline modules and both consumers; retain public interfaces."],
+      "acceptance": [
+        {
+          "id": "report-pipeline-g1",
+          "name": "Behavior preservation",
+          "criterion": "CLI and library reproduce frozen valid CSV/JSON-to-JSON/CSV outputs, including integer totals, ordering, escaping, and empty datasets."
+        },
+        {
+          "id": "report-pipeline-g2",
+          "name": "Stage boundary",
+          "criterion": "Calling aggregate with in-memory records performs no I/O or clock/environment access, does not mutate its inputs, and both entry points invoke the same calculation stage."
+        },
+        {
+          "id": "report-pipeline-g3",
+          "name": "Error compatibility",
+          "criterion": "Missing source, malformed rows, and unsupported formats preserve documented error codes and avoid partial replacement of existing report output."
+        }
+      ],
+      "demands": ["Context retention", "Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "settings-merge",
+      "name": "Settings merge provenance",
+      "workload_id": "workflow",
+      "workspace_id": "ts-settings",
+      "stack": "TypeScript",
+      "difficulty": "hard",
+      "difficulty_reason": "Overrides, explicit nulls, per-leaf origins, and error atomicity interact.",
+      "summary": "Merge three settings layers and retain the origin of every final value.",
+      "prompt": "Merge defaults.json, project.json, and runtime.json in that precedence order into resolved.json. Objects merge recursively; arrays and scalar values replace the earlier value; an explicit null is a real value, not a deletion. An absent key does not override. Produce origins.json mapping each final leaf to its source layer using JSON Pointer paths, treating arrays and empty objects as leaves. Keys are case-sensitive. A malformed input must not replace either previous output. Each source root must be a JSON object. Reject a non-object root as malformed. Both outputs use UTF-8 JSON with sorted keys and exactly one final newline.",
+      "deliverables": [
+        "Create resolved.json, origins.json, and a repeatable local merge procedure."
+      ],
+      "acceptance": [
+        {
+          "id": "settings-merge-g1",
+          "name": "Merge semantics",
+          "criterion": "Apply recursive object merging and later-layer scalar/array/null replacement, including object-to-scalar and scalar-to-object transitions."
+        },
+        {
+          "id": "settings-merge-g2",
+          "name": "Complete provenance",
+          "criterion": "Record exactly one correct layer for every final leaf with escaped JSON Pointer paths; keep array origins at the array path and empty-object origins at that object path."
+        },
+        {
+          "id": "settings-merge-g3",
+          "name": "Atomic and repeatable output",
+          "criterion": "Sort object keys and provenance paths deterministically; reruns are byte-identical. Invalid JSON leaves both prior output files and all three source layers unchanged."
+        }
+      ],
+      "demands": ["Context retention", "Evidence selection", "State management"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    },
+    {
+      "id": "settings-schema",
+      "name": "Settings schema migration",
+      "workload_id": "migration",
+      "workspace_id": "ts-settings",
+      "stack": "TypeScript",
+      "difficulty": "medium",
+      "difficulty_reason": "A reader, two consumers, and one canonical writer need consistent conversion.",
+      "summary": "Upgrade flat settings while keeping old input and CLI behavior compatible.",
+      "prompt": "Support unversioned V1 settings {theme, autosave_seconds} and V2 {version:2, appearance:{theme}, autosave:{interval_ms}}. theme is light or dark; autosave_seconds is an integer >= 0 and converts exactly to milliseconds. V2 interval_ms is an integer >= 0. Readers accept either format; the export command emits V2 only. Reject unsupported versions and mixed legacy/nested fields. Do not rewrite the source file.",
+      "deliverables": ["Patch settings conversion, both existing consumers, and canonical export."],
+      "acceptance": [
+        {
+          "id": "settings-schema-g1",
+          "name": "Conversion",
+          "criterion": "Equivalent V1 seconds and V2 milliseconds produce equal behavior in both consumers, including zero; preserve valid themes."
+        },
+        {
+          "id": "settings-schema-g2",
+          "name": "Canonical export",
+          "criterion": "Write V2 only with version, appearance, and autosave; re-reading an export preserves values without converting milliseconds a second time."
+        },
+        {
+          "id": "settings-schema-g3",
+          "name": "Errors and preservation",
+          "criterion": "Reject invalid theme, fractional/negative timing values, mixed fields, and unsupported versions; leave source and prior output unchanged on errors."
+        }
+      ],
+      "demands": ["Multi-file consistency", "Verification"],
+      "status": "specified_not_built",
+      "difficulty_status": "estimated_not_measured"
+    }
+  ]
+}

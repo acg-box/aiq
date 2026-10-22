@@ -1,0 +1,15 @@
+{
+  "baseline_runner_sha256": "b4e24de1ac4544ae15985323bc3b8b5c4a339695431a4b68f10f76cb544d8867",
+  "runner_sha256": "404d6b42c664555423ca515a1329dc9f5a1d58ad9700d072c6843d6a8d091562",
+  "changes": [
+    "Task-owned container name",
+    "Fresh test-user email",
+    "Add required parse_type=1 for the same native general parser"
+  ],
+  "formal_input_sha256": "7141532c7efb77758ab36f3d7acc2db5369b234134a6119ba4a891c58dd3e47d",
+  "formal_oracle_sha256": "8ac3caf4055989d319ef143eb1fad280d3372c6c85113bbd639498fdc7871644",
+  "native_agent_protocol_sha256": "cdea390429a823741f3ffdb3b95020e87f18752d537f6ac0ecd76cb378f13779",
+  "cached_gateway_sha256": "85665006591d969417f4eb17e4263989aa7650b9e76d106d28e18deb6b18ab5d",
+  "native_agent_runner_sha256": "0ebda6f587c184e7828b0dc3f587bf0a6162074eb0d584e3c755303b75b20c79",
+  "native_agent_configuration": "Declare the existing reader model tool-calling capability through the native provider model extra.is_tools field before Agent execution."
+}

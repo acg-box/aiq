@@ -1,0 +1,67 @@
+{
+  "id": "medium-writer-larch-retention",
+  "kind": "writer",
+  "seconds": 10.52233583299676,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 657,
+    "completion_tokens": 645,
+    "total_tokens": 1302,
+    "cost": 0.0003882,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0003882,
+      "upstream_inference_prompt_cost": 6.57e-05,
+      "upstream_inference_completions_cost": 0.0003225
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 405,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "episodic": [
+      {
+        "content": "Mara reviewed Larch.",
+        "valid_at": "2026-08-22",
+        "invalid_at": ""
+      },
+      {
+        "content": "The August 15 delivery choice was to be kept.",
+        "valid_at": "2026-08-15",
+        "invalid_at": ""
+      }
+    ],
+    "procedural": [
+      {
+        "content": "For the next outage, use the recovery procedure validated on August 8.",
+        "valid_at": "2026-08-08",
+        "invalid_at": ""
+      }
+    ],
+    "semantic": [
+      {
+        "content": "Retry policy RETRY-0-907 supersedes RETRY-0-108.",
+        "valid_at": "2026-10-20T14:54:14",
+        "invalid_at": ""
+      },
+      {
+        "content": "No budget owner had been appointed.",
+        "valid_at": "2026-10-20T14:54:14",
+        "invalid_at": ""
+      }
+    ]
+  },
+  "raw_content": "{\n  \"episodic\": [\n    {\n      \"content\": \"Mara reviewed Larch.\",\n      \"valid_at\": \"2026-08-22\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"The August 15 delivery choice was to be kept.\",\n      \"valid_at\": \"2026-08-15\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"procedural\": [\n    {\n      \"content\": \"For the next outage, use the recovery procedure validated on August 8.\",\n      \"valid_at\": \"2026-08-08\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"semantic\": [\n    {\n      \"content\": \"Retry policy RETRY-0-907 supersedes RETRY-0-108.\",\n      \"valid_at\": \"2026-10-20T14:54:14\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"No budget owner had been appointed.\",\n      \"valid_at\": \"2026-10-20T14:54:14\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}",
+  "effort": "medium",
+  "source_case_id": "writer-larch-retention",
+  "block": 1
+}

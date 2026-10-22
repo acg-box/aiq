@@ -1,0 +1,93 @@
+[
+  {
+    "phase": "post",
+    "case_id": "combined-001",
+    "correct": false,
+    "review": "The current delivery identifier STREAM-0-286 is omitted because it is absent from the retrieved context. The record exists in the native store. The reader reports a bounded unknown. This is the same missing-decision failure as the rc1 run.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "doc-000",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "doc-001",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-0-0",
+    "correct": false,
+    "review": "The current delivery identifier STREAM-0-286 is omitted because it is absent from the retrieved context. The record exists in the native store. The reader reports a bounded unknown. This is the same missing-decision failure as the rc1 run.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-0-1",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-0-2",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-0-3",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-1-0",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-1-1",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-1-2",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "post",
+    "case_id": "memory-1-3",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "pre",
+    "case_id": "memory-0-2",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  },
+  {
+    "phase": "pre",
+    "case_id": "memory-1-2",
+    "correct": true,
+    "review": "Manual review against the frozen sources and cutoff: requested facts, subjects, event dates, approved versus tested changes, and unknown-owner handling are correct.",
+    "quote_binding": true
+  }
+]

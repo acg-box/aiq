@@ -1,0 +1,198 @@
+[
+  {
+    "id": "writer-larch-decision",
+    "direct_json_valid": true,
+    "markdown_fence_present": false,
+    "matches_inspected_native_json_shape": true,
+    "native_ingestion_retested": false,
+    "parsed_content_for_review": {
+      "episodic": [
+        {
+          "content": "On 2026-08-15, Mara approved switching Larch from BATCH-0-741 to STREAM-0-286, superseding the August 1 delivery decision.",
+          "valid_at": "2026-08-15T00:00:00Z",
+          "invalid_at": ""
+        },
+        {
+          "content": "GATE-0-519 outages were recorded on 2026-08-08 and were the cause of the Larch delivery change.",
+          "valid_at": "2026-08-08T00:00:00Z",
+          "invalid_at": ""
+        }
+      ],
+      "procedural": [
+        {
+          "content": "For Larch, retain and use the successful recovery procedure from the GATE-0-519 incident.",
+          "valid_at": "2026-08-15T00:00:00Z",
+          "invalid_at": ""
+        }
+      ],
+      "semantic": [
+        {
+          "content": "Larch uses STREAM-0-286 instead of BATCH-0-741 following Mara's approval on 2026-08-15.",
+          "valid_at": "2026-08-15T00:00:00Z",
+          "invalid_at": ""
+        },
+        {
+          "content": "The switch from BATCH-0-741 to STREAM-0-286 was caused by GATE-0-519 outages recorded on 2026-08-08.",
+          "valid_at": "2026-08-15T00:00:00Z",
+          "invalid_at": ""
+        },
+        {
+          "content": "The August 1 delivery decision for Larch was superseded on 2026-08-15.",
+          "valid_at": "2026-08-15T00:00:00Z",
+          "invalid_at": ""
+        }
+      ]
+    },
+    "extracted_atoms": 6,
+    "luna_atoms": 2,
+    "aggregate_required_facts_preserved": true,
+    "review": "Preserves the August 15 decision and August 8 cause, and explicitly retains the recovery procedure. Some redundant atoms repeat the decision across memory types; one cause atom omits the project name."
+  },
+  {
+    "id": "writer-larch-retention",
+    "direct_json_valid": false,
+    "markdown_fence_present": true,
+    "matches_inspected_native_json_shape": true,
+    "native_ingestion_retested": false,
+    "parsed_content_for_review": {
+      "episodic": [
+        {
+          "content": "On 2026-08-22, Mara reviewed Larch; the review concluded with keeping the August 15 delivery choice.",
+          "valid_at": "2026-08-22T00:00:00",
+          "invalid_at": ""
+        }
+      ],
+      "procedural": [
+        {
+          "content": "For the next outage, use the recovery procedure that was validated on August 8.",
+          "valid_at": "2026-08-08T00:00:00",
+          "invalid_at": ""
+        }
+      ],
+      "semantic": [
+        {
+          "content": "The retry policy is RETRY-0-907, which supersedes RETRY-0-108.",
+          "valid_at": "2026-08-22T00:00:00",
+          "invalid_at": ""
+        },
+        {
+          "content": "No budget owner has been appointed.",
+          "valid_at": "2026-08-22T00:00:00",
+          "invalid_at": ""
+        }
+      ]
+    },
+    "extracted_atoms": 4,
+    "luna_atoms": 5,
+    "aggregate_required_facts_preserved": true,
+    "review": "Preserves all aggregate facts without inventing the unknown August 15 mode. Retry-policy and owner atoms still omit Larch. Their valid_at is August 22 instead of Luna capture time in October. The recovery instruction still uses August 8. Markdown fencing is accepted by the inspected native parser."
+  },
+  {
+    "id": "writer-orbit-conditional",
+    "direct_json_valid": true,
+    "markdown_fence_present": false,
+    "matches_inspected_native_json_shape": true,
+    "native_ingestion_retested": false,
+    "parsed_content_for_review": {
+      "semantic": [
+        {
+          "content": "Project ORBIT-NIGHTLY approves delivery mode STREAM-93 for staging only after audit AUDIT-62 passes.",
+          "valid_at": "2026-10-20",
+          "invalid_at": ""
+        },
+        {
+          "content": "Until audit AUDIT-62 passes, staging for project ORBIT-NIGHTLY must retain delivery mode POLL-71.",
+          "valid_at": "2026-10-20",
+          "invalid_at": ""
+        },
+        {
+          "content": "Mira is the owner of project ORBIT-NIGHTLY.",
+          "valid_at": "2026-10-20",
+          "invalid_at": ""
+        },
+        {
+          "content": "No production rollout is authorized for project ORBIT-NIGHTLY.",
+          "valid_at": "2026-10-20",
+          "invalid_at": ""
+        }
+      ],
+      "episodic": [
+        {
+          "content": "On 2026-10-20, project ORBIT-NIGHTLY approved delivery mode STREAM-93 in staging only, contingent on audit AUDIT-62 passing, while staging must retain POLL-71 until the audit passes.",
+          "valid_at": "2026-10-20",
+          "invalid_at": ""
+        }
+      ],
+      "procedural": [
+        {
+          "content": "To enable delivery mode STREAM-93 in staging for project ORBIT-NIGHTLY, first ensure audit AUDIT-62 has passed; until then, keep staging on delivery mode POLL-71.",
+          "valid_at": "2026-10-20",
+          "invalid_at": ""
+        },
+        {
+          "content": "Do not perform any production rollout for project ORBIT-NIGHTLY unless explicitly authorized.",
+          "valid_at": "2026-10-20",
+          "invalid_at": ""
+        }
+      ]
+    },
+    "extracted_atoms": 7,
+    "luna_atoms": 2,
+    "aggregate_required_facts_preserved": true,
+    "review": "Preserves staging-only scope, pending-versus-passed audit condition, owner, and no production authority. Produces seven atoms rather than Luna two, with overlap across types."
+  },
+  {
+    "id": "writer-orbit-conditional-zh",
+    "direct_json_valid": true,
+    "markdown_fence_present": false,
+    "matches_inspected_native_json_shape": true,
+    "native_ingestion_retested": false,
+    "parsed_content_for_review": {
+      "semantic": [
+        {
+          "content": "ORBIT-NIGHTLY 项目仅在审计 AUDIT-62 通过后，才批准在预发布环境采用交付模式 STREAM-93。",
+          "valid_at": "2026-10-20T14:56:36",
+          "invalid_at": ""
+        },
+        {
+          "content": "在审计 AUDIT-62 通过前，ORBIT-NIGHTLY 项目的预发布环境必须继续使用 POLL-71。",
+          "valid_at": "2026-10-20T14:56:36",
+          "invalid_at": ""
+        },
+        {
+          "content": "Mira 仍是 ORBIT-NIGHTLY 项目的负责人。",
+          "valid_at": "2026-10-20T14:56:36",
+          "invalid_at": ""
+        },
+        {
+          "content": "ORBIT-NIGHTLY 项目未授权任何生产环境发布。",
+          "valid_at": "2026-10-20T14:56:36",
+          "invalid_at": ""
+        }
+      ],
+      "episodic": [
+        {
+          "content": "2026-10-20 14:56:36，用户记录了 ORBIT-NIGHTLY 项目的交付模式与审计条件，并确认 Mira 仍为负责人、未授权生产环境发布。",
+          "valid_at": "2026-10-20T14:56:36",
+          "invalid_at": ""
+        }
+      ],
+      "procedural": [
+        {
+          "content": "对于 ORBIT-NIGHTLY 预发布环境：在 AUDIT-62 审计通过前，继续使用 POLL-71；仅在 AUDIT-62 通过后，才可切换为 STREAM-93。",
+          "valid_at": "2026-10-20T14:56:36",
+          "invalid_at": ""
+        },
+        {
+          "content": "ORBIT-NIGHTLY 项目在获得明确授权前，不得进行任何生产环境发布。",
+          "valid_at": "2026-10-20T14:56:36",
+          "invalid_at": ""
+        }
+      ]
+    },
+    "extracted_atoms": 7,
+    "luna_atoms": null,
+    "aggregate_required_facts_preserved": true,
+    "review": "Preserves Chinese source identifiers, staging scope, pending-versus-passed audit condition, Mira, and no production authority. This new case has no Luna control. Capture time is still used as the precise effective timestamp."
+  }
+]

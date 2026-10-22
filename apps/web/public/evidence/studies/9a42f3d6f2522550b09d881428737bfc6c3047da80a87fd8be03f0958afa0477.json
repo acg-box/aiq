@@ -1,0 +1,67 @@
+{
+  "id": "none-writer-larch-retention",
+  "kind": "writer",
+  "seconds": 3.361248583998531,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 657,
+    "completion_tokens": 280,
+    "total_tokens": 937,
+    "cost": 0.0002057,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0002057,
+      "upstream_inference_prompt_cost": 6.57e-05,
+      "upstream_inference_completions_cost": 0.00014
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "episodic": [
+      {
+        "content": "On 2026-08-22, Mara reviewed Larch.",
+        "valid_at": "2026-08-22T00:00:00",
+        "invalid_at": ""
+      },
+      {
+        "content": "On 2026-08-22, the user instructed that the August 15 delivery choice be kept.",
+        "valid_at": "2026-08-22T00:00:00",
+        "invalid_at": ""
+      }
+    ],
+    "procedural": [
+      {
+        "content": "For the next outage, use the recovery procedure validated on August 8.",
+        "valid_at": "2026-08-08T00:00:00",
+        "invalid_at": ""
+      }
+    ],
+    "semantic": [
+      {
+        "content": "The current retry policy is RETRY-0-907, which supersedes RETRY-0-108.",
+        "valid_at": "2026-10-20T14:54:14",
+        "invalid_at": ""
+      },
+      {
+        "content": "No budget owner has been appointed.",
+        "valid_at": "2026-10-20T14:54:14",
+        "invalid_at": ""
+      }
+    ]
+  },
+  "raw_content": "{\n  \"episodic\": [\n    {\n      \"content\": \"On 2026-08-22, Mara reviewed Larch.\",\n      \"valid_at\": \"2026-08-22T00:00:00\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"On 2026-08-22, the user instructed that the August 15 delivery choice be kept.\",\n      \"valid_at\": \"2026-08-22T00:00:00\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"procedural\": [\n    {\n      \"content\": \"For the next outage, use the recovery procedure validated on August 8.\",\n      \"valid_at\": \"2026-08-08T00:00:00\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"semantic\": [\n    {\n      \"content\": \"The current retry policy is RETRY-0-907, which supersedes RETRY-0-108.\",\n      \"valid_at\": \"2026-10-20T14:54:14\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"No budget owner has been appointed.\",\n      \"valid_at\": \"2026-10-20T14:54:14\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}",
+  "effort": "none",
+  "source_case_id": "writer-larch-retention",
+  "block": 1
+}

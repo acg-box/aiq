@@ -23,12 +23,14 @@ npm run test:browser:production --workspace @aiq/web
 
 The command does not start a local server and does not use secrets. The browser blocks non-read
 requests. The test fails unless the public site contains exactly 17 Official configurations, 17
-configuration runs, and 1,224 task results. It also checks the public method, trend, radar,
+configuration records, and 1,224 task results. It also checks the board Method and Records views, verification,
 duration, token, API-equivalent cost, signed matrix-batch, shared run-provenance evidence, and the
 exact expected current-publication identity, matrix-batch ID, runner commit, cost-status
-distribution, and priced nanodollar subtotal. The run archive can retain earlier Official
-publications; the gate filters it by the 17 current run identities and fails unless every current
-run is present without duplicate or overlapping pages. Aggregate configuration cost can be exact,
+distribution, and priced nanodollar subtotal. Leaderboard and Records must contain the same 17 current
+run identities. The Data view must match each efficiency record to its exact configuration and run.
+The Method view reads the frozen repository definition and must match the accepted benchmark and
+scoring versions. It does not present a database publication timestamp or synthetic measurements.
+Aggregate configuration cost can be exact,
 a bounded range, or unavailable as supported by its task evidence. This is a launch acceptance gate
 for the current matrix. The gate also checks production readiness,
 unauthenticated write rejection, mobile layout, and selected Axe accessibility rules. It fails if

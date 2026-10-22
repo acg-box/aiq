@@ -20,6 +20,7 @@
     "test:coverage": "node --test --experimental-test-coverage \"src/**/*.test.ts\"",
     "test:browser": "node run-browser-tests.ts",
     "test:browser:prebuilt": "node run-browser-tests.ts --prebuilt",
+    "test:browser:studies": "AIQ_PLAYWRIGHT_PREBUILT=1 playwright test study-evidence.spec.ts --project=desktop-chromium --project=mobile-chromium",
     "test:browser:synthetic": "playwright test",
     "test:browser:invalid-config": "playwright test --config playwright.invalid-config.ts",
     "test:browser:live-empty": "playwright test --config playwright.live-empty.ts",
@@ -28,13 +29,14 @@
     "test:browser:malformed-config": "playwright test --config playwright.malformed-config.ts",
     "test:browser:missing-config": "playwright test --config playwright.missing-config.ts",
     "test:browser:production-contract": "playwright test --config playwright.production-mock.ts",
-    "test:browser:production": "playwright test --config playwright.production.ts"
+    "test:browser:production": "playwright test --config playwright.production.ts",
+    "test:browser:workspace-production": "playwright test --config playwright.workspace-production.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",
     "@supabase/supabase-js": "2.110.8",
     "echarts": "6.1.0",
-    "next": "16.3.0",
+    "next": "~16.3.8",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },

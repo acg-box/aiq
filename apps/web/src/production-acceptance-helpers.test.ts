@@ -20,23 +20,32 @@ void describe('production acceptance helpers', () => {
   });
 
   void it('finds the expected publication without treating appended history as current', () => {
-    const expected = new Set(['/runs/current-a', '/runs/current-b']);
+    const expected = new Set([
+      '/benchmarks/intelligence/records/current-a',
+      '/benchmarks/intelligence/records/current-b',
+    ]);
     assert.deepEqual(
       partitionProductionHistory(expected, [
-        '/runs/current-a',
-        '/runs/current-b',
-        '/runs/historical-a',
+        '/benchmarks/intelligence/records/current-a',
+        '/benchmarks/intelligence/records/current-b',
+        '/benchmarks/intelligence/records/historical-a',
       ]),
       {
-        currentRunHrefs: ['/runs/current-a', '/runs/current-b'],
-        historicalRunHrefs: ['/runs/historical-a'],
+        currentRunHrefs: [
+          '/benchmarks/intelligence/records/current-a',
+          '/benchmarks/intelligence/records/current-b',
+        ],
+        historicalRunHrefs: ['/benchmarks/intelligence/records/historical-a'],
         missingCurrentRunHrefs: [],
       },
     );
-    assert.deepEqual(partitionProductionHistory(expected, ['/runs/current-a']), {
-      currentRunHrefs: ['/runs/current-a'],
-      historicalRunHrefs: [],
-      missingCurrentRunHrefs: ['/runs/current-b'],
-    });
+    assert.deepEqual(
+      partitionProductionHistory(expected, ['/benchmarks/intelligence/records/current-a']),
+      {
+        currentRunHrefs: ['/benchmarks/intelligence/records/current-a'],
+        historicalRunHrefs: [],
+        missingCurrentRunHrefs: ['/benchmarks/intelligence/records/current-b'],
+      },
+    );
   });
 });

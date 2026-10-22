@@ -1,0 +1,63 @@
+{
+  "id": "post-memory-1-0",
+  "kind": "reader",
+  "seconds": 7.063877500011586,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1810,
+    "completion_tokens": 1338,
+    "total_tokens": 3148,
+    "cost": 0.0021486,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0021486,
+      "upstream_inference_prompt_cost": 0.000543,
+      "upstream_inference_completions_cost": 0.0016056
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 963,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "As of 2026-08-22, Ivo's Cobalt project uses STREAM-1-286 for delivery: Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286 on 2026-08-15, and the 2026-08-22 review kept that August 15 delivery choice. The retry policy is RETRY-1-907, which supersedes RETRY-1-108 as of the 2026-08-22 review. The August 8 REPLAY-1-632 item was a tested recovery procedure, not an approved delivery-mode change.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "quote": "User Input: 2026-08-15. Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286. This supersedes the August 1 delivery decision."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "quote": "2026-08-22. Ivo reviewed Cobalt. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-1-907, superseding RETRY-1-108."
+      },
+      {
+        "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+        "quote": "The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"As of 2026-08-22, Ivo's Cobalt project uses STREAM-1-286 for delivery: Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286 on 2026-08-15, and the 2026-08-22 review kept that August 15 delivery choice. The retry policy is RETRY-1-907, which supersedes RETRY-1-108 as of the 2026-08-22 review. The August 8 REPLAY-1-632 item was a tested recovery procedure, not an approved delivery-mode change.\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20\",\"quote\":\"User Input: 2026-08-15. Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286. This supersedes the August 1 delivery decision.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23\",\"quote\":\"2026-08-22. Ivo reviewed Cobalt. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-1-907, superseding RETRY-1-108.\"},{\"handle\":\"ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657\",\"quote\":\"The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

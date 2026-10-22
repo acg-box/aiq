@@ -1,0 +1,47 @@
+{
+  "id": "post-doc-000",
+  "kind": "reader",
+  "seconds": 3.630155333026778,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1680,
+    "completion_tokens": 359,
+    "total_tokens": 2039,
+    "cost": 0.0009348,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0009348,
+      "upstream_inference_prompt_cost": 0.000504,
+      "upstream_inference_completions_cost": 0.0004308
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 232,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "The signed Kestrel-0 return policy lists two exception identifiers: CUSTOM-0-7c2 for custom-made goods and DEFECT-0-9b4 for quality defects.",
+    "citations": [
+      {
+        "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+        "quote": "custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4 and are exempt from the 7-day limit."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"The signed Kestrel-0 return policy lists two exception identifiers: CUSTOM-0-7c2 for custom-made goods and DEFECT-0-9b4 for quality defects.\",\"citations\":[{\"handle\":\"ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518\",\"quote\":\"custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4 and are exempt from the 7-day limit.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

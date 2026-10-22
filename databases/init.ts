@@ -10,7 +10,6 @@ const CATALOG_IDENTITY = 'sha256:3580555315d49a62b28b6947491819276dca5b261ade802
 const CATALOG_RELEASE_IDENTITY =
   'sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69';
 const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
-const PRODUCTION_DATABASE_HOST = `db.${PRODUCTION_SUPABASE_PROJECT_REF}.supabase.co`;
 const PRODUCTION_DATABASE_POOLER_HOST = 'aws-0-ca-central-1.pooler.supabase.com';
 const PRODUCTION_DATABASE_POOLER_USER = `postgres.${PRODUCTION_SUPABASE_PROJECT_REF}`;
 const TASK_SET_IDENTITY = 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a';
@@ -1405,13 +1404,6 @@ export function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.Pr
     throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
   }
   const postgresProtocol = parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:';
-  const directProductionTarget =
-    postgresProtocol &&
-    parsed.hostname === PRODUCTION_DATABASE_HOST &&
-    parsed.pathname === '/postgres' &&
-    (parsed.port === '' || parsed.port === '5432') &&
-    parsed.username === 'postgres' &&
-    parsed.hash === '';
   const sessionPoolerProductionTarget =
     postgresProtocol &&
     parsed.hostname === PRODUCTION_DATABASE_POOLER_HOST &&
@@ -1419,7 +1411,7 @@ export function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.Pr
     parsed.port === '5432' &&
     parsed.username === PRODUCTION_DATABASE_POOLER_USER &&
     parsed.hash === '';
-  if (directProductionTarget || sessionPoolerProductionTarget) return;
+  if (sessionPoolerProductionTarget) return;
   const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
   const localOverride =
     postgresProtocol &&
@@ -1431,7 +1423,7 @@ export function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.Pr
     loopback;
   if (!localOverride) {
     throw new Error(
-      `AIQ_DATABASE_URL must target Supabase project ${PRODUCTION_SUPABASE_PROJECT_REF}`,
+      `AIQ_DATABASE_URL must target Supabase project ${PRODUCTION_SUPABASE_PROJECT_REF} through its Session Pooler on port 5432`,
     );
   }
 }

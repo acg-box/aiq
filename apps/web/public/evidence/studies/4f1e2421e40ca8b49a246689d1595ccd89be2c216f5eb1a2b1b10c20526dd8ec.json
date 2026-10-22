@@ -1,0 +1,58 @@
+{
+  "id": "medium-pre-memory-0-2",
+  "kind": "reader",
+  "seconds": 3.3192220829660073,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1768,
+    "completion_tokens": 185,
+    "total_tokens": 1953,
+    "cost": 0.000313425,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1765,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000313425,
+      "upstream_inference_prompt_cost": 0.000220925,
+      "upstream_inference_completions_cost": 9.25e-05
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 35,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "Batch delivery via BATCH-0-741 remained approved; no change of delivery mode was approved at the August 8 meeting.",
+    "citations": [
+      {
+        "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+        "quote": "They chose BATCH-0-741 for batch delivery."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "No change of delivery mode was approved at this meeting."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"Batch delivery via BATCH-0-741 remained approved; no change of delivery mode was approved at the August 8 meeting.\",\"citations\":[{\"handle\":\"ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199\",\"quote\":\"They chose BATCH-0-741 for batch delivery.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"No change of delivery mode was approved at this meeting.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "medium",
+  "source_case_id": "pre-memory-0-2",
+  "block": 2
+}

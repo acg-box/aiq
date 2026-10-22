@@ -1,0 +1,32 @@
+{
+  "id": "writer-larch-retention",
+  "kind": "writer",
+  "seconds": 3.407474750012625,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 691,
+    "completion_tokens": 400,
+    "total_tokens": 1091,
+    "cost": 0.000574404,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 384,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000574404,
+      "upstream_inference_prompt_cost": 9.4404e-05,
+      "upstream_inference_completions_cost": 0.00048
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 159,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": false,
+  "parsed": null,
+  "raw_content": "```json\n{\n  \"episodic\": [\n    {\n      \"content\": \"On 2026-08-22, Mara reviewed Larch; the review concluded with keeping the August 15 delivery choice.\",\n      \"valid_at\": \"2026-08-22T00:00:00\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"procedural\": [\n    {\n      \"content\": \"For the next outage, use the recovery procedure that was validated on August 8.\",\n      \"valid_at\": \"2026-08-08T00:00:00\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"semantic\": [\n    {\n      \"content\": \"The retry policy is RETRY-0-907, which supersedes RETRY-0-108.\",\n      \"valid_at\": \"2026-08-22T00:00:00\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"No budget owner has been appointed.\",\n      \"valid_at\": \"2026-08-22T00:00:00\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}\n```"
+}

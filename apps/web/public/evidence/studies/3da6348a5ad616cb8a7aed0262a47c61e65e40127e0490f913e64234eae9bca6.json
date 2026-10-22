@@ -1,0 +1,47 @@
+{
+  "stored_matching_records": [
+    {
+      "message_id": 11,
+      "type": "raw",
+      "source_id": 0,
+      "content": "User Input: 2026-08-15. Mara approved switching Larch from BATCH-0-741 to STREAM-0-286. This supersedes the August 1 delivery decision. The cause was the GATE-0-519 outages recorded on August 8; keep the successful recovery procedure from that incident.\nAgent Response: Recorded."
+    },
+    {
+      "memory_id": "e84293c0415341ab8c66a5e1e2b20dc6",
+      "message_id": 13,
+      "message_type": "episodic",
+      "source_id": 11,
+      "content": "On August 15, 2026, Mara approved switching Larch from BATCH-0-741 to STREAM-0-286, superseding the August 1 delivery decision. The change was prompted by the GATE-0-519 outages recorded on August 8.",
+      "valid_at": "2026-08-15 00:00:00",
+      "invalid_at": null,
+      "status": true
+    }
+  ],
+  "retrieved_contexts": [
+    {
+      "case_id": "memory-0-0",
+      "context_has_current_delivery": false,
+      "native_handles": [
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:24",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:17"
+      ]
+    },
+    {
+      "case_id": "combined-001",
+      "context_has_current_delivery": false,
+      "native_handles": [
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:24",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16",
+        "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:17"
+      ]
+    }
+  ],
+  "classification": "retrieval gap; exact sort-policy cause remains untested; no rerun or repair applied"
+}
