@@ -12,7 +12,7 @@ import {
   resolveExactScientificEvidence,
 } from './scientific-evidence-resolution.ts';
 import type { LeaderboardEntry, PublicModelEfficiency } from '../data/types.ts';
-import { configurationWorkbenchFixture } from './configuration-workbench.fixture.ts';
+import { scientificEvidenceFixture } from './scientific-evidence.fixture.ts';
 
 function scoredEntry(overrides: Partial<LeaderboardEntry> = {}): LeaderboardEntry {
   return {
@@ -204,7 +204,7 @@ void describe('scientific score context', () => {
   });
 
   void it('shows the same bounded cost range in run history and configuration comparison', () => {
-    const candidate = configurationWorkbenchFixture({ id: 'sol-low', boundedCost: true });
+    const candidate = scientificEvidenceFixture({ id: 'sol-low', boundedCost: true });
     const summary = buildRunScientificSummary({
       run: {
         id: candidate.row.runId,

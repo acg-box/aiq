@@ -1,0 +1,80 @@
+[
+  {
+    "id": "post-combined-001",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "review": "The frozen context lacks STREAM-0-286. The answer discusses the earlier BATCH choice but does not establish the requested current delivery decision. Same incomplete result as Luna."
+  },
+  {
+    "id": "post-doc-000",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-doc-001",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-memory-0-0",
+    "semantic_complete": false,
+    "all_quotes_bound": true,
+    "review": "The frozen context lacks STREAM-0-286. The answer discusses the earlier BATCH choice but does not establish the requested current delivery decision. Same incomplete result as Luna."
+  },
+  {
+    "id": "post-memory-0-1",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-memory-0-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-memory-1-0",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-memory-1-1",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "post-memory-1-3",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "pre-memory-0-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  },
+  {
+    "id": "pre-memory-1-2",
+    "semantic_complete": true,
+    "all_quotes_bound": true,
+    "review": "Manual review against the frozen question, supplied originals, and time cutoff: requested facts, subject, approved-versus-tested status, and owner uncertainty are correct."
+  }
+]

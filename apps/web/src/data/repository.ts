@@ -49,12 +49,13 @@ import type {
   RunHistoryCursor,
   RunHistoryPage,
   RunHistoryPageRequest,
+  ScoredLeaderboardEntry,
   TaskResult,
   SpeedTrendPoint,
   TrendPoint,
   TrendRange,
 } from './types.ts';
-import { CALIBRATION_OUTCOMES } from './types.ts';
+import { CALIBRATION_OUTCOMES, isScoredLeaderboardEntry } from './types.ts';
 
 export const PUBLIC_VIEW_NAMES = {
   modelMatrix: 'public_model_matrix',
@@ -733,7 +734,7 @@ function hasExactKeys(value: Record<string, unknown>, keys: ReadonlySet<string>)
   return actual.length === keys.size && actual.every((key) => keys.has(key));
 }
 
-function isRunSummaryRow(value: unknown): value is RunRow {
+function isRunSummaryRowForBenchmark(value: unknown, benchmarkVersion: string): value is RunRow {
   if (!isUnknownRecord(value)) return false;
   const counts = [
     value.correct_count,
@@ -788,7 +789,7 @@ function isRunSummaryRow(value: unknown): value is RunRow {
     isTimestamp(value.completed_at) &&
     Date.parse(value.started_at) <= Date.parse(value.completed_at) &&
     typeof value.benchmark_version === 'string' &&
-    value.benchmark_version === AIQ_CORE_BENCHMARK_VERSION &&
+    value.benchmark_version === benchmarkVersion &&
     typeof value.scoring_version === 'string' &&
     value.scoring_version === AIQ_CORE_SCORING_VERSION &&
     typeof value.prompt_set_digest === 'string' &&
@@ -816,6 +817,10 @@ function isRunSummaryRow(value: unknown): value is RunRow {
     value.provisional_domain_count * 4 <= value.observed_count &&
     (value.observed_count === 0 ? value.covered_domain_count === 0 : value.covered_domain_count > 0)
   );
+}
+
+function isRunSummaryRow(value: unknown): value is RunRow {
+  return isRunSummaryRowForBenchmark(value, AIQ_CORE_BENCHMARK_VERSION);
 }
 
 function runRowsFollowQueryOrder(rows: readonly RunRow[], ascending: boolean): boolean {
@@ -2992,6 +2997,59 @@ export class SupabaseAiqRepository implements AiqRepository {
       throw new Error(`Cannot read ${PUBLIC_VIEW_NAMES.leaderboard}: ${result.error.message}`);
     }
     return joinModelMatrixWithLeaderboard(matrix, result.data);
+  }
+
+  /** Read the published 1.0.7 archive without admitting it to the active Core repository. */
+  async listHistoricalCoreResults(entries: readonly LeaderboardEntry[]): Promise<
+    readonly {
+      entry: ScoredLeaderboardEntry;
+      run: BenchmarkRunSummary;
+      source: RunRow;
+    }[]
+  > {
+    const candidates = entries.filter(
+      (entry): entry is ScoredLeaderboardEntry =>
+        isScoredLeaderboardEntry(entry) && entry.scoreStatus === 'official',
+    );
+    if (candidates.length === 0) return [];
+    const { data, error } = await this.#client
+      .from(PUBLIC_VIEW_NAMES.runs)
+      .select(RUN_SUMMARY_SELECT)
+      .in(
+        'id',
+        candidates.map((entry) => entry.runId),
+      )
+      .eq('benchmark_version', 'aiq-core@1.0.7')
+      .limit(candidates.length + 1)
+      .overrideTypes<unknown[], { merge: false }>();
+    if (error) throw new Error(`Cannot read historical Core results: ${error.message}`);
+    if (
+      data.length > candidates.length ||
+      !data.every((row) => isRunSummaryRowForBenchmark(row, 'aiq-core@1.0.7'))
+    ) {
+      throw new Error('Cannot read historical Core results: invalid run records');
+    }
+    const identities = new Set<string>();
+    return data.map((row) => {
+      const matching = candidates.filter((entry) => entry.runId === row.id);
+      const entry = matching[0];
+      if (
+        matching.length !== 1 ||
+        !entry ||
+        identities.has(row.id) ||
+        row.matrix_id !== entry.id ||
+        row.scoring_version !== entry.scoringVersion ||
+        row.synthetic ||
+        row.run_class !== 'official' ||
+        row.result_count !== entry.sampleSize ||
+        row.observed_count !== entry.sampleSize ||
+        row.coverage_percent !== entry.coveragePercent
+      ) {
+        throw new Error('Cannot read historical Core results: mismatched result identity');
+      }
+      identities.add(row.id);
+      return { entry, run: mapRunSummaryRow(row), source: row };
+    });
   }
 
   async listTrendPoints(range: TrendRange = 'all'): Promise<readonly TrendPoint[]> {

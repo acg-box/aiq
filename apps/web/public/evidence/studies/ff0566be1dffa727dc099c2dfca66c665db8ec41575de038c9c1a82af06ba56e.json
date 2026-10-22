@@ -1,0 +1,50 @@
+{
+  "id": "low-post-memory-0-3",
+  "kind": "reader",
+  "seconds": 2.8055114169837907,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1414,
+    "completion_tokens": 129,
+    "total_tokens": 1543,
+    "cost": 0.000241175,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1411,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000241175,
+      "upstream_inference_prompt_cost": 0.000176675,
+      "upstream_inference_completions_cost": 6.45e-05
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "No budget owner had been appointed for Mara’s Larch project as of August 22.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108. No budget owner has been appointed."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"No budget owner had been appointed for Mara’s Larch project as of August 22.\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108. No budget owner has been appointed.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "low",
+  "source_case_id": "post-memory-0-3",
+  "block": 1
+}

@@ -1,0 +1,50 @@
+{
+  "id": "low-post-doc-000",
+  "kind": "reader",
+  "seconds": 4.276220457977615,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1615,
+    "completion_tokens": 112,
+    "total_tokens": 1727,
+    "cost": 0.0002578,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1612,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0002578,
+      "upstream_inference_prompt_cost": 0.0002018,
+      "upstream_inference_completions_cost": 5.6e-05
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "The two exception identifiers are CUSTOM-0-7c2 (custom-made goods) and DEFECT-0-9b4 (quality defects).",
+    "citations": [
+      {
+        "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+        "quote": "custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4"
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"The two exception identifiers are CUSTOM-0-7c2 (custom-made goods) and DEFECT-0-9b4 (quality defects).\",\"citations\":[{\"handle\":\"ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518\",\"quote\":\"custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "low",
+  "source_case_id": "post-doc-000",
+  "block": 0
+}

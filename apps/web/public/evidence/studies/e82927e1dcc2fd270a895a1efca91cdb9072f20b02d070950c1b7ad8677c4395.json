@@ -1,0 +1,74 @@
+{
+  "id": "low-post-memory-0-0",
+  "kind": "reader",
+  "seconds": 4.242227167007513,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1738,
+    "completion_tokens": 357,
+    "total_tokens": 2095,
+    "cost": 0.000395675,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1735,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000395675,
+      "upstream_inference_prompt_cost": 0.000217175,
+      "upstream_inference_completions_cost": 0.0001785
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 48,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "As of August 22, Mara’s retry policy is RETRY-0-907, superseding RETRY-0-108. The delivery mode is not established by the supplied evidence: Mara said to keep the August 15 delivery choice, but that choice is not specified here. REPLAY-0-632 was validated on August 8 as a recovery procedure, not established as an approved delivery-mode change.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "The retry policy is now RETRY-0-907, superseding RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "Keep the August 15 delivery choice."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "For the next outage, use the recovery procedure validated on August 8."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"As of August 22, Mara’s retry policy is RETRY-0-907, superseding RETRY-0-108. The delivery mode is not established by the supplied evidence: Mara said to keep the August 15 delivery choice, but that choice is not specified here. REPLAY-0-632 was validated on August 8 as a recovery procedure, not established as an approved delivery-mode change.\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"The retry policy is now RETRY-0-907, superseding RETRY-0-108.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"Keep the August 15 delivery choice.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"For the next outage, use the recovery procedure validated on August 8.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "low",
+  "source_case_id": "post-memory-0-0",
+  "block": 0
+}

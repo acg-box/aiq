@@ -1,7 +1,6 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type APIResponse, type Page } from '@playwright/test';
 
-import { classifyAggregateCostText } from './production-acceptance-helpers.ts';
 import { expectProductionPageEvidence } from './production-page-evidence.ts';
 
 /* oxlint-disable no-await-in-loop -- Production requests stay serial to bound load and preserve before/after evidence order. */
@@ -48,176 +47,54 @@ async function expectNoHorizontalOverflow(page: Page, path: string) {
 }
 
 async function getActualRunPath(page: Page): Promise<string> {
-  await expectPublishedNonSyntheticPage(page, '/runs');
-  const path = await page
-    .getByRole('region', { name: 'Public run history' })
-    .getByRole('link', { name: 'Inspect run' })
-    .first()
+  await expectPublishedNonSyntheticPage(page, '/benchmarks/intelligence');
+  const table = page.getByRole('region', { name: 'Core leaderboard' });
+  const evidence = table.getByRole('button', { name: /^Evidence for / }).first();
+  const desktop = await evidence.isVisible();
+  if (desktop) await evidence.click();
+  else
+    await table
+      .getByRole('button', { name: /^Details for / })
+      .first()
+      .click();
+  const content = desktop ? page.getByRole('dialog') : table.locator('.row-expanded-content');
+  await content.getByText('Run identity & original JSON', { exact: true }).click();
+  const path = await content
+    .getByRole('link', { name: 'Open complete run evidence', exact: true })
     .getAttribute('href');
-  expect(path).toMatch(/^\/runs\/[A-Za-z0-9._:-]+$/);
-  return path ?? '';
+  const target = new URL(path ?? '', page.url());
+  expect(target.pathname).toMatch(/^\/benchmarks\/intelligence\/records\/run_[a-f0-9]{64}$/);
+  expect(target.searchParams.get('return')).toBe('/benchmarks/intelligence');
+  if (desktop) await page.keyboard.press('Escape');
+  else await content.getByRole('button', { name: /^Close details for / }).click();
+  return target.pathname;
 }
 
 async function expectMobileMatrixLegibility(page: Page) {
-  const workbench = page.getByRole('region', { name: 'Compare configurations' }).first();
-  await expect(page.getByRole('button', { name: /Highest AIQ/ }).first()).toBeVisible();
-  await expect(page.getByRole('button', { name: /Lowest task-time total/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Lowest API-equivalent cost/ })).toBeVisible();
-  await expect(page.getByRole('button', { name: /Trade-off shortlist/ })).toBeVisible();
-  await expect(workbench).toBeVisible();
-  await expect(workbench.getByRole('status')).toContainText('17/17 visible');
-  const firstSummaryBox = await workbench
-    .getByRole('button', { name: /Highest AIQ/ })
-    .boundingBox();
-  expect(firstSummaryBox).not.toBeNull();
-  expect(firstSummaryBox?.y ?? 844).toBeLessThan(844);
-  const atAGlance = workbench.getByRole('region', { name: 'At a glance' });
-  await expect(atAGlance).toBeVisible();
-  await expect(atAGlance.getByRole('button')).toHaveCount(17);
-  const firstConfiguration = atAGlance.getByRole('button').first();
-  await firstConfiguration.click();
-  await expect(page).toHaveURL(/compareFocus=/);
-  await expect(firstConfiguration).toHaveAttribute('aria-pressed', 'true');
-  await page.getByRole('link', { name: 'AIQ home' }).click();
-  await expect(page).toHaveURL(/\/$/);
-  await expect(
-    page.getByRole('region', { name: 'At a glance' }).locator("button[aria-pressed='true']"),
-  ).toHaveCount(0);
-  const chart = workbench.getByRole('region', { name: 'AIQ against summed task time' });
-  await chart.scrollIntoViewIfNeeded();
-  await expect(chart.locator('svg')).toBeVisible();
-  await expect(chart.locator('canvas')).toHaveCount(0);
-  await expect(
-    workbench
-      .getByRole('region', { name: 'Filtered configuration comparison table' })
-      .locator('tbody tr'),
-  ).toHaveCount(17);
-  await workbench.getByRole('button', { name: 'Decision map', exact: true }).click();
-  await expect(
-    workbench.getByRole('region', {
-      name: 'Three-metric decision map for AIQ, time, and API-equivalent cost',
-    }),
-  ).toBeVisible();
+  const table = page.getByRole('region', { name: 'Core leaderboard' });
+  await expect(table.locator('tbody tr')).toHaveCount(17);
+  expect((await table.locator('table').boundingBox())?.width).toBeLessThanOrEqual(390);
+  await expect(table.locator('tbody tr').first().locator('.core-ability')).toBeVisible();
 }
 
 async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
-  await expectPublishedNonSyntheticPage(page, '/compare');
-  await page.waitForLoadState('networkidle');
-  const workbench = page.getByRole('region', { name: 'Compare configurations' });
-  const status = workbench.locator('.workbench-filter-toggle small');
-  const comparison = workbench.getByRole('region', {
-    name: 'Filtered configuration comparison table',
-  });
-  await expect(status).toContainText('17/17 visible');
-  const rows = comparison.locator('tbody tr');
-  await expect(rows).toHaveCount(17);
-  const snapshots = await rows.allInnerTexts();
-  const costShapes = await Promise.all(
-    (await rows.all()).map(async (row) =>
-      classifyAggregateCostText(await row.getByRole('cell').nth(2).innerText()),
-    ),
-  );
-  expect(costShapes.some((shape) => shape === 'exact' || shape === 'range')).toBe(true);
-
-  await workbench.getByRole('button', { name: /Filters & configurations/ }).click();
-  await workbench.getByRole('button', { name: 'Exact cost only', exact: true }).click();
-  await expect(page).toHaveURL(/compareCost=estimated/);
-  const measuredRows = comparison.locator('tbody tr');
-  const measuredCount = await measuredRows.count();
-  expect(measuredCount).toBe(costShapes.filter((shape) => shape === 'exact').length);
-  await expect(status).toContainText(`${measuredCount}/17 visible`);
-  for (const row of await measuredRows.all()) {
-    expect(classifyAggregateCostText(await row.getByRole('cell').nth(2).innerText())).toBe('exact');
-  }
-
-  await workbench.getByRole('button', { name: 'Reset filters', exact: true }).click();
-  await expect(status).toContainText('17/17 visible');
-  const aiqHeading = comparison.getByRole('columnheader', { name: /AIQ/ });
-  const timeHeading = comparison.getByRole('columnheader', { name: /Task time/ });
-  await expect(aiqHeading).toHaveAttribute('aria-sort', 'descending');
-  const ascendingFirstId = await comparison
-    .locator('tbody tr')
-    .first()
-    .getAttribute('data-configuration-id');
-  await timeHeading.getByRole('button').click();
-  await expect(page).toHaveURL(/compareOrder=time/);
-  await expect(timeHeading).toHaveAttribute('aria-sort', 'ascending');
-  const fastestId = await comparison
-    .locator('tbody tr')
-    .first()
-    .getAttribute('data-configuration-id');
-  await timeHeading.getByRole('button').click();
-  await expect(page).toHaveURL(/compareDirection=desc/);
-  await expect(timeHeading).toHaveAttribute('aria-sort', 'descending');
-  const slowestId = await comparison
-    .locator('tbody tr')
-    .first()
-    .getAttribute('data-configuration-id');
-  expect(fastestId).not.toBe(slowestId);
-  expect(ascendingFirstId).not.toBeNull();
-
-  const timePlot = workbench.getByRole('region', { name: 'AIQ against summed task time' });
-  const firstPoint = timePlot
-    .locator('.echarts-host path[fill="var(--data-lime)"][stroke="var(--panel)"]')
-    .first();
-  await firstPoint.click({ force: true });
-  await expect.poll(() => new URL(page.url()).searchParams.get('compareFocus')).not.toBeNull();
-  await expect(comparison.locator('tbody tr[data-focused="true"]')).toHaveCount(1);
-  await timePlot
-    .locator('.echarts-host path[fill="var(--data-lime)"][stroke="var(--panel)"]')
-    .first()
-    .click({ force: true });
-  await expect.poll(() => new URL(page.url()).searchParams.get('compareFocus')).toBeNull();
-
-  const firstId = await comparison
-    .locator('tbody tr')
-    .first()
-    .getAttribute('data-configuration-id');
-  expect(firstId).toMatch(/^(?:sol|terra|luna)-/);
-  await page.goto(`/compare?compareConfigs=${encodeURIComponent(firstId ?? '')}#compare`);
-  const singleWorkbench = page.getByRole('region', { name: 'Compare configurations' });
-  await expect(singleWorkbench.locator('.workbench-filter-toggle small')).toContainText(
-    '1/17 visible',
-  );
-  await page.reload({ waitUntil: 'networkidle' });
-  await expect(
-    page
-      .getByRole('region', { name: 'Compare configurations' })
-      .locator('.workbench-filter-toggle small'),
-  ).toContainText('1/17 visible');
-
-  await page.goto('/compare');
-  const restoredWorkbench = page.getByRole('region', { name: 'Compare configurations' });
-  await restoredWorkbench.getByRole('button', { name: /Filters & configurations/ }).click();
-  await expect(
-    restoredWorkbench.getByRole('group', { name: 'Configuration selection' }),
-  ).toBeVisible();
-  await expect(
-    restoredWorkbench.getByRole('group', { name: 'Sol configurations' }).getByRole('button'),
-  ).toHaveText(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
-  await expect(
-    restoredWorkbench.getByRole('group', { name: 'Terra configurations' }).getByRole('button'),
-  ).toHaveText(['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
-  await expect(
-    restoredWorkbench.getByRole('group', { name: 'Luna configurations' }).getByRole('button'),
-  ).toHaveText(['low', 'medium', 'high', 'xhigh', 'max']);
-  await restoredWorkbench.getByRole('button', { name: 'Clear', exact: true }).click();
-  await expect(restoredWorkbench.locator('.workbench-filter-toggle small')).toContainText(
-    '0/17 visible',
-  );
-  await expect(
-    restoredWorkbench.getByText('No configuration matches these filters.'),
-  ).toBeVisible();
-  await restoredWorkbench.getByRole('button', { name: 'Show all 17', exact: true }).click();
-  await expect(restoredWorkbench.locator('.workbench-filter-toggle small')).toContainText(
-    '17/17 visible',
-  );
+  await expectPublishedNonSyntheticPage(page, '/benchmarks/intelligence');
+  const comparison = page.getByRole('region', { name: 'Core leaderboard' });
+  await expect(comparison.locator('tbody tr')).toHaveCount(17);
+  const snapshots = await comparison.locator('tbody tr').allInnerTexts();
+  await page.locator('.comparison-filters > summary').click();
+  await page.getByLabel('Model', { exact: true }).selectOption('Sol');
+  await expect(comparison.locator('tbody tr')).toHaveCount(6);
+  await page.getByLabel('Effort', { exact: true }).selectOption('medium');
+  await expect(comparison.locator('tbody tr')).toHaveCount(1);
+  await page.reload();
+  await expect(comparison.locator('tbody tr')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Clear filters', exact: true }).click();
+  await expect(comparison.locator('tbody tr')).toHaveCount(17);
   return snapshots;
 }
 
-test('production compare exposes filterable evidence-dependent aggregate cost', async ({
-  page,
-}) => {
+test('production leaderboard filters preserve a complete publication', async ({ page }) => {
   await compareEvidenceSnapshot(page);
 });
 
@@ -264,31 +141,30 @@ test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }
   await page.setViewportSize({ width: 390, height: 844 });
   const runPath = await getActualRunPath(page);
   if (testInfo.config.metadata.productionEvidenceVariants === true) {
-    expect(runPath).toMatch(/^\/runs\/run_[0-9a-f]{64}$/);
+    expect(runPath).toMatch(/^\/benchmarks\/intelligence\/records\/run_[0-9a-f]{64}$/);
   }
   const paths = [
     '/',
-    '/compare',
-    '/runs',
+    '/benchmarks/intelligence',
+    '/benchmarks/intelligence?view=records',
     runPath,
-    '/trends?range=all',
-    '/calibrations',
-    '/method',
-    '/radar',
+    '/benchmarks/intelligence?view=records&range=all',
+    '/benchmarks/intelligence/calibrations',
+    '/benchmarks/intelligence?view=method',
+    '/benchmarks/intelligence/verification',
+    '/benchmarks/memory',
   ];
 
   for (const path of paths) {
     await expectPublishedNonSyntheticPage(page, path);
-    if (path === '/') await expectMobileMatrixLegibility(page);
+    if (path === '/benchmarks/intelligence') await expectMobileMatrixLegibility(page);
     await expectNoHorizontalOverflow(page, path);
   }
 });
 
-test('overview, compare, and one actual run detail have no selective Axe violations', async ({
-  page,
-}) => {
+test('board views and one actual run detail have no selective Axe violations', async ({ page }) => {
   const runPath = await getActualRunPath(page);
-  for (const path of ['/', '/compare', runPath]) {
+  for (const path of ['/', '/benchmarks/intelligence', runPath]) {
     await expectPublishedNonSyntheticPage(page, path);
     expect((await new AxeBuilder({ page }).analyze()).violations, path).toEqual([]);
   }

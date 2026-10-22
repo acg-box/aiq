@@ -1,8 +1,95 @@
 # AIQ
 
-AIQ records fixed-fixture AI and agent benchmark results. The repository
-contains a Rust runner, a Rust verifier, a Next.js application, the public AIQ
-Core catalog, and one declarative PostgreSQL schema.
+AIQ helps people understand, choose, and use AI through readable studies and
+inspectable evidence. Start with a practical question. Compare the recorded
+outcomes, time, and cost. Open a case to see the saved input, answer, and sources.
+
+The product supports multiple benchmark studies. Each study owns its task
+definition, measures, evaluator, and interpretation. There is no global IQ or
+aggregate score across studies. Shared records describe studies, subjects and
+configurations, runs, results, and evidence attachments.
+
+## Product contract
+
+- `/` shows source-backed result previews and comparison conditions for peer boards.
+  AI Intelligence compares model and reasoning configurations, Harness Rank compares
+  model–harness combinations, and Mem compares stages of the memory workflow.
+  `/benchmarks/intelligence` owns AI
+  Intelligence and its practical-task benchmark. `/benchmarks/harness`
+  owns Harness Rank, starting with Codex, Hermes, and Pi. Its first protocol is
+  design only, with no measured results or benchmark execution. `/benchmarks/memory` owns Mem,
+  including native system, reader, and writer comparisons. Board metadata and
+  study membership live in `apps/web/src/benchmarks/boards.ts`.
+- A board groups tests of one capability. Each test owns its leaderboard or
+  comparison, versions, conditions, cases, and evidence. Future capability
+  boards join at the same level; there is no combined score across boards.
+- Each board homepage is a data comparison workspace. Compact metadata states
+  the scope, compared subjects, samples, and evidence size. Results tables come
+  before interpretation. All boards use Data, Leaderboard, Method, and Records views. Mem
+  groups comparisons by readers, systems, and writers, with studies as source context.
+  Core places ability interval marks in the ranked rows. Records contains attempts,
+  cases, calibration, verification, and time-series registers. Data contains source
+  files, definitions, and downloads.
+  Refine comparison contains optional study, workload, model, and dataset controls.
+  Counts come from
+  the retained catalogue. Core reads publication state at request time and
+  keeps task design counts separate from verified Official measurements.
+- Shared top navigation lists capability boards at the same level. Study and version
+  selection stays inside a board. Navigation measures the available width, keeps the current
+  board visible, and puts peers that do not fit in More. The same rule applies to narrow
+  screens and a larger board catalogue. Compact screens keep only the brand, current board,
+  and More in one row; all other boards and theme controls move into More. Desktop peers
+  continue to fit the available width. More lists board destinations first, followed by a
+  compact utility group with labelled theme choices and workspace links.
+  Board views stay available while reading long methods and source lists. Detail
+  returns keep comparison filters; calibration details return to their register
+  before the board, including the selected register page.
+  The old Core and study entrypoints are removed. Run and case details live
+  below their owning board; there is no compatibility navigation. `/benchmarks/memory/records/[studyId]/[caseId]` shows original outputs,
+  returned context, citations, and review notes.
+- Peer lists use alphabetical display-name order across the site. Score ranks,
+  dates, and semantic levels keep their defined order. The default board view
+  remains Leaderboard.
+- The first studies cover native knowledge and memory systems, Luna versus
+  DeepSeek Flash 1017, and Luna reasoning effort. They preserve historical
+  research, including failures and mixed or negative findings. Reader, writer,
+  native retrieval, and native Agent measurements stay separate.
+- Show exact versions, conditions, denominators, dates, source links, and cost
+  scope. Actual settled spend and estimates use distinct labels. Missing or
+  infrastructure-invalid data is unavailable, never a semantic zero. Literal
+  quote binding is not semantic entailment.
+- The retained catalogue serves 193 indexed source records backed by 189 distinct,
+  content-addressed original files with
+  checked-in study snapshots. Pages work without a database, Core publication,
+  or a paid model call. No private archive, credential, or provider receipt is
+  public. See [study ownership and import](benchmarks/studies/README.md).
+- AIQ Core is a benchmark definition within `/benchmarks/intelligence`. Its fixed matrix, Rasch measurement,
+  Calibration, and Official publication rules belong to that benchmark only.
+  Independent studies do not become Official, Calibration, or ranking evidence.
+- Keep the existing Next.js, ECharts, Vercel, Supabase, and Rust foundations.
+  `databases/` remains the sole SQL owner. A database or Storage transition needs
+  its own reviewed change; this import does not initialize or reset production.
+  The runner retains accounting, checkpoints, signed packages, and independent
+  evaluator replay. A new study adapter is required only for an actual new run.
+- New paid runs, distributed task dispatch, and community onboarding are outside
+  this import. Do not revive old scheduled observation or release work.
+
+### Study checks
+
+```sh
+cargo make check-studies
+cargo make typecheck
+cargo make lint-typescript
+cargo make test-typescript
+cargo make test-browser-studies
+```
+
+`check-studies` checks original file hashes, evidence references, and displayed
+reader totals against retained case reviews. The browser task builds once and
+checks discovery, reader/writer selection, a failed citation, and a downloaded
+original on desktop and mobile Chromium. It makes no model call.
+
+## AIQ Core deployment and publication boundary
 
 AIQ production is live at [aiq.wiki](https://aiq.wiki). The personal Vercel
 scope `acgbox` hosts project `aiq`. The personal Supabase organization `ACG Box`
@@ -11,7 +98,7 @@ hosts project `aiq` on PostgreSQL 17.6 with reference
 `aiq.wiki` zone owns DNS handoff. Production uses the private Storage buckets
 `aiq-submission-packages` and `aiq-runner-artifacts`.
 
-The only supported production tuple is AIQ Core `1.1.0`, task scorer `1.0.6`, aggregate
+The only supported AIQ Core production tuple is AIQ Core `1.1.0`, task scorer `1.0.6`, aggregate
 scoring `1.0.8`, and measurement `2.0.0`. Do not publish, preserve online,
 migrate, or display a legacy tuple as production evidence. Production must
 remain without an Official AIQ 2.0 publication until a fresh complete,
@@ -19,6 +106,13 @@ non-synthetic, signed 17-by-72 calibration is replayed under policy v2 to
 establish the fixed item bank and admission v3, and
 a separate fresh 17-by-72 Official package passes native verifier replay and
 all release gates.
+
+The AI Intelligence board can read the existing Supabase `1.0.7` results as an
+explicitly labeled historical dataset. It keeps their GPT-5.6 model names,
+benchmark version, scoring version, completion date, and public run records.
+Historical rows are excluded from the current `1.1.0` leaderboard and do not
+establish a current production publication. The archive reader makes only
+public, read-only requests; it does not migrate or republish database records.
 
 Formal calibration and Official model and evaluator work has no
 benchmark-enforced wall-time, step, tool-call, aggregate-evaluator, or
@@ -33,7 +127,7 @@ All earlier bounded or deadline-bearing runs remain immutable failed release
 evidence. They cannot be relabeled, composed with selected reruns, or published
 under the active tuple.
 
-## Product contract
+## AIQ Core contract
 
 - Repository source targets AIQ Core `1.1.0`, with 72 private controlled tasks
   in ten domains. Task evaluation stays at `1.0.6`; aggregate scoring is
@@ -325,7 +419,7 @@ identity and fresh release evidence.
 Private tasks, expected outputs, controlled evaluators, signing keys, Codex
 authentication, and production data must stay outside Git.
 
-## Local synthetic demonstration
+## Local development
 
 Use Node.js `24.15.0` or newer, the npm `11.17.0` version pinned by `package.json`,
 the stable Rust toolchain selected by `rust-toolchain.toml`, and the locked
@@ -338,9 +432,25 @@ cargo run -p aiq-runner -- demo
 npm run dev
 ```
 
-Open `http://localhost:3000`. When both public Supabase variables are absent in
-development, the site uses checked-in synthetic data. Production fails closed
-when its configuration is incomplete.
+Open `http://localhost:3000` for the board directory. Use the shared top navigation
+to open AI Intelligence or Mem. When both public Supabase variables are absent in development,
+Core uses checked-in synthetic data. Core production fails closed when its
+configuration is incomplete. Research snapshots do not use that configuration.
+
+For a local preview with the existing project's real public results, inject the
+publishable key into the web process:
+
+```sh
+/usr/local/bin/acg secret --env prod --path /aiq \
+  --inject NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY -- \
+  env NEXT_PUBLIC_SUPABASE_URL=https://xxnszykaeapolqdnhalx.supabase.co \
+  npm run dev --workspace @aiq/web -- --hostname 127.0.0.1 --port 4173
+```
+
+Set the public URL inside the consumer command, after `acg secret --`.
+The secret CLI filters inherited environment variables. The preview reads public
+results; it does not require a database password or a model run. The current
+Core publication and historical results keep separate dataset labels.
 
 Useful runner commands:
 
@@ -375,6 +485,18 @@ runtime checks, deployment, and publication remain separate contracts. Do not ru
 component tasks again in the same validation pass. Coverage instrumentation is
 opt in with `cargo make test-typescript-coverage`.
 
+After a website deployment, run the read-only workspace acceptance:
+
+```sh
+AIQ_PRODUCTION_ORIGIN=https://aiq.wiki cargo make smoke-workspace-web
+```
+
+This checks all board views, About, calibration records, and verification records
+on desktop and mobile. It also checks retired routes, task definition downloads,
+every retained case, and every original file hash. It does not start an evaluation
+or change database records. The separate Official-matrix acceptance still requires its
+signed publication identity; website acceptance does not satisfy that gate.
+
 The two subscription smokes are ignored and opt in. Each consumes one Codex
 subscription attempt.
 
@@ -387,13 +509,30 @@ The public-task smoke validates a fixed example. The controlled-task smoke needs
 operator-supplied private task, evaluator, corpus, runtime, workspace, and Codex
 inputs. Neither smoke creates a benchmark result.
 
+## Database connection
+
+Production PostgreSQL uses Session Pooler on port `5432`. The complete URL is
+stored at Personal Infisical `prod:/aiq/SUPABASE_DATABASE_URL` and injected as
+`AIQ_DATABASE_URL`. Use the read-only connection check for the existing database:
+
+```sh
+/usr/local/bin/acg secret --env prod --path /aiq \
+  --inject AIQ_DATABASE_URL=SUPABASE_DATABASE_URL -- \
+  cargo make check-database-connection
+```
+
+The check reports client TLS and a read-only transaction. It preserves existing
+AI Intelligence results. See [database connection settings](databases/README.md#production-connection)
+for the exact target and credential handling. Direct-host troubleshooting is
+closed. Do not use initialization, reset, or synthetic data to check a connection.
+
 ## Database initialization
 
 `databases/schema.sql` is the sole desired database state.
 `databases/init.ts` is the only production initialization entry point. There is
 no migration chain. It opens
 one PostgreSQL connection and applies the schema plus public reference data in
-one transaction. It accepts the direct host or exact port-5432 session pooler
+one transaction. It accepts only the exact port-5432 Session Pooler
 identity for personal Supabase project `xxnszykaeapolqdnhalx`. An explicit
 test/development override accepts
 only a loopback target and cannot apply in production. It rejects a database
@@ -403,8 +542,9 @@ target project only after its AIQ namespace is empty. If AIQ residue exists, the
 operator must
 remove only `aiq_private`, the two AIQ gateway roles, and the exact AIQ-owned
 public views and RPC overloads. Preserve all Supabase-managed and non-AIQ
-objects. This cleanup is a deployment prerequisite, not a migration or
-compatibility path. The schema creates the `aiq-submission-packages` and
+objects. This cleanup applies only to an explicitly authorized greenfield
+database initialization. Website deployments use the existing database and do
+not run this cleanup or initializer. The schema creates the `aiq-submission-packages` and
 `aiq-runner-artifacts` Storage buckets as private. The preflight rejects either
 existing bucket identity. Do not create the buckets in a separate operator step.
 The preflight enumerates the 13 canonical public view names and all public RPC
@@ -412,9 +552,10 @@ names from the desired state. It rejects every overload of those exact RPC
 names without matching unrelated public objects.
 
 ```sh
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' \
 AIQ_PRODUCTION_REFERENCE=/controlled/production-reference.json \
-cargo make init-database
+/usr/local/bin/acg secret --env prod --path /aiq \
+  --inject AIQ_DATABASE_URL=SUPABASE_DATABASE_URL -- \
+  cargo make init-database
 ```
 
 For an empty AIQ namespace, the production reference must contain the real
@@ -433,8 +574,13 @@ Use one initialized disposable database for production-shape smoke and
 calibration publication checks:
 
 ```sh
+NODE_ENV=test AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true \
+AIQ_DATABASE_URL='<disposable-loopback-postgres-url>' \
 cargo make smoke-database
-AIQ_DATABASE_URL='<direct-or-session-pooler-url>' cargo make smoke-calibration-database
+
+NODE_ENV=test AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET=true \
+AIQ_DATABASE_URL='<disposable-loopback-postgres-url>' \
+cargo make smoke-calibration-database
 ```
 
 Use a separate fresh PostgreSQL 17 database for the deterministic synthetic

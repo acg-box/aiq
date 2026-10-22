@@ -1,0 +1,56 @@
+{
+  "id": "low-writer-orbit-conditional",
+  "kind": "writer",
+  "seconds": 6.617410207982175,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 648,
+    "completion_tokens": 383,
+    "total_tokens": 1031,
+    "cost": 0.0002563,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0002563,
+      "upstream_inference_prompt_cost": 6.48e-05,
+      "upstream_inference_completions_cost": 0.0001915
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 157,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "semantic": [],
+    "episodic": [
+      {
+        "content": "On 2026-10-20, Mira was identified as the owner of Project ORBIT-NIGHTLY.",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      },
+      {
+        "content": "As of 2026-10-20, no production rollout of Project ORBIT-NIGHTLY was authorized.",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      }
+    ],
+    "procedural": [
+      {
+        "content": "For Project ORBIT-NIGHTLY, retain delivery mode POLL-71 in staging until audit AUDIT-62 passes. Only after it passes, use delivery mode STREAM-93 in staging. Do not roll out to production without authorization.",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      }
+    ]
+  },
+  "raw_content": "{\n  \"semantic\": [],\n  \"episodic\": [\n    {\n      \"content\": \"On 2026-10-20, Mira was identified as the owner of Project ORBIT-NIGHTLY.\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"As of 2026-10-20, no production rollout of Project ORBIT-NIGHTLY was authorized.\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"procedural\": [\n    {\n      \"content\": \"For Project ORBIT-NIGHTLY, retain delivery mode POLL-71 in staging until audit AUDIT-62 passes. Only after it passes, use delivery mode STREAM-93 in staging. Do not roll out to production without authorization.\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}",
+  "effort": "low",
+  "source_case_id": "writer-orbit-conditional",
+  "block": 1
+}

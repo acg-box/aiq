@@ -1,0 +1,47 @@
+{
+  "id": "post-doc-001",
+  "kind": "reader",
+  "seconds": 2.790763541997876,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1801,
+    "completion_tokens": 169,
+    "total_tokens": 1970,
+    "cost": 0.0007431,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0007431,
+      "upstream_inference_prompt_cost": 0.0005403,
+      "upstream_inference_completions_cost": 0.0002028
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 73,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "The approved queue for the South region of Kestrel-0 is SOUTH-0-3e5, with a 12-hour response window.",
+    "citations": [
+      {
+        "handle": "ragflow:document:241d72c8862b4827a65a709370314f5b:chunk:a5b47ef1e40ed473",
+        "quote": "South | 12 hours | SOUTH-0-3e5"
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"The approved queue for the South region of Kestrel-0 is SOUTH-0-3e5, with a 12-hour response window.\",\"citations\":[{\"handle\":\"ragflow:document:241d72c8862b4827a65a709370314f5b:chunk:a5b47ef1e40ed473\",\"quote\":\"South | 12 hours | SOUTH-0-3e5\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:241d72c8862b4827a65a709370314f5b:chunk:a5b47ef1e40ed473",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

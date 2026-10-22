@@ -1,0 +1,59 @@
+{
+  "product": "ragflow",
+  "scope": "formal",
+  "phase": "pre",
+  "case_id": "memory-0-2",
+  "question": "What delivery mode was still approved for Mara's Larch project immediately after the August 8 meeting?",
+  "answer": {
+    "answer": "Batch delivery using BATCH-0-741 remained approved for Mara’s Larch project. REPLAY-0-632 was tested, but no delivery-mode change was approved at the August 8 meeting.",
+    "citations": [
+      {
+        "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+        "quote": "They chose BATCH-0-741 for batch delivery."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      }
+    ]
+  },
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    }
+  ],
+  "retrieval_seconds": 0.131,
+  "total_seconds": 3.616,
+  "context_bytes": 4499,
+  "context_entries": 11,
+  "dropped": [],
+  "usage": {
+    "prompt_tokens": 1768,
+    "completion_tokens": 234,
+    "total_tokens": 2002,
+    "cost": 0.000337925,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1765,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000337925,
+      "upstream_inference_prompt_cost": 0.000220925,
+      "upstream_inference_completions_cost": 0.000117
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 53,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "finish_reason": "stop"
+}

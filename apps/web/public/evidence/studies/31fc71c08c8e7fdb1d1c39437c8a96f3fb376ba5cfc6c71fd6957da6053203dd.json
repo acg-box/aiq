@@ -1,0 +1,71 @@
+{
+  "id": "post-combined-001",
+  "kind": "reader",
+  "seconds": 11.588905500015244,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1967,
+    "completion_tokens": 2384,
+    "total_tokens": 4351,
+    "cost": 0.0034509,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0034509,
+      "upstream_inference_prompt_cost": 0.0005901,
+      "upstream_inference_completions_cost": 0.0028608
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 1772,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "For Mara's Larch project, the only approved delivery mode established in the evidence is BATCH-0-741, chosen on 2026-08-01. The 2026-08-08 test of REPLAY-0-632 did not approve a delivery-mode change. The 2026-08-22 record says to keep the \"August 15 delivery choice,\" but the supplied evidence does not identify what that Larch choice was, so it does not establish a different approved delivery mode. As of 2026-08-22, the retry policy is RETRY-0-907, superseding RETRY-0-108. In the signed Kestrel-0 return policy, the two exception identifiers are CUSTOM-0-7c2 for custom-made goods and DEFECT-0-9b4 for quality defects; DRAFT-0-2d1 is only an unauthorized draft.",
+    "citations": [
+      {
+        "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+        "quote": "2026-08-01. Mara started project Larch. They chose BATCH-0-741 for batch delivery. The initial retry policy was RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+        "quote": "2026-08-08. Mara reported that BATCH-0-741 lost updates during GATE-0-519 outages. The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108. No budget owner has been appointed."
+      },
+      {
+        "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+        "quote": "Kestrel-0 signed return policy. Ordinary goods have a 7-day return window. The complete exception list consists of two clauses: custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4 and are exempt from the 7-day limit. Both exception identifiers must be retained when listing all exceptions. The old informal draft listed only DRAFT-0-2d1 and has no authority."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"For Mara's Larch project, the only approved delivery mode established in the evidence is BATCH-0-741, chosen on 2026-08-01. The 2026-08-08 test of REPLAY-0-632 did not approve a delivery-mode change. The 2026-08-22 record says to keep the \\\"August 15 delivery choice,\\\" but the supplied evidence does not identify what that Larch choice was, so it does not establish a different approved delivery mode. As of 2026-08-22, the retry policy is RETRY-0-907, superseding RETRY-0-108. In the signed Kestrel-0 return policy, the two exception identifiers are CUSTOM-0-7c2 for custom-made goods and DEFECT-0-9b4 for quality defects; DRAFT-0-2d1 is only an unauthorized draft.\",\"citations\":[{\"handle\":\"ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199\",\"quote\":\"2026-08-01. Mara started project Larch. They chose BATCH-0-741 for batch delivery. The initial retry policy was RETRY-0-108.\"},{\"handle\":\"ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a\",\"quote\":\"2026-08-08. Mara reported that BATCH-0-741 lost updates during GATE-0-519 outages. The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108. No budget owner has been appointed.\"},{\"handle\":\"ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518\",\"quote\":\"Kestrel-0 signed return policy. Ordinary goods have a 7-day return window. The complete exception list consists of two clauses: custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4 and are exempt from the 7-day limit. Both exception identifiers must be retained when listing all exceptions. The old informal draft listed only DRAFT-0-2d1 and has no authority.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true
+}

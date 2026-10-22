@@ -1,0 +1,84 @@
+{
+  "reader": {
+    "completed": 13,
+    "mean_seconds": 5.051107259395604,
+    "median_seconds": 3.630155333026778,
+    "cost_usd": 0.019369416,
+    "prompt_tokens": 23238,
+    "completion_tokens": 10708,
+    "reasoning_tokens": 7293,
+    "cached_input_tokens": 1536,
+    "direct_json_valid": 13,
+    "all_finish_stop": true,
+    "retained_luna": {
+      "cases": 13,
+      "mean_seconds": 4.535596403857478,
+      "median_seconds": 4.111645708035212,
+      "cost_usd": 0.004811275,
+      "completion_tokens": 4034,
+      "reasoning_tokens": 1198
+    },
+    "bound_quotes": {
+      "pass": 35,
+      "total": 35
+    },
+    "paired_deepseek": {
+      "cases": 13,
+      "mean_seconds": 5.051107259395604,
+      "median_seconds": 3.630155333026778,
+      "cost_usd": 0.019369416,
+      "completion_tokens": 10708
+    },
+    "semantic_complete": 11,
+    "complete_with_bound_quotes": 11
+  },
+  "writer": {
+    "completed": 4,
+    "mean_seconds": 5.048506906474358,
+    "median_seconds": 5.149410791957052,
+    "cost_usd": 0.004415808,
+    "prompt_tokens": 2760,
+    "completion_tokens": 3178,
+    "reasoning_tokens": 1650,
+    "cached_input_tokens": 768,
+    "direct_json_valid": 3,
+    "all_finish_stop": true,
+    "retained_luna": {
+      "cases": 3,
+      "mean_seconds": 8.31196952770309,
+      "median_seconds": 7.428970458044205,
+      "cost_usd": 0.0011421,
+      "completion_tokens": 1892,
+      "reasoning_tokens": 1290
+    },
+    "paired_deepseek": {
+      "cases": 3,
+      "mean_seconds": 4.568765444642243,
+      "median_seconds": 5.076066124951467,
+      "cost_usd": 0.002913504,
+      "completion_tokens": 2006
+    }
+  },
+  "calibration": {
+    "completed": 1,
+    "mean_seconds": 3.1737136670271866,
+    "median_seconds": 3.1737136670271866,
+    "cost_usd": 0.0006699,
+    "prompt_tokens": 677,
+    "completion_tokens": 389,
+    "reasoning_tokens": 214,
+    "cached_input_tokens": 0,
+    "direct_json_valid": 1,
+    "all_finish_stop": true
+  },
+  "budget": {
+    "new_paid_usd": 0.02445512400000016,
+    "cumulative_paid_usd": 2.049098675,
+    "conservative_exposure_usd": 2.121279374999998,
+    "ceiling_usd": 10,
+    "new_request_states": {
+      "completed": 18
+    },
+    "requests": 18
+  }
+}

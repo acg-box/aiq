@@ -1,0 +1,58 @@
+{
+  "id": "medium-pre-memory-1-2",
+  "kind": "reader",
+  "seconds": 3.946008208033163,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1769,
+    "completion_tokens": 242,
+    "total_tokens": 2011,
+    "cost": 0.00034205,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1766,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.00034205,
+      "upstream_inference_prompt_cost": 0.00022105,
+      "upstream_inference_completions_cost": 0.000121
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 40,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "Batch delivery using BATCH-1-741 remained approved immediately after the August 8 meeting; REPLAY-1-632 was tested, but no delivery-mode change was approved.",
+    "citations": [
+      {
+        "handle": "ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e",
+        "quote": "They chose BATCH-1-741 for batch delivery."
+      },
+      {
+        "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+        "quote": "The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting."
+      }
+    ]
+  },
+  "raw_content": "{\n  \"answer\": \"Batch delivery using BATCH-1-741 remained approved immediately after the August 8 meeting; REPLAY-1-632 was tested, but no delivery-mode change was approved.\",\n  \"citations\": [\n    {\n      \"handle\": \"ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e\",\n      \"quote\": \"They chose BATCH-1-741 for batch delivery.\"\n    },\n    {\n      \"handle\": \"ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657\",\n      \"quote\": \"The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\"\n    }\n  ]\n}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "medium",
+  "source_case_id": "pre-memory-1-2",
+  "block": 2
+}

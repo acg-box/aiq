@@ -1,0 +1,117 @@
+{
+  "question": "What delivery mode was still approved for Mara's Larch project immediately after the August 8 meeting?",
+  "evidence": [
+    {
+      "handle": "ragflow:document:cee08b5026d842b99343b723cd632d4a:chunk:695228c0e924112a",
+      "kind": "knowledge_chunk",
+      "text": "2026-08-08. Mara reported that BATCH-0-741 lost updates during GATE-0-519 outages. The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting.",
+      "metadata": {
+        "document_id": "cee08b5026d842b99343b723cd632d4a"
+      }
+    },
+    {
+      "handle": "ragflow:document:1b443da3a73f43e7afe42cd3d8d3142d:chunk:009b12b0d27c8199",
+      "kind": "knowledge_chunk",
+      "text": "2026-08-01. Mara started project Larch. They chose BATCH-0-741 for batch delivery. The initial retry policy was RETRY-0-108.",
+      "metadata": {
+        "document_id": "1b443da3a73f43e7afe42cd3d8d3142d"
+      }
+    },
+    {
+      "handle": "ragflow:document:94e70fdbaa2744e188d47078c65371eb:chunk:3699c4c2ca3ec657",
+      "kind": "knowledge_chunk",
+      "text": "2026-08-08. Ivo reported that BATCH-1-741 lost updates during GATE-1-519 outages. The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting.",
+      "metadata": {
+        "document_id": "94e70fdbaa2744e188d47078c65371eb"
+      }
+    },
+    {
+      "handle": "ragflow:document:96a9bf446d8b48ada33eb033c4c8b9f1:chunk:564ca4cb2e88ef8e",
+      "kind": "knowledge_chunk",
+      "text": "2026-08-01. Ivo started project Cobalt. They chose BATCH-1-741 for batch delivery. The initial retry policy was RETRY-1-108.",
+      "metadata": {
+        "document_id": "96a9bf446d8b48ada33eb033c4c8b9f1"
+      }
+    },
+    {
+      "handle": "ragflow:document:241d72c8862b4827a65a709370314f5b:chunk:a5b47ef1e40ed473",
+      "kind": "knowledge_chunk",
+      "text": "Kestrel-0 approved regional routing table. Columns are region, response window, queue.\nNorth | 4 hours | NORTH-0-6a8\nSouth | 12 hours | SOUTH-0-3e5\nRows are independent; do not mix a region with another row.",
+      "metadata": {
+        "document_id": "241d72c8862b4827a65a709370314f5b"
+      }
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:9",
+      "kind": "memory_raw",
+      "text": "User Input: 2026-08-08. Ivo reported that BATCH-1-741 lost updates during GATE-1-519 outages. The team tested REPLAY-1-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\nAgent Response: Recorded.",
+      "metadata": {
+        "source_id": 0,
+        "session_id": "formal-m_f7ff6441bdd98e53",
+        "valid_at": "2026-10-20 14:53:38",
+        "invalid_at": null,
+        "status": true
+      }
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:7",
+      "kind": "memory_raw",
+      "text": "User Input: 2026-08-01. Ivo started project Cobalt. They chose BATCH-1-741 for batch delivery. The initial retry policy was RETRY-1-108.\nAgent Response: Recorded.",
+      "metadata": {
+        "source_id": 0,
+        "session_id": "formal-m_eb85892166acc8ef",
+        "valid_at": "2026-10-20 14:53:27",
+        "invalid_at": null,
+        "status": true
+      }
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:5",
+      "kind": "memory_raw",
+      "text": "User Input: 2026-08-08. Mara reported that BATCH-0-741 lost updates during GATE-0-519 outages. The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at this meeting.\nAgent Response: Recorded.",
+      "metadata": {
+        "source_id": 0,
+        "session_id": "formal-m_d7a9d1f22107f233",
+        "valid_at": "2026-10-20 14:53:20",
+        "invalid_at": null,
+        "status": true
+      }
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:3",
+      "kind": "memory_raw",
+      "text": "User Input: 2026-08-01. Mara started project Larch. They chose BATCH-0-741 for batch delivery. The initial retry policy was RETRY-0-108.\nAgent Response: Recorded.",
+      "metadata": {
+        "source_id": 0,
+        "session_id": "formal-m_c558d1541c4b9d0f",
+        "valid_at": "2026-10-20 14:53:12",
+        "invalid_at": null,
+        "status": true
+      }
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:6",
+      "kind": "memory_episodic",
+      "text": "On 2026-08-08, Mara reported that BATCH-0-741 lost updates during GATE-0-519 outages. The team tested REPLAY-0-632, which restored the missing updates. No change of delivery mode was approved at the meeting.",
+      "metadata": {
+        "source_id": 5,
+        "session_id": "formal-m_d7a9d1f22107f233",
+        "valid_at": "2026-08-08 00:00:00",
+        "invalid_at": null,
+        "status": true
+      }
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:10",
+      "kind": "memory_episodic",
+      "text": "On 2026-08-08, Ivo reported that BATCH-1-741 lost updates during GATE-1-519 outages. The team tested REPLAY-1-632, which restored the missing updates. The meeting did not approve a change of delivery mode.",
+      "metadata": {
+        "source_id": 9,
+        "session_id": "formal-m_f7ff6441bdd98e53",
+        "valid_at": "2026-08-08 00:00:00",
+        "invalid_at": null,
+        "status": true
+      }
+    }
+  ]
+}

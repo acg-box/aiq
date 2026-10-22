@@ -1,0 +1,66 @@
+{
+  "id": "none-post-combined-001",
+  "kind": "reader",
+  "seconds": 5.150874625018332,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1894,
+    "completion_tokens": 336,
+    "total_tokens": 2230,
+    "cost": 0.000404675,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1891,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.000404675,
+      "upstream_inference_prompt_cost": 0.000236675,
+      "upstream_inference_completions_cost": 0.000168
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 0,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "As of August 22, Mara’s Larch delivery mode remains the August 15 choice, but the evidence does not specify what that mode is. The retry policy is RETRY-0-907, superseding RETRY-0-108. The signed Kestrel-0 return-policy exceptions are CUSTOM-0-7c2 (custom-made goods) and DEFECT-0-9b4 (quality defects, exempt from the 7-day limit).",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+        "quote": "2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16",
+        "quote": "The delivery choice made on August 15, 2026, is to remain in force."
+      },
+      {
+        "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+        "quote": "The complete exception list consists of two clauses: custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4 and are exempt from the 7-day limit."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"As of August 22, Mara’s Larch delivery mode remains the August 15 choice, but the evidence does not specify what that mode is. The retry policy is RETRY-0-907, superseding RETRY-0-108. The signed Kestrel-0 return-policy exceptions are CUSTOM-0-7c2 (custom-made goods) and DEFECT-0-9b4 (quality defects, exempt from the 7-day limit).\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14\",\"quote\":\"2026-08-22. Mara reviewed Larch. Keep the August 15 delivery choice. For the next outage, use the recovery procedure validated on August 8. The retry policy is now RETRY-0-907, superseding RETRY-0-108.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16\",\"quote\":\"The delivery choice made on August 15, 2026, is to remain in force.\"},{\"handle\":\"ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518\",\"quote\":\"The complete exception list consists of two clauses: custom-made goods use exception CUSTOM-0-7c2; quality defects use exception DEFECT-0-9b4 and are exempt from the 7-day limit.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:14",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:16",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:document:a9805b71009a4735b572000fb490b80b:chunk:2c0e7dd0a7264518",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "none",
+  "source_case_id": "post-combined-001",
+  "block": 0
+}

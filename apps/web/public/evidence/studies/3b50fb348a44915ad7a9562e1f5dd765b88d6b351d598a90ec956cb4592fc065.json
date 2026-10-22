@@ -1,0 +1,98 @@
+[
+  {
+    "effort": "medium",
+    "case_id": "writer-larch-decision",
+    "json_valid": true,
+    "memory_atoms": 1,
+    "condition_scope_owner_preserved": null,
+    "review": "The decision, subject, and August 15 date are retained. Medium and low omit the explicit recovery-retention instruction; none retains it in a separate atom but without Larch and with capture time."
+  },
+  {
+    "effort": "medium",
+    "case_id": "writer-larch-retention",
+    "json_valid": true,
+    "memory_atoms": 5,
+    "condition_scope_owner_preserved": null,
+    "review": "All profiles retain the aggregate review, retry, recovery, and unappointed-owner facts, but several independent atoms omit Larch and use capture or referenced-event time. Low additionally dates the keep-delivery instruction to October 20 instead of the August 22 event."
+  },
+  {
+    "effort": "medium",
+    "case_id": "writer-orbit-conditional",
+    "json_valid": true,
+    "memory_atoms": 2,
+    "condition_scope_owner_preserved": true,
+    "review": "All profiles preserve the audit prerequisite, POLL-71 before approval, STREAM-93 after approval, staging boundary, Mira, and lack of production authority. Capture time is still used as a precise effective time."
+  },
+  {
+    "effort": "medium",
+    "case_id": "writer-orbit-conditional-zh",
+    "json_valid": true,
+    "memory_atoms": 1,
+    "condition_scope_owner_preserved": true,
+    "review": "All profiles preserve the audit prerequisite, POLL-71 before approval, STREAM-93 after approval, staging boundary, Mira, and lack of production authority. Capture time is still used as a precise effective time."
+  },
+  {
+    "effort": "low",
+    "case_id": "writer-larch-decision",
+    "json_valid": true,
+    "memory_atoms": 1,
+    "condition_scope_owner_preserved": null,
+    "review": "The decision, subject, and August 15 date are retained. Medium and low omit the explicit recovery-retention instruction; none retains it in a separate atom but without Larch and with capture time."
+  },
+  {
+    "effort": "low",
+    "case_id": "writer-larch-retention",
+    "json_valid": true,
+    "memory_atoms": 5,
+    "condition_scope_owner_preserved": null,
+    "review": "All profiles retain the aggregate review, retry, recovery, and unappointed-owner facts, but several independent atoms omit Larch and use capture or referenced-event time. Low additionally dates the keep-delivery instruction to October 20 instead of the August 22 event."
+  },
+  {
+    "effort": "low",
+    "case_id": "writer-orbit-conditional",
+    "json_valid": true,
+    "memory_atoms": 3,
+    "condition_scope_owner_preserved": true,
+    "review": "All profiles preserve the audit prerequisite, POLL-71 before approval, STREAM-93 after approval, staging boundary, Mira, and lack of production authority. Capture time is still used as a precise effective time."
+  },
+  {
+    "effort": "low",
+    "case_id": "writer-orbit-conditional-zh",
+    "json_valid": true,
+    "memory_atoms": 2,
+    "condition_scope_owner_preserved": true,
+    "review": "All profiles preserve the audit prerequisite, POLL-71 before approval, STREAM-93 after approval, staging boundary, Mira, and lack of production authority. Capture time is still used as a precise effective time."
+  },
+  {
+    "effort": "none",
+    "case_id": "writer-larch-decision",
+    "json_valid": true,
+    "memory_atoms": 3,
+    "condition_scope_owner_preserved": null,
+    "review": "The decision, subject, and August 15 date are retained. Medium and low omit the explicit recovery-retention instruction; none retains it in a separate atom but without Larch and with capture time."
+  },
+  {
+    "effort": "none",
+    "case_id": "writer-larch-retention",
+    "json_valid": true,
+    "memory_atoms": 5,
+    "condition_scope_owner_preserved": null,
+    "review": "All profiles retain the aggregate review, retry, recovery, and unappointed-owner facts, but several independent atoms omit Larch and use capture or referenced-event time. Low additionally dates the keep-delivery instruction to October 20 instead of the August 22 event."
+  },
+  {
+    "effort": "none",
+    "case_id": "writer-orbit-conditional",
+    "json_valid": true,
+    "memory_atoms": 2,
+    "condition_scope_owner_preserved": true,
+    "review": "All profiles preserve the audit prerequisite, POLL-71 before approval, STREAM-93 after approval, staging boundary, Mira, and lack of production authority. Capture time is still used as a precise effective time."
+  },
+  {
+    "effort": "none",
+    "case_id": "writer-orbit-conditional-zh",
+    "json_valid": true,
+    "memory_atoms": 3,
+    "condition_scope_owner_preserved": true,
+    "review": "All profiles preserve the audit prerequisite, POLL-71 before approval, STREAM-93 after approval, staging boundary, Mira, and lack of production authority. Capture time is still used as a precise effective time."
+  }
+]

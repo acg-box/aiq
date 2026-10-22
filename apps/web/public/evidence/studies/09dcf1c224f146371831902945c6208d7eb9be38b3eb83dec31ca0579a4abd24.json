@@ -1,0 +1,66 @@
+{
+  "id": "medium-post-memory-1-0",
+  "kind": "reader",
+  "seconds": 4.3711543749668635,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 1739,
+    "completion_tokens": 322,
+    "total_tokens": 2061,
+    "cost": 0.0003783,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "cache_write_tokens": 1736,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.0003783,
+      "upstream_inference_prompt_cost": 0.0002173,
+      "upstream_inference_completions_cost": 0.000161
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 105,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "answer": "As of August 22, Ivo’s Cobalt project uses STREAM-1-286 delivery, and its retry policy is RETRY-1-907.",
+    "citations": [
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+        "quote": "2026-08-15. Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "quote": "The retry policy is now RETRY-1-907, superseding RETRY-1-108."
+      },
+      {
+        "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+        "quote": "2026-08-22. Ivo reviewed Cobalt. Keep the August 15 delivery choice."
+      }
+    ]
+  },
+  "raw_content": "{\"answer\":\"As of August 22, Ivo’s Cobalt project uses STREAM-1-286 delivery, and its retry policy is RETRY-1-907.\",\"citations\":[{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20\",\"quote\":\"2026-08-15. Ivo approved switching Cobalt from BATCH-1-741 to STREAM-1-286.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23\",\"quote\":\"The retry policy is now RETRY-1-907, superseding RETRY-1-108.\"},{\"handle\":\"ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23\",\"quote\":\"2026-08-22. Ivo reviewed Cobalt. Keep the August 15 delivery choice.\"}]}",
+  "citation_checks": [
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:20",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+      "quote_bound": true
+    },
+    {
+      "handle": "ragflow:memory:e84293c0415341ab8c66a5e1e2b20dc6:23",
+      "quote_bound": true
+    }
+  ],
+  "all_quotes_bound": true,
+  "effort": "medium",
+  "source_case_id": "post-memory-1-0",
+  "block": 1
+}

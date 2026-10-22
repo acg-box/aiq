@@ -1,0 +1,74 @@
+{
+  "id": "writer-orbit-conditional-zh",
+  "kind": "writer",
+  "seconds": 6.487731291970704,
+  "finish_reason": "stop",
+  "usage": {
+    "prompt_tokens": 696,
+    "completion_tokens": 1172,
+    "total_tokens": 1868,
+    "cost": 0.001502304,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 384,
+      "cache_write_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.001502304,
+      "upstream_inference_prompt_cost": 9.5904e-05,
+      "upstream_inference_completions_cost": 0.0014064
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 704,
+      "image_tokens": 0,
+      "audio_tokens": 0
+    }
+  },
+  "json_valid": true,
+  "parsed": {
+    "semantic": [
+      {
+        "content": "ORBIT-NIGHTLY 项目仅在审计 AUDIT-62 通过后，才批准在预发布环境采用交付模式 STREAM-93。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      },
+      {
+        "content": "在审计 AUDIT-62 通过前，ORBIT-NIGHTLY 项目的预发布环境必须继续使用 POLL-71。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      },
+      {
+        "content": "Mira 仍是 ORBIT-NIGHTLY 项目的负责人。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      },
+      {
+        "content": "ORBIT-NIGHTLY 项目未授权任何生产环境发布。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      }
+    ],
+    "episodic": [
+      {
+        "content": "2026-10-20 14:56:36，用户记录了 ORBIT-NIGHTLY 项目的交付模式与审计条件，并确认 Mira 仍为负责人、未授权生产环境发布。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      }
+    ],
+    "procedural": [
+      {
+        "content": "对于 ORBIT-NIGHTLY 预发布环境：在 AUDIT-62 审计通过前，继续使用 POLL-71；仅在 AUDIT-62 通过后，才可切换为 STREAM-93。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      },
+      {
+        "content": "ORBIT-NIGHTLY 项目在获得明确授权前，不得进行任何生产环境发布。",
+        "valid_at": "2026-10-20T14:56:36",
+        "invalid_at": ""
+      }
+    ]
+  },
+  "raw_content": "{\n  \"semantic\": [\n    {\n      \"content\": \"ORBIT-NIGHTLY 项目仅在审计 AUDIT-62 通过后，才批准在预发布环境采用交付模式 STREAM-93。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"在审计 AUDIT-62 通过前，ORBIT-NIGHTLY 项目的预发布环境必须继续使用 POLL-71。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"Mira 仍是 ORBIT-NIGHTLY 项目的负责人。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"ORBIT-NIGHTLY 项目未授权任何生产环境发布。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"episodic\": [\n    {\n      \"content\": \"2026-10-20 14:56:36，用户记录了 ORBIT-NIGHTLY 项目的交付模式与审计条件，并确认 Mira 仍为负责人、未授权生产环境发布。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    }\n  ],\n  \"procedural\": [\n    {\n      \"content\": \"对于 ORBIT-NIGHTLY 预发布环境：在 AUDIT-62 审计通过前，继续使用 POLL-71；仅在 AUDIT-62 通过后，才可切换为 STREAM-93。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    },\n    {\n      \"content\": \"ORBIT-NIGHTLY 项目在获得明确授权前，不得进行任何生产环境发布。\",\n      \"valid_at\": \"2026-10-20T14:56:36\",\n      \"invalid_at\": \"\"\n    }\n  ]\n}"
+}
