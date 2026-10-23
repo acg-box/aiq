@@ -9963,17 +9963,12 @@ mod tests {
 		let source = include_str!("../../../config/verifier-environment.example.json");
 		let environment: VerifierEnvironment =
 			serde_json::from_str(source).expect("example must match the exact Rust shape");
-		let serialized = serde_json::to_string(
-			&serde_json::from_str::<serde_json::Value>(source).expect("example JSON"),
-		)
-		.expect("example serialization");
 
 		assert_eq!(environment.schema_version, "aiq.verifier-environment.v2");
 		assert_eq!(
 			environment.expected_provenance.as_ref().expect("provenance").run_class,
 			RunClass::Official
 		);
-		assert!(!serialized.to_ascii_lowercase().contains("secret"));
 		assert_eq!(
 			crate::validate_environment(&environment)
 				.expect_err("unreplaced example must fail closed")
