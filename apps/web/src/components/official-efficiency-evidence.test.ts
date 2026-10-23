@@ -12,7 +12,7 @@ import type {
   PublicModelEfficiency,
   ScoredLeaderboardEntry,
 } from '../data/types.ts';
-import { resolveExactEfficiencyRowsWithAvailability } from './scientific-evidence-resolution.ts';
+import { resolveExactEfficiencyRowsWithAvailability } from '../data/scientific-evidence.ts';
 
 registerHooks({
   load(url, context, nextLoad) {

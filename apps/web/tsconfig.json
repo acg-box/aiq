@@ -12,14 +12,11 @@
     "verbatimModuleSyntax": true
   },
   "include": [
-    "next-env.d.ts",
+    "*.ts",
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    "playwright-production-identity.ts",
-    "playwright.workspace-production.ts",
-    "browser-tests-workspace-production/**/*.ts",
-    "playwright-web-server.ts",
-    "run-browser-tests.ts",
+    "browser-tests*/**/*.ts",
+    "browser-tests*/**/*.mjs",
     "src/**/*.ts",
     "src/**/*.tsx"
   ],

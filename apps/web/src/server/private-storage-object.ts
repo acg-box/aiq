@@ -1,3 +1,4 @@
+import { readBoundedBody } from './bounded-body.ts';
 import { createHash } from 'node:crypto';
 
 import { createBoundedSupabaseFetch } from './supabase-http.ts';
@@ -98,31 +99,17 @@ async function readExactBody(response: Response, expectedBytes: number): Promise
     }
   }
 
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytesRead = 0;
   try {
-    for (;;) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- A response stream must be read in order.
-      const item = await reader.read();
-      if (item.done) break;
-      bytesRead += item.value.byteLength;
-      if (bytesRead > expectedBytes) {
-        // oxlint-disable-next-line eslint/no-await-in-loop -- Cancel the active sequential reader.
-        await reader.cancel();
-        throw new PrivateStorageObjectCommitmentError();
-      }
-      chunks.push(item.value);
+    const bytes = await readBoundedBody(response.body, expectedBytes);
+    if (!bytes || bytes.byteLength !== expectedBytes) {
+      throw new PrivateStorageObjectCommitmentError();
     }
+    return bytes;
   } catch (error) {
     if (error instanceof PrivateStorageObjectCommitmentError) throw error;
     // oxlint-disable-next-line eslint/preserve-caught-error -- Do not retain upstream details.
     throw new Error('Private Storage object could not be read.');
   }
-  if (bytesRead !== expectedBytes) {
-    throw new PrivateStorageObjectCommitmentError();
-  }
-  return new Uint8Array(Buffer.concat(chunks, bytesRead));
 }
 
 async function signedObjectUrl({

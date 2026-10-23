@@ -1,18 +1,78 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { describe, it } from 'node:test';
 
 import {
   createBoundedSupabaseFetch,
-  createBoundedSupabaseFetchForTests,
   createSupabaseApiKeyFetch,
-  createVerificationSupabaseFetch,
+  createSupabaseRoleClientOptions,
   VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
 } from './supabase-http.ts';
 
 void describe('bounded Supabase HTTP fetch', () => {
+  void it('keeps its deadline active while a response body is still arriving', async (t) => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.write('{"ok":');
+      const completion = setTimeout(() => response.end('true}'), 400);
+      response.on('close', () => clearTimeout(completion));
+    });
+    t.after(() => {
+      server.closeAllConnections();
+      server.close();
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const boundedFetch = createBoundedSupabaseFetch(undefined, {
+      fetchImplementation: globalThis.fetch,
+      timeoutMs: 150,
+    });
+    const response = await boundedFetch(`http://127.0.0.1:${address.port}/slow-body`);
+    assert.equal(response.status, 200);
+    await assert.rejects(
+      response.json(),
+      (error: unknown) =>
+        error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name),
+    );
+  });
+
+  void it('preserves Request headers while removing an API-key bearer fallback', async () => {
+    let observedHeaders = new Headers();
+    const fetchWithApiKey = createSupabaseApiKeyFetch(
+      'publishable-test-key',
+      undefined,
+      async (_input, init) => {
+        observedHeaders = new Headers(init?.headers);
+        return new Response();
+      },
+    );
+    const input = new Request('https://example.supabase.co/rest/v1/public_runs', {
+      headers: {
+        authorization: 'Bearer publishable-test-key',
+        'x-client-info': 'request-client',
+      },
+    });
+    await fetchWithApiKey(input);
+    assert.equal(observedHeaders.get('x-client-info'), 'request-client');
+    assert.equal(observedHeaders.get('apikey'), 'publishable-test-key');
+    assert.equal(observedHeaders.has('authorization'), false);
+    assert.equal(input.headers.get('authorization'), 'Bearer publishable-test-key');
+  });
+
   void it('keeps ordinary calls at 10 seconds and verification RPCs at 120 seconds', async (t) => {
     assert.equal(VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS, 120_000);
     t.mock.timers.enable({ apis: ['setTimeout'] });
+    t.mock.method(AbortSignal, 'timeout', (delay: number) => {
+      const controller = new AbortController();
+      setTimeout(
+        () => controller.abort(new DOMException('Deadline reached', 'TimeoutError')),
+        delay,
+      );
+      return controller.signal;
+    });
     let observedSignal: AbortSignal | undefined;
     t.mock.method(globalThis, 'fetch', async (_input: RequestInfo | URL, init?: RequestInit) => {
       observedSignal = init?.signal ?? undefined;
@@ -27,9 +87,11 @@ void describe('bounded Supabase HTTP fetch', () => {
     t.mock.timers.tick(1);
     await assert.rejects(ordinaryRequest, { name: 'SupabaseHttpTimeoutError' });
 
-    const verificationRequest = createVerificationSupabaseFetch()(
-      'https://example.supabase.co/rest/v1/rpc/aiq_stage_verifier_result',
-    );
+    const verificationRequest = createSupabaseRoleClientOptions(
+      () => 'test-role',
+      undefined,
+      VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
+    ).global.fetch('https://example.supabase.co/rest/v1/rpc/aiq_stage_verifier_result');
     t.mock.timers.tick(119_999);
     assert.equal(observedSignal?.aborted, false);
     t.mock.timers.tick(1);
@@ -49,7 +111,7 @@ void describe('bounded Supabase HTTP fetch', () => {
 
   void it('returns a successful response unchanged', async () => {
     const expected = Response.json({ ok: true }, { status: 201 });
-    const boundedFetch = createBoundedSupabaseFetchForTests({
+    const boundedFetch = createBoundedSupabaseFetch(undefined, {
       fetchImplementation: async () => expected,
       timeoutMs: 100,
     });
@@ -62,7 +124,7 @@ void describe('bounded Supabase HTTP fetch', () => {
 
   void it('rejects a hanging request at its deadline and aborts the fetch signal', async () => {
     let observedSignal: AbortSignal | undefined;
-    const boundedFetch = createBoundedSupabaseFetchForTests({
+    const boundedFetch = createBoundedSupabaseFetch(undefined, {
       fetchImplementation: async (_input, init) => {
         observedSignal = init?.signal ?? undefined;
         return new Promise<Response>(() => {});
@@ -84,12 +146,11 @@ void describe('bounded Supabase HTTP fetch', () => {
     const controller = new AbortController();
     const reason = new Error('caller stopped the request');
     let observedSignal: AbortSignal | undefined;
-    const boundedFetch = createBoundedSupabaseFetchForTests({
+    const boundedFetch = createBoundedSupabaseFetch(controller.signal, {
       fetchImplementation: async (_input, init) => {
         observedSignal = init?.signal ?? undefined;
         return new Promise<Response>(() => {});
       },
-      parentSignal: controller.signal,
       timeoutMs: 1_000,
     });
     const request = boundedFetch('https://example.supabase.co/rest/v1/public_runs');
@@ -106,7 +167,7 @@ void describe('bounded Supabase HTTP fetch', () => {
     const reason = new Error('request was already cancelled');
     let called = false;
     controller.abort(reason);
-    const boundedFetch = createBoundedSupabaseFetchForTests({
+    const boundedFetch = createBoundedSupabaseFetch(undefined, {
       fetchImplementation: async () => {
         called = true;
         return new Response();
@@ -126,7 +187,7 @@ void describe('bounded Supabase HTTP fetch', () => {
   void it('does not expose request URLs, authorization values, or upstream errors', async () => {
     const secret = 'custom_role_token_do_not_disclose';
     const url = `https://example.supabase.co/rest/v1/private?token=${secret}`;
-    const boundedFetch = createBoundedSupabaseFetchForTests({
+    const boundedFetch = createBoundedSupabaseFetch(undefined, {
       fetchImplementation: async () => {
         throw new Error(`network failure for ${url} with Bearer ${secret}`);
       },

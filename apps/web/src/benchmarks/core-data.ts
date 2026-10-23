@@ -1,13 +1,12 @@
 import { AIQ_CORE_SCORING_VERSION, AIQ_CORE_TASK_SET_VERSION } from '../aiq-core-contract.ts';
-import { resolveExactScientificEvidence } from '../components/scientific-evidence-resolution.ts';
+import { resolveExactScientificEvidence } from '../data/scientific-evidence.ts';
 import { readPublicData } from '../data/read-state.ts';
-import { createAiqRepository, SupabaseAiqRepository } from '../data/repository.ts';
+import { createAiqRepository } from '../data/repository.ts';
 import type { CoreResultDataset } from '../data/core-results.ts';
-import { isScoredLeaderboardEntry } from '../data/types.ts';
+import { isScoredLeaderboardEntry, type AiqRepository } from '../data/types.ts';
 
 // Shared server read for the board and homepage; keep the same publication identity checks.
-export async function readCoreResults() {
-  const repository = createAiqRepository();
+export async function readCoreResults(repository: AiqRepository = createAiqRepository()) {
   const results = await readPublicData(
     repository,
     () => repository.listLeaderboard(),
@@ -16,7 +15,7 @@ export async function readCoreResults() {
     (rows) => rows.map((row) => row.synthetic),
   );
   const archive =
-    repository instanceof SupabaseAiqRepository && results.state !== 'unavailable'
+    results.state !== 'unavailable'
       ? await readPublicData(
           repository,
           () => repository.listHistoricalCoreResults(results.data),

@@ -1,0 +1,15 @@
+export const PUBLIC_VIEW_NAMES = {
+  modelMatrix: 'public_model_matrix',
+  leaderboard: 'public_leaderboard',
+  runs: 'public_runs',
+  runResults: 'public_run_results',
+  nodes: 'public_nodes',
+  distributedRadar: 'public_distributed_radar',
+  scoringVersions: 'public_scoring_versions',
+  taskCoverage: 'public_task_coverage',
+  calibrationRuns: 'public_calibration_runs',
+  calibrationResults: 'public_calibration_results',
+  calibrationScores: 'public_calibration_scores',
+  modelEfficiency: 'public_model_efficiency',
+  speedObservations: 'public_speed_observations',
+} as const;

@@ -4,12 +4,11 @@ import { describe, it } from 'node:test';
 
 import {
   createReadinessHandler,
-  inspectProductionConfiguration,
   probeProductionDependencies,
-  REQUIRED_RPC_CONTRACT,
-  PUBLIC_VIEW_SELECTS,
   type ProductionDependencyProbe,
 } from './readiness.ts';
+import { inspectProductionConfiguration } from './production-configuration.ts';
+import { REQUIRED_RPC_CONTRACT, PUBLIC_VIEW_SELECTS } from './readiness-contract.ts';
 import { AIQ_CORE_EVALUATOR_IDENTITY, AIQ_CORE_TASK_SET_IDENTITY } from '../aiq-core-contract.ts';
 import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 

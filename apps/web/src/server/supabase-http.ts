@@ -1,18 +1,6 @@
 const DEFAULT_SUPABASE_HTTP_TIMEOUT_MS = 10_000;
 export const VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS = 120_000;
 
-interface BoundedFetchOptions {
-  fetchImplementation: typeof fetch;
-  parentSignal: AbortSignal | undefined;
-  timeoutMs: number;
-}
-
-export interface BoundedFetchTestOptions {
-  fetchImplementation: typeof fetch;
-  parentSignal?: AbortSignal;
-  timeoutMs: number;
-}
-
 class SupabaseHttpTimeoutError extends Error {
   constructor() {
     super('Supabase request timed out.');
@@ -52,23 +40,23 @@ function signalRejection(signal: AbortSignal): {
   };
 }
 
-function createBoundedFetch({
-  fetchImplementation,
-  parentSignal,
-  timeoutMs,
-}: BoundedFetchOptions): typeof fetch {
+export function createBoundedSupabaseFetch(
+  parentSignal?: AbortSignal,
+  {
+    fetchImplementation = globalThis.fetch,
+    timeoutMs = DEFAULT_SUPABASE_HTTP_TIMEOUT_MS,
+  }: { fetchImplementation?: typeof fetch; timeoutMs?: number } = {},
+): typeof fetch {
   return async (input, init) => {
     const suppliedSignal = inputSignal(input, init);
     if (parentSignal?.aborted) throw parentSignal.reason;
     if (suppliedSignal?.aborted) throw suppliedSignal.reason;
-    const deadline = new AbortController();
-    const timeoutError = new SupabaseHttpTimeoutError();
-    const signals = [parentSignal, suppliedSignal, deadline.signal].filter(
+    // The native deadline remains active through response-body consumption.
+    const deadline = AbortSignal.timeout(timeoutMs);
+    const signals = [parentSignal, suppliedSignal, deadline].filter(
       (signal): signal is AbortSignal => signal !== undefined,
     );
     const signal = AbortSignal.any(signals);
-    const timeout = setTimeout(() => deadline.abort(timeoutError), timeoutMs);
-    timeout.unref?.();
     const rejection = signalRejection(signal);
 
     try {
@@ -79,29 +67,28 @@ function createBoundedFetch({
     } catch {
       if (parentSignal?.aborted) throw parentSignal.reason;
       if (suppliedSignal?.aborted) throw suppliedSignal.reason;
-      if (deadline.signal.aborted) throw timeoutError;
+      if (deadline.aborted) throw new SupabaseHttpTimeoutError();
       throw new SupabaseHttpRequestError();
     } finally {
-      clearTimeout(timeout);
       rejection.removeListener();
     }
   };
 }
 
-export function createBoundedSupabaseFetch(parentSignal?: AbortSignal): typeof fetch {
-  return createBoundedFetch({
-    fetchImplementation: globalThis.fetch,
-    parentSignal,
-    timeoutMs: DEFAULT_SUPABASE_HTTP_TIMEOUT_MS,
-  });
-}
-
-export function createVerificationSupabaseFetch(parentSignal?: AbortSignal): typeof fetch {
-  return createBoundedFetch({
-    fetchImplementation: globalThis.fetch,
-    parentSignal,
-    timeoutMs: VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
-  });
+export function createSupabaseRoleClientOptions(
+  issueRoleToken: () => string,
+  parentSignal?: AbortSignal,
+  timeoutMs = DEFAULT_SUPABASE_HTTP_TIMEOUT_MS,
+) {
+  return {
+    accessToken: async () => issueRoleToken(),
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+    global: { fetch: createBoundedSupabaseFetch(parentSignal, { timeoutMs }) },
+  };
 }
 
 export function createSupabaseApiKeyFetch(
@@ -110,25 +97,15 @@ export function createSupabaseApiKeyFetch(
   fetchImplementation: typeof fetch = globalThis.fetch,
   timeoutMs = DEFAULT_SUPABASE_HTTP_TIMEOUT_MS,
 ): typeof fetch {
-  const boundedFetch = createBoundedFetch({
-    fetchImplementation,
-    parentSignal,
-    timeoutMs,
-  });
+  const boundedFetch = createBoundedSupabaseFetch(parentSignal, { fetchImplementation, timeoutMs });
   return async (input, init) => {
-    const headers = new Headers(init?.headers);
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
     if (headers.get('authorization') === `Bearer ${apiKey}`) {
       headers.delete('authorization');
     }
     if (!headers.has('apikey')) headers.set('apikey', apiKey);
     return boundedFetch(input, { ...init, headers });
   };
-}
-
-export function createBoundedSupabaseFetchForTests({
-  fetchImplementation,
-  parentSignal,
-  timeoutMs,
-}: BoundedFetchTestOptions): typeof fetch {
-  return createBoundedFetch({ fetchImplementation, parentSignal, timeoutMs });
 }

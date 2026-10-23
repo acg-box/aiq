@@ -2,7 +2,6 @@
 
 #[cfg(not(target_os = "macos"))]
 use std::env;
-use std::fs::Permissions;
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt as _, PermissionsExt as _};
 use std::process;
@@ -19,6 +18,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{Error, Result, ResultContext, config, schedule::ScheduledSlot};
+use crate::managed_fs;
 
 /// Release manifest schema identifier.
 pub const RELEASE_MANIFEST_SCHEMA: &str = "aiq.observation-release.v1";
@@ -112,7 +112,7 @@ impl Release {
 
 		verify_digest(&manifest_path, expected_manifest_sha256, "release manifest")?;
 
-		let manifest: ReleaseManifest = read_json(&manifest_path, "release manifest")?;
+		let manifest: ReleaseManifest = managed_fs::read_json(&manifest_path, "release manifest")?;
 
 		manifest.validate()?;
 
@@ -154,15 +154,15 @@ impl Release {
 	///
 	/// Returns an error when the source bundle cannot produce the pinned clean source tree.
 	pub fn prepare_source(&self, state_root: &Path, slot: &ScheduledSlot) -> Result<PathBuf> {
-		private_directory(state_root)?;
+		managed_fs::private_directory(state_root)?;
 
 		let scratch_root = state_root.join("scratch");
 
-		private_directory(&scratch_root)?;
+		managed_fs::private_directory(&scratch_root)?;
 
 		let attempt_root = self.attempt_root(state_root, slot);
 
-		private_directory(&attempt_root)?;
+		managed_fs::private_directory(&attempt_root)?;
 
 		let source = attempt_root.join("source");
 
@@ -411,7 +411,7 @@ pub fn install_release(
 		.parent()
 		.ok_or_else(|| Error::new("release destination must have a parent directory"))?;
 
-	private_directory(parent)?;
+	managed_fs::private_directory(parent)?;
 
 	let parent = canonical_directory(parent, "release destination parent")?;
 
@@ -425,7 +425,7 @@ pub fn install_release(
 		return Err(Error::new(format!("staging release already exists: {}", staging.display())));
 	}
 
-	private_directory(&staging)?;
+	managed_fs::private_directory(&staging)?;
 
 	let result = install_release_in_staging(
 		&source_release,
@@ -464,7 +464,7 @@ fn install_release_in_staging(
 	release_id: &str,
 ) -> Result<InstalledRelease> {
 	let build_receipt: BuildReceipt =
-		read_json(&source_release.join(BUILD_RECEIPT_PATH), "final build receipt")?;
+		managed_fs::read_json(&source_release.join(BUILD_RECEIPT_PATH), "final build receipt")?;
 
 	validate_build_receipt_shape(&build_receipt)?;
 	verify_repository_source(source_repository, &build_receipt)?;
@@ -560,7 +560,7 @@ fn verify_manifest_files(
 		verify_digest(&path, digest, label)?;
 	}
 
-	let schedule: ReleaseSchedule = read_json(&paths.schedule, "release schedule")?;
+	let schedule: ReleaseSchedule = managed_fs::read_json(&paths.schedule, "release schedule")?;
 
 	schedule.validate()?;
 
@@ -586,7 +586,7 @@ fn verify_manifest_files(
 }
 
 fn verify_build_receipt(manifest: &ReleaseManifest, path: &Path) -> Result<()> {
-	let receipt: BuildReceipt = read_json(path, "final build receipt")?;
+	let receipt: BuildReceipt = managed_fs::read_json(path, "final build receipt")?;
 
 	validate_build_receipt_shape(&receipt)?;
 
@@ -663,7 +663,7 @@ fn verify_repository_source(repository: &Path, receipt: &BuildReceipt) -> Result
 fn create_source_bundle(repository: &Path, commit: &str, destination: &Path) -> Result<()> {
 	let parent = destination.parent().ok_or_else(|| Error::new("source bundle has no parent"))?;
 
-	private_directory(parent)?;
+	managed_fs::private_directory(parent)?;
 
 	let sequence = NEXT_SOURCE_BUNDLE.fetch_add(1, Ordering::Relaxed);
 	let bare =
@@ -673,7 +673,7 @@ fn create_source_bundle(repository: &Path, commit: &str, destination: &Path) -> 
 		remove_scoped_tree(&bare, &private_temporary_root())?;
 	}
 
-	private_directory(&private_temporary_root())?;
+	managed_fs::private_directory(&private_temporary_root())?;
 
 	let result = (|| {
 		run_git([
@@ -821,15 +821,6 @@ fn digest_file(path: &Path) -> Result<String> {
 	Ok(format!("sha256:{}", hex::encode(hasher.finalize())))
 }
 
-fn read_json<T>(path: &Path, label: &str) -> Result<T>
-where
-	T: for<'de> Deserialize<'de>,
-{
-	let bytes = fs::read(path).context(format!("cannot read {label} {}", path.display()))?;
-
-	serde_json::from_slice(&bytes).context(format!("invalid {label} {}", path.display()))
-}
-
 fn write_pretty_json(path: &Path, value: &impl Serialize) -> Result<()> {
 	let bytes = serde_json::to_vec_pretty(value).context("cannot serialize release manifest")?;
 	let mut options = OpenOptions::new();
@@ -844,24 +835,6 @@ fn write_pretty_json(path: &Path, value: &impl Serialize) -> Result<()> {
 	file.write_all(b"\n").context("cannot finish release manifest")?;
 
 	file.sync_all().context("cannot sync release manifest")
-}
-
-fn private_directory(path: &Path) -> Result<()> {
-	fs::create_dir_all(path)
-		.context(format!("cannot create private directory {}", path.display()))?;
-
-	let metadata = fs::symlink_metadata(path)
-		.context(format!("cannot inspect private directory {}", path.display()))?;
-
-	if metadata.file_type().is_symlink() || !metadata.is_dir() {
-		return Err(Error::new(format!("private path is not a directory: {}", path.display())));
-	}
-
-	#[cfg(unix)]
-	fs::set_permissions(path, Permissions::from_mode(0o700))
-		.context(format!("cannot protect directory {}", path.display()))?;
-
-	Ok(())
 }
 
 fn private_temporary_root() -> PathBuf {
@@ -1034,7 +1007,7 @@ mod tests {
 		fs::create_dir_all(&target).expect("private directory target");
 		os::unix::fs::symlink(&target, &link).expect("private directory symlink");
 
-		assert!(release::private_directory(&link).is_err());
+		assert!(crate::managed_fs::private_directory(&link).is_err());
 
 		fs::remove_dir_all(root).expect("remove private directory fixture");
 	}

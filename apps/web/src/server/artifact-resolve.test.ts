@@ -74,6 +74,60 @@ function dependencies(
 }
 
 void describe('verifier artifact resolution', () => {
+  void it('cancels a resolution stream at 8 KiB before reading further chunks', async () => {
+    let pulls = 0;
+    let cancelled = false;
+    let resolves = 0;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulls += 1;
+          if (pulls === 1) controller.enqueue(new Uint8Array(8 * 1024 + 1));
+          else controller.close();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const options: RequestInit & { duplex: 'half' } = {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body,
+      duplex: 'half',
+    };
+    const response = await handleArtifactResolve(
+      new Request('http://localhost/api/artifacts/resolve', options),
+      dependencies({
+        resolve: async () => {
+          resolves += 1;
+          return resolved();
+        },
+      }),
+    );
+    assert.equal(response.status, 400);
+    assert.equal(cancelled, true);
+    assert.equal(pulls, 1);
+    assert.equal(resolves, 0);
+  });
+
+  void it('does not sign an ambiguous artifact resolution with multiple rows', async () => {
+    let signed = false;
+    const response = await handleArtifactResolve(
+      request(),
+      dependencies({
+        resolve: async () => [...resolved(), ...resolved()],
+        createSignedUrl: async () => {
+          signed = true;
+          return 'https://storage.invalid/signed';
+        },
+      }),
+    );
+    assert.equal(response.status, 404);
+    assert.equal(signed, false);
+  });
+
   void it('authorizes before parsing the request', async () => {
     let resolves = 0;
     const response = await handleArtifactResolve(

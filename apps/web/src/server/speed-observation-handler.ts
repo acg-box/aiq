@@ -1,4 +1,5 @@
-import { hasValidBearerToken } from './submission-handler.ts';
+import { readBoundedBody } from './bounded-body.ts';
+import { hasValidBearerToken } from './request-auth.ts';
 import {
   MAX_SPEED_OBSERVATION_BYTES,
   validateSpeedObservation,
@@ -56,26 +57,11 @@ async function readBody(request: Request): Promise<BodyResult> {
   }
   if (!request.body) return { ok: false, status: 400, error: 'INVALID_JSON' };
 
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytesRead = 0;
   try {
-    while (true) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- Request streams are ordered.
-      const result = await reader.read();
-      if (result.done) break;
-      bytesRead += result.value.byteLength;
-      if (bytesRead > declared || bytesRead > MAX_SPEED_OBSERVATION_BYTES) {
-        // oxlint-disable-next-line eslint/no-await-in-loop -- Cancel the active ordered stream.
-        await reader.cancel();
-        return { ok: false, status: 400, error: 'BODY_SIZE_MISMATCH' };
-      }
-      chunks.push(result.value);
-    }
-    if (bytesRead !== declared) {
+    const rawBytes = await readBoundedBody(request.body, declared);
+    if (!rawBytes || rawBytes.byteLength !== declared) {
       return { ok: false, status: 400, error: 'BODY_SIZE_MISMATCH' };
     }
-    const rawBytes = new Uint8Array(Buffer.concat(chunks, bytesRead));
     const text = new TextDecoder('utf-8', { fatal: true }).decode(rawBytes);
     return { ok: true, value: parseJsonWithoutDuplicateKeys(text), rawBytes };
   } catch (error) {

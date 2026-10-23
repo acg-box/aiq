@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { comparisonColor } from '../data/comparison-palette.ts';
@@ -156,11 +156,11 @@ export function BenchmarkBoards() {
           {benchmarkBoards.map((board, index) => (
             <tr key={board.id}>
               <th scope="row" aria-label={board.title} data-index={`0${index + 1}`}>
-                <Link href={`/benchmarks/${board.id}`} aria-label={board.title}>
+                <NavigationLink href={`/benchmarks/${board.id}`} aria-label={board.title}>
                   {board.title}
                   <ArrowRightIcon size={18} aria-hidden="true" />
                   <NavigationPending />
-                </Link>
+                </NavigationLink>
               </th>
               <td data-label="Comparison and recorded results">
                 <p className="home-comparison-type">{board.summary}</p>
@@ -204,15 +204,15 @@ export function BenchmarkBoards() {
                         </li>
                       ))}
                     </ul>
-                    <Link href="/benchmarks/harness?view=method">
+                    <NavigationLink href="/benchmarks/harness?view=method">
                       Inspect task specifications →
-                    </Link>
+                    </NavigationLink>
                   </>
                 )}
               </td>
               <td data-label="Conditions and evidence">
                 <p>{board.comparisonConditions}</p>
-                <Link
+                <NavigationLink
                   className="board-open-action"
                   href={`/benchmarks/${board.id}`}
                   aria-label={`Open leaderboard: ${board.title}`}
@@ -220,32 +220,23 @@ export function BenchmarkBoards() {
                   Open leaderboard
                   <ArrowRightIcon size={16} aria-hidden="true" />
                   <NavigationPending />
-                </Link>
+                </NavigationLink>
                 <nav className="home-evidence-links" aria-label={`${board.title} evidence views`}>
-                  <Link
-                    prefetch={false}
-                    href={`/benchmarks/${board.id}?view=data`}
-                    aria-label="Data"
-                  >
+                  <NavigationLink href={`/benchmarks/${board.id}?view=data`} aria-label="Data">
                     Data
                     <NavigationPending />
-                  </Link>
-                  <Link
-                    prefetch={false}
-                    href={`/benchmarks/${board.id}?view=method`}
-                    aria-label="Method"
-                  >
+                  </NavigationLink>
+                  <NavigationLink href={`/benchmarks/${board.id}?view=method`} aria-label="Method">
                     Method
                     <NavigationPending />
-                  </Link>
-                  <Link
-                    prefetch={false}
+                  </NavigationLink>
+                  <NavigationLink
                     href={`/benchmarks/${board.id}?view=records`}
                     aria-label="Records"
                   >
                     Records
                     <NavigationPending />
-                  </Link>
+                  </NavigationLink>
                 </nav>
               </td>
             </tr>

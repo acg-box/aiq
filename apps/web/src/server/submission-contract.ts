@@ -1,11 +1,11 @@
-import { createHash, createPublicKey, verify as verifySignature } from 'node:crypto';
-
+import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import {
   AIQ_CORE_SCORING_VERSION,
   AIQ_CORE_TASK_METADATA_IDENTITY,
   AIQ_CORE_TASK_SET_VERSION,
 } from '../aiq-core-contract.ts';
 import { isOfficialRunProvenance, isRunProvenance, type RunProvenance } from './run-provenance.ts';
+import { isRecord, hasExactKeys, canonicalJson, sha256Hex } from './wire-json.ts';
 
 /* oxlint-disable typescript/no-unsafe-assignment, typescript/no-unsafe-type-assertion, typescript/restrict-template-expressions -- Exact validators narrow untrusted JSON one field at a time. */
 
@@ -378,40 +378,6 @@ export interface SubmissionObjectIdentity {
 export type ValidationResult =
   | { ok: true; submission: ValidatedSubmission }
   | { ok: false; code: string; message: string };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasExactKeys(
-  record: Readonly<Record<string, unknown>>,
-  expected: readonly string[],
-): boolean {
-  const actual = Object.keys(record).toSorted();
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
-
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => canonicalize(item));
-  }
-  if (isRecord(value)) {
-    return Object.fromEntries(
-      Object.keys(value)
-        .toSorted()
-        .map((key) => [key, canonicalize(value[key])]),
-    );
-  }
-  return value;
-}
-
-export function canonicalJson(value: unknown): string {
-  return JSON.stringify(canonicalize(value));
-}
-
-export function sha256Hex(value: string | Uint8Array): string {
-  return createHash('sha256').update(value).digest('hex');
-}
 
 function isSafeUnsignedInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;

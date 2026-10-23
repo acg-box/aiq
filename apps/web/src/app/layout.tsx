@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { IBM_Plex_Mono, Inter } from 'next/font/google';
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import { SiteHeader } from '../components/site-header.tsx';
 import { SITE_DESCRIPTION, SITE_NAME, SITE_ORIGIN } from './site-metadata.ts';
 // oxlint-disable-next-line import/no-unassigned-import -- Next.js loads global CSS by side effect.
@@ -62,7 +62,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
           <main id="main">{children}</main>
           <footer className="research-footer">
             <p>AIQ · Benchmark results and source evidence</p>
-            <Link href="/about">Definitions & evidence scope</Link>
+            <NavigationLink href="/about">Definitions & evidence scope</NavigationLink>
           </footer>
         </div>
       </body>

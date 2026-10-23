@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import { useId } from 'react';
 import { EvidenceDrawer } from './evidence-drawer.tsx';
 import { ExpandableTableRow, RowDetailContext, TableRowFacts } from './expandable-table-row.tsx';
@@ -341,7 +341,7 @@ export function CoreResultsTable({
               <h2 id="core-rankings" tabIndex={-1}>
                 Practical task results
               </h2>
-              <Link href={href({ view: 'method' })}>How scoring works</Link>
+              <NavigationLink href={href({ view: 'method' })}>How scoring works</NavigationLink>
             </div>
             <p className="comparison-reading-key">
               <strong>Ability</strong>: calibrated task score. <strong>Strict pass</strong>: fully
@@ -587,7 +587,9 @@ export function CoreResultsTable({
               measurements retain their original model and task version. Ability is specific to Core
               tasks and is not a human IQ norm.
             </p>
-            <Link href={href({ view: 'method' })}>Full scoring method and limitations</Link>
+            <NavigationLink href={href({ view: 'method' })}>
+              Full scoring method and limitations
+            </NavigationLink>
           </TableNotes>
         ) : null}
         {!dataset.historical && dataset.rows.length === 0 ? (
@@ -599,7 +601,9 @@ export function CoreResultsTable({
               selected benchmark version and scoring {AIQ_CORE_SCORING_VERSION}; ability is not a
               human IQ norm.
             </p>
-            <Link href={href({ view: 'method' })}>Full scoring method and limitations</Link>
+            <NavigationLink href={href({ view: 'method' })}>
+              Full scoring method and limitations
+            </NavigationLink>
           </TableNotes>
         ) : null}
       </section>

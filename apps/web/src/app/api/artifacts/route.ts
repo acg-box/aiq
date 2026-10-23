@@ -3,11 +3,9 @@ import 'server-only';
 
 import { createClient } from '@supabase/supabase-js';
 
-import {
-  handleArtifactUpload,
-  type ArtifactObjectIdentity,
-  type ArtifactReceipt,
-} from '../../../server/artifact-handler.ts';
+import type { ArtifactObjectIdentity, ArtifactReceipt } from '../../../server/artifact-contract.ts';
+
+import { handleArtifactUpload } from '../../../server/artifact-handler.ts';
 import { storeExactPrivateStorageObject } from '../../../server/private-storage-object.ts';
 import { inspectArtifactIngressConfiguration } from '../../../server/production-configuration.ts';
 import { createSupabaseApiKeyFetch } from '../../../server/supabase-http.ts';

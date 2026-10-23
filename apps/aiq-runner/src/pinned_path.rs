@@ -4,14 +4,13 @@ use std::ffi::OsStr;
 #[cfg(unix)]
 use std::fmt::{Debug, Formatter};
 use std::fs::File;
-#[cfg(unix)]
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
 use std::path::PathBuf;
 #[cfg(unix)]
 use std::{
 	ffi::CString,
 	fs::{self, OpenOptions},
-	io::{self, Read as _},
+	io::Read as _,
 	os::{
 		fd::{AsRawFd as _, FromRawFd as _, RawFd},
 		unix::{
@@ -21,10 +20,10 @@ use std::{
 	},
 };
 
-#[cfg(target_os = "macos")]
-use libc::RENAME_EXCL;
+#[cfg(target_vendor = "apple")]
+use libc::{RENAME_EXCL, RENAME_SWAP};
 #[cfg(target_os = "linux")]
-use libc::RENAME_NOREPLACE;
+use libc::{AT_FDCWD, RENAME_EXCHANGE, RENAME_NOREPLACE};
 #[cfg(target_os = "linux")]
 use libc::SYS_renameat2;
 #[cfg(unix)]
@@ -748,6 +747,88 @@ impl Drop for EmptyChildDirectoryRollback<'_> {
 			);
 		}
 	}
+}
+
+#[cfg(unix)]
+pub(crate) fn atomic_rename_no_replace(
+	source: &std::path::Path,
+	destination: &std::path::Path,
+) -> Result<(), io::Error> {
+	let source = CString::new(source.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("rename source contains a NUL byte"))?;
+	let destination = CString::new(destination.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("rename destination contains a NUL byte"))?;
+	#[cfg(target_os = "linux")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe {
+		libc::renameat2(AT_FDCWD, source.as_ptr(), AT_FDCWD, destination.as_ptr(), RENAME_NOREPLACE)
+	};
+	#[cfg(target_vendor = "apple")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe { libc::renamex_np(source.as_ptr(), destination.as_ptr(), RENAME_EXCL) };
+
+	#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+	{
+		return Err(io::Error::new(
+			ErrorKind::Unsupported,
+			"atomic no-replace rename is unavailable on this Unix platform",
+		));
+	}
+
+	#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+	if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn atomic_rename_no_replace(
+	_source: &std::path::Path,
+	_destination: &std::path::Path,
+) -> Result<(), io::Error> {
+	Err(io::Error::new(
+		ErrorKind::Unsupported,
+		"atomic no-replace rename is unavailable on this platform",
+	))
+}
+
+#[cfg(unix)]
+pub(crate) fn atomic_exchange_paths(
+	left: &std::path::Path,
+	right: &std::path::Path,
+) -> Result<(), io::Error> {
+	let left = CString::new(left.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("exchange path contains a NUL byte"))?;
+	let right = CString::new(right.as_os_str().as_bytes())
+		.map_err(|_| io::Error::other("exchange path contains a NUL byte"))?;
+	#[cfg(target_os = "linux")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe {
+		libc::renameat2(AT_FDCWD, left.as_ptr(), AT_FDCWD, right.as_ptr(), RENAME_EXCHANGE)
+	};
+	#[cfg(target_vendor = "apple")]
+	// SAFETY: both C strings remain live for the call and contain no interior NUL.
+	let result = unsafe { libc::renamex_np(left.as_ptr(), right.as_ptr(), RENAME_SWAP) };
+
+	#[cfg(not(any(target_os = "linux", target_vendor = "apple")))]
+	{
+		return Err(io::Error::new(
+			ErrorKind::Unsupported,
+			"atomic path exchange is unavailable on this Unix platform",
+		));
+	}
+
+	#[cfg(any(target_os = "linux", target_vendor = "apple"))]
+	if result == 0 { Ok(()) } else { Err(io::Error::last_os_error()) }
+}
+
+#[cfg(not(unix))]
+pub(crate) fn atomic_exchange_paths(
+	_left: &std::path::Path,
+	_right: &std::path::Path,
+) -> Result<(), io::Error> {
+	Err(io::Error::new(
+		ErrorKind::Unsupported,
+		"atomic path exchange is unavailable on this platform",
+	))
 }
 
 #[cfg(test)]

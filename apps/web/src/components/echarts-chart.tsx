@@ -29,6 +29,19 @@ use([
   SVGRenderer,
 ]);
 
+function presentationOption(option: EChartsCoreOption, host: HTMLElement): EChartsCoreOption {
+  const motionEnabled = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return {
+    textStyle: { fontFamily: window.getComputedStyle(host).fontFamily },
+    ...option,
+    animation: motionEnabled,
+    animationDuration: motionEnabled ? 260 : 0,
+    animationDurationUpdate: motionEnabled ? 180 : 0,
+    animationEasing: 'cubicOut',
+    animationEasingUpdate: 'cubicOut',
+  };
+}
+
 export function EChartsChart({
   option,
   label,
@@ -55,10 +68,10 @@ export function EChartsChart({
   interactionRef.current = { onDataPointClick, onBlankClick };
 
   useEffect(() => {
-    if (!host.current) return undefined;
+    const element = host.current;
+    if (!element) return undefined;
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const fontFamily = window.getComputedStyle(host.current).fontFamily;
-    const instance = init(host.current, undefined, { renderer: 'svg' });
+    const instance = init(element, undefined, { renderer: 'svg' });
     chart.current = instance;
     const syncDescription = () => {
       const generated = host.current?.querySelector('[aria-label]')?.getAttribute('aria-label');
@@ -68,17 +81,7 @@ export function EChartsChart({
       );
     };
     const render = () => {
-      const motionEnabled = !reducedMotion.matches;
-      const themedOption: EChartsCoreOption = {
-        textStyle: { fontFamily },
-        ...optionRef.current,
-        animation: motionEnabled,
-        animationDuration: motionEnabled ? 260 : 0,
-        animationDurationUpdate: motionEnabled ? 180 : 0,
-        animationEasing: 'cubicOut',
-        animationEasingUpdate: 'cubicOut',
-      };
-      instance.setOption(themedOption, { notMerge: true });
+      instance.setOption(presentationOption(optionRef.current, element), { notMerge: true });
       appliedOptionRef.current = optionRef.current;
     };
     const pointClick = (event: unknown) => interactionRef.current.onDataPointClick?.(event);
@@ -95,7 +98,7 @@ export function EChartsChart({
     window.addEventListener('aiq-themechange', render);
     reducedMotion.addEventListener('change', render);
     const resize = new ResizeObserver(() => instance.resize());
-    resize.observe(host.current);
+    resize.observe(element);
     return () => {
       window.removeEventListener('aiq-themechange', render);
       reducedMotion.removeEventListener('change', render);
@@ -111,19 +114,7 @@ export function EChartsChart({
   useEffect(() => {
     const instance = chart.current;
     if (!instance || !host.current || appliedOptionRef.current === option) return;
-    const motionEnabled = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    instance.setOption(
-      {
-        textStyle: { fontFamily: window.getComputedStyle(host.current).fontFamily },
-        ...option,
-        animation: motionEnabled,
-        animationDuration: motionEnabled ? 260 : 0,
-        animationDurationUpdate: motionEnabled ? 180 : 0,
-        animationEasing: 'cubicOut',
-        animationEasingUpdate: 'cubicOut',
-      },
-      { notMerge: true },
-    );
+    instance.setOption(presentationOption(option, host.current), { notMerge: true });
     appliedOptionRef.current = option;
   }, [option]);
 

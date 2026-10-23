@@ -1,5 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-
+import { readBoundedBody } from './bounded-body.ts';
 import {
   MAX_VERIFICATION_BYTES,
   validateVerification,
@@ -8,9 +7,7 @@ import {
   type VerificationClaim,
   type VerifierRejection,
 } from './verification-contract.ts';
-import { createBoundedSupabaseFetch, createVerificationSupabaseFetch } from './supabase-http.ts';
-
-export const MAX_VERIFICATION_AUTHORIZATION_BYTES = 4_096;
+import { hasValidVerificationBearerToken } from './request-auth.ts';
 
 export interface VerificationDependencies {
   configured: boolean;
@@ -51,64 +48,11 @@ export function verificationRpcFailureDiagnostic(
   };
 }
 
-export function verificationRoleClientOptions(
-  issueRoleToken: () => string,
-  parentSignal?: AbortSignal,
-) {
-  return {
-    accessToken: async () => issueRoleToken(),
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: { fetch: createBoundedSupabaseFetch(parentSignal) },
-  };
-}
-
-export function verificationRpcRoleClientOptions(
-  issueRoleToken: () => string,
-  parentSignal?: AbortSignal,
-) {
-  return {
-    accessToken: async () => issueRoleToken(),
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: { fetch: createVerificationSupabaseFetch(parentSignal) },
-  };
-}
-
 function json(status: number, body: Readonly<Record<string, unknown>>): Response {
   return Response.json(body, {
     status,
     headers: { 'Cache-Control': 'no-store' },
   });
-}
-
-function tokenDigest(value: string): Buffer {
-  return createHash('sha256').update(value, 'utf8').digest();
-}
-
-export function hasValidVerificationBearerToken(
-  authorizationHeader: string | null,
-  expectedToken: string,
-): boolean {
-  if (
-    !authorizationHeader?.startsWith('Bearer ') ||
-    Buffer.byteLength(authorizationHeader, 'utf8') > MAX_VERIFICATION_AUTHORIZATION_BYTES ||
-    expectedToken.length === 0 ||
-    Buffer.byteLength(expectedToken, 'utf8') >
-      MAX_VERIFICATION_AUTHORIZATION_BYTES - Buffer.byteLength('Bearer ', 'utf8')
-  ) {
-    return false;
-  }
-  return timingSafeEqual(
-    tokenDigest(authorizationHeader.slice('Bearer '.length)),
-    tokenDigest(expectedToken),
-  );
 }
 
 type BodyResult = { ok: true; value: unknown } | { ok: false; code: string; message: string };
@@ -142,29 +86,16 @@ async function readBoundedJson(request: Request): Promise<BodyResult> {
     return { ok: false, code: 'INVALID_JSON', message: 'A JSON body is required.' };
   }
 
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytesRead = 0;
   try {
-    while (true) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- A request stream must be read in order.
-      const result = await reader.read();
-      if (result.done) {
-        break;
-      }
-      bytesRead += result.value.byteLength;
-      if (bytesRead > MAX_VERIFICATION_BYTES) {
-        // oxlint-disable-next-line eslint/no-await-in-loop -- Cancel the active sequential reader.
-        await reader.cancel();
-        return {
-          ok: false,
-          code: 'BODY_TOO_LARGE',
-          message: `The request body must not exceed ${MAX_VERIFICATION_BYTES} bytes.`,
-        };
-      }
-      chunks.push(result.value);
+    const raw = await readBoundedBody(request.body, MAX_VERIFICATION_BYTES);
+    if (!raw) {
+      return {
+        ok: false,
+        code: 'BODY_TOO_LARGE',
+        message: `The request body must not exceed ${MAX_VERIFICATION_BYTES} bytes.`,
+      };
     }
-    const text = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks, bytesRead));
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(raw);
     return { ok: true, value: JSON.parse(text) };
   } catch {
     return { ok: false, code: 'INVALID_JSON', message: 'The body must be valid UTF-8 JSON.' };

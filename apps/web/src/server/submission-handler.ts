@@ -1,17 +1,16 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-
+import { readBoundedBody } from './bounded-body.ts';
+import { canonicalJson, sha256Hex } from './wire-json.ts';
 import {
-  canonicalJson,
   mapEnqueueResult,
   MAX_RAW_SUBMISSION_BYTES,
   MAX_SIGNED_PACKAGE_BYTES,
-  sha256Hex,
   validateSubmission,
   type SubmissionReceipt,
   type SubmissionObjectIdentity,
   type ValidatedSubmission,
 } from './submission-contract.ts';
 import { DuplicateJsonKeyError, parseJsonWithoutDuplicateKeys } from './strict-json.ts';
+import { hasValidBearerToken } from './request-auth.ts';
 
 export interface SubmissionDependencies {
   configured: boolean;
@@ -35,21 +34,6 @@ function json(status: number, body: Readonly<Record<string, unknown>>): Response
     status,
     headers: { 'Cache-Control': 'no-store' },
   });
-}
-
-function tokenDigest(value: string): Buffer {
-  return createHash('sha256').update(value, 'utf8').digest();
-}
-
-export function hasValidBearerToken(
-  authorizationHeader: string | null,
-  expectedToken: string,
-): boolean {
-  if (!authorizationHeader?.startsWith('Bearer ') || expectedToken.length === 0) {
-    return false;
-  }
-  const suppliedToken = authorizationHeader.slice('Bearer '.length);
-  return timingSafeEqual(tokenDigest(suppliedToken), tokenDigest(expectedToken));
 }
 
 type BodyResult =
@@ -97,34 +81,20 @@ async function readBoundedJson(request: Request): Promise<BodyResult> {
   if (!request.body) {
     return { ok: false, code: 'INVALID_JSON', message: 'A JSON body is required.' };
   }
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let bytesRead = 0;
   try {
-    while (true) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- A request stream must be read in order.
-      const result = await reader.read();
-      if (result.done) {
-        break;
-      }
-      bytesRead += result.value.byteLength;
-      if (bytesRead > MAX_RAW_SUBMISSION_BYTES) {
-        // oxlint-disable-next-line eslint/no-await-in-loop -- Cancel the active sequential reader.
-        await reader.cancel();
-        return {
-          ok: false,
-          code: 'BODY_TOO_LARGE',
-          message: `The request body must not exceed ${MAX_RAW_SUBMISSION_BYTES} bytes.`,
-        };
-      }
-      chunks.push(result.value);
+    const raw = await readBoundedBody(request.body, MAX_RAW_SUBMISSION_BYTES);
+    if (!raw) {
+      return {
+        ok: false,
+        code: 'BODY_TOO_LARGE',
+        message: `The request body must not exceed ${MAX_RAW_SUBMISSION_BYTES} bytes.`,
+      };
     }
-    const raw = Buffer.concat(chunks, bytesRead);
     const text = new TextDecoder('utf-8', { fatal: true }).decode(raw);
     const value = parseJsonWithoutDuplicateKeys(text);
     const canonicalText = canonicalJson(value);
     const canonicalBytes = Buffer.from(canonicalText, 'utf8');
-    if (!raw.equals(canonicalBytes)) {
+    if (!Buffer.from(raw).equals(canonicalBytes)) {
       return {
         ok: false,
         code: 'NON_CANONICAL_JSON',

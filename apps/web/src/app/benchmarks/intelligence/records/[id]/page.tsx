@@ -16,7 +16,7 @@ import { RunScientificSummaryPanel } from '../../../../../components/run-scienti
 import {
   resolveExactEfficiencyRows,
   resolveExactScientificEvidence,
-} from '../../../../../components/scientific-evidence-resolution.ts';
+} from '../../../../../data/scientific-evidence.ts';
 import { buildRunScientificSummary } from '../../../../../components/scientific-score-context.ts';
 import {
   classifyRunCompleteness,

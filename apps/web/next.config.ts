@@ -21,6 +21,8 @@ const nextConfig: NextConfig = {
   },
   outputFileTracingRoot: workspaceRoot,
   reactStrictMode: true,
+  // Route metadata is local. Resolve it before UI streams so navigation keeps a document title.
+  htmlLimitedBots: /.*/,
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },

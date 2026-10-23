@@ -1,3 +1,7 @@
+import {
+  createSupabaseRoleClientOptions,
+  VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
+} from '../../../server/supabase-http.ts';
 // oxlint-disable-next-line import/no-unassigned-import -- This marker blocks client bundling.
 import 'server-only';
 
@@ -6,7 +10,6 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import {
   handleVerification,
   verificationRpcFailureDiagnostic,
-  verificationRpcRoleClientOptions,
 } from '../../../server/verification-handler.ts';
 import { inspectVerificationConfiguration } from '../../../server/production-configuration.ts';
 import { createSupabaseRoleTokenIssuer } from '../../../server/supabase-role-token.ts';
@@ -68,9 +71,10 @@ export async function POST(request: Request): Promise<Response> {
     verifier ??= createClient(
       configuration.serviceUrl,
       configuration.publishableKey,
-      verificationRpcRoleClientOptions(
+      createSupabaseRoleClientOptions(
         () => issueRoleToken({ role: 'aiq_verifier' }),
         request.signal,
+        VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
       ),
     );
     return verifier;
@@ -82,13 +86,14 @@ export async function POST(request: Request): Promise<Response> {
     publisher ??= createClient(
       configuration.serviceUrl,
       configuration.publishableKey,
-      verificationRpcRoleClientOptions(
+      createSupabaseRoleClientOptions(
         () =>
           issueRoleToken({
             role: 'aiq_publisher',
             publisherNodeId: configuration.publisherNodeId,
           }),
         request.signal,
+        VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS,
       ),
     );
     return publisher;

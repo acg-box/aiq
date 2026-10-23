@@ -42,6 +42,7 @@ use crate::{
 	schedule::{self, ScheduledSlot, SurroundingSlots},
 	supervisor,
 };
+use crate::managed_fs;
 
 const STATUS_SCHEMA: &str = "aiq.continuous-observation-status.v3";
 #[cfg(test)]
@@ -239,7 +240,7 @@ pub(crate) fn status(configuration: &Configuration) -> Result<Value> {
 
 /// Performs model-free release and disposable-source validation.
 pub(crate) fn doctor(configuration: &Configuration) -> Result<DoctorReport> {
-	private_directory(&configuration.state_root)?;
+	managed_fs::private_directory(&configuration.state_root)?;
 
 	let _lock = ProcessLock::try_acquire(&configuration.state_root)?
 		.ok_or_else(|| Error::new("another AIQ observation process holds the active lock"))?;
@@ -263,7 +264,7 @@ pub(crate) fn doctor(configuration: &Configuration) -> Result<DoctorReport> {
 pub(crate) fn run(configuration: &Configuration, selected: Option<ScheduledSlot>) -> Result<()> {
 	let slots = schedule::current_surrounding_slots()?;
 
-	private_directory(&configuration.state_root)?;
+	managed_fs::private_directory(&configuration.state_root)?;
 
 	let slot = match selected {
 		Some(slot) => slot,
@@ -1135,7 +1136,8 @@ fn validate_verifier_record(record: &Value, step_name: &str) -> Result<()> {
 		&& record.get("package_sha256").and_then(Value::as_str).is_some_and(valid_sha256)
 		&& record.get("disposition").and_then(Value::as_str).is_some_and(|value| {
 			matches!(value, "verified" | "rejected" | "lease_lost" | "retry" | "worker_error")
-		}) && record.get("attempt").and_then(Value::as_u64).is_some_and(|value| value > 0);
+		})
+		&& record.get("attempt").and_then(Value::as_u64).is_some_and(|value| value > 0);
 
 	if valid {
 		Ok(())
@@ -1292,15 +1294,16 @@ fn prepare_slot_directories(paths: &SlotPaths) -> Result<()> {
 		&paths.official.records,
 		&paths.official.verification,
 	] {
-		private_directory(path)?;
+		managed_fs::private_directory(path)?;
 	}
 
-	private_directory(&paths.official.verification.join("replay"))
+	managed_fs::private_directory(&paths.official.verification.join("replay"))
 }
 
 fn prepare_codex_home(home: &Path, auth_source: &Path) -> Result<()> {
 	cleanup_codex_home(home)?;
-	private_directory(home)?;
+
+	managed_fs::private_directory(home)?;
 
 	let source = fs::symlink_metadata(auth_source)
 		.context(format!("cannot inspect Codex authentication source {}", auth_source.display()))?;
@@ -1395,7 +1398,7 @@ fn retained_phase(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<Option<Stri
 		return Ok(None);
 	}
 
-	let status: RetainedStatus = read_json(&paths.status, "slot status")?;
+	let status: RetainedStatus = managed_fs::read_json(&paths.status, "slot status")?;
 
 	Ok(Some(status.phase))
 }
@@ -1408,7 +1411,7 @@ fn retained_current_terminal(paths: &SlotPaths, slot: &ScheduledSlot) -> Result<
 		return Ok(false);
 	}
 
-	let status: RetainedStatus = read_json(&paths.status, "slot status")?;
+	let status: RetainedStatus = managed_fs::read_json(&paths.status, "slot status")?;
 
 	Ok(status.schema_version == STATUS_SCHEMA && is_terminal_phase(&status.phase))
 }
@@ -1500,7 +1503,7 @@ fn read_publication_status(
 		return Ok(None);
 	}
 
-	let status: PublicationStatus = read_json(path, "publication status")?;
+	let status: PublicationStatus = managed_fs::read_json(path, "publication status")?;
 
 	if status.schema_version != PUBLICATION_STATUS_SCHEMA || status.owner != owner.value() {
 		return Err(Error::new(format!("invalid {} publication status identity", owner.label())));
@@ -1647,24 +1650,6 @@ fn existing_regular_file(path: &Path) -> Result<bool> {
 	Ok(true)
 }
 
-fn private_directory(path: &Path) -> Result<()> {
-	fs::create_dir_all(path)
-		.context(format!("cannot create private directory {}", path.display()))?;
-
-	let metadata = fs::symlink_metadata(path)
-		.context(format!("cannot inspect private directory {}", path.display()))?;
-
-	if metadata.file_type().is_symlink() || !metadata.is_dir() {
-		return Err(Error::new(format!("private path is not a directory: {}", path.display())));
-	}
-
-	#[cfg(unix)]
-	fs::set_permissions(path, Permissions::from_mode(0o700))
-		.context(format!("cannot protect private directory {}", path.display()))?;
-
-	Ok(())
-}
-
 fn remove_managed(path: &Path, parent: &Path) -> Result<()> {
 	if path == parent || !path.starts_with(parent) {
 		return Err(Error::new("refusing to remove a path outside managed slot state"));
@@ -1685,17 +1670,8 @@ fn remove_managed(path: &Path, parent: &Path) -> Result<()> {
 	}
 }
 
-fn read_json<T>(path: &Path, label: &str) -> Result<T>
-where
-	T: for<'de> Deserialize<'de>,
-{
-	let bytes = fs::read(path).context(format!("cannot read {label} {}", path.display()))?;
-
-	serde_json::from_slice(&bytes).context(format!("invalid {label} {}", path.display()))
-}
-
 fn read_json_value(path: &Path, label: &str) -> Result<Value> {
-	read_json(path, label)
+	managed_fs::read_json(path, label)
 }
 
 fn now_string() -> Result<String> {
@@ -1766,6 +1742,8 @@ mod tests {
 			self, CommandStep, PROTECTED_SECRETS, RetainedStatus, StepSecrets, official, speed,
 		},
 	};
+	use crate::managed_fs;
+
 
 	fn parent_environment() -> Vec<(OsString, OsString)> {
 		let mut values = vec![
@@ -2049,7 +2027,7 @@ mod tests {
 
 		assert!(workflow::run(&configuration, Some(slots.latest.clone())).is_err());
 
-		let retained: RetainedStatus = workflow::read_json(
+		let retained: RetainedStatus = managed_fs::read_json(
 			&workflow::slot_paths(&configuration.state_root, &slots.latest).status,
 			"test slot status",
 		)

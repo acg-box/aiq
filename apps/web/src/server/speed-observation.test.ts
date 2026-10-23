@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 
-import { canonicalJson } from './submission-contract.ts';
+import { canonicalJson } from './wire-json.ts';
 import {
   SPEED_CREDIT_RATE_CARD_VERSION,
   SPEED_OBSERVATION_SCHEMA_VERSION,

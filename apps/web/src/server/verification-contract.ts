@@ -6,7 +6,7 @@ import {
   runProvenanceEquals,
   type RunProvenance,
 } from './run-provenance.ts';
-import { canonicalJson, sha256Hex } from './submission-contract.ts';
+import { canonicalJson, hasExactKeys, isRecord, sha256Hex } from './wire-json.ts';
 
 export const MAX_VERIFICATION_BYTES = 4 * 1024 * 1024;
 export const NORMALIZED_BATCH_SCHEMA = 'aiq.normalized-batch.v4';
@@ -426,15 +426,6 @@ export type ValidatedVerificationOperation =
 export type VerificationValidationResult =
   | { ok: true; operation: ValidatedVerificationOperation }
   | { ok: false; code: string; message: string };
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasExactKeys(record: Readonly<JsonRecord>, expected: readonly string[]): boolean {
-  const actual = Object.keys(record).toSorted();
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
-}
 
 function isVerificationClaim(value: unknown): value is VerificationClaim {
   return (

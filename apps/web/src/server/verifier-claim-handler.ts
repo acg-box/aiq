@@ -1,4 +1,5 @@
-import { hasValidBearerToken } from './submission-handler.ts';
+import { readBoundedBody } from './bounded-body.ts';
+import { hasValidBearerToken } from './request-auth.ts';
 
 const MAX_CLAIM_REQUEST_BYTES = 8 * 1024;
 const DEFAULT_LEASE_SECONDS = 300;
@@ -55,10 +56,9 @@ async function readBody(request: Request): Promise<unknown> {
       throw new Error('invalid length');
     }
   }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > MAX_CLAIM_REQUEST_BYTES) {
-    throw new Error('too large');
-  }
+  if (!request.body) throw new Error('missing body');
+  const bytes = await readBoundedBody(request.body, MAX_CLAIM_REQUEST_BYTES);
+  if (!bytes) throw new Error('too large');
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
 }
 

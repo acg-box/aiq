@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { assertDatabaseTarget, databaseConnectionEnvironment } from '../databases/init.ts';
+import { assertDatabaseTarget, databaseConnectionEnvironment } from '../databases/connection.ts';
 
 export const AIQ_2_CUTOVER_QUERY = `
 with target_batches as (

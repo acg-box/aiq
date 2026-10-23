@@ -1,7 +1,7 @@
 import { BoardDetailNavigation } from '../../../../components/board-detail-navigation.tsx';
 import { TableColumnHeading } from '../../../../components/table-column-heading.tsx';
 import type { Metadata } from 'next';
-import Link from 'next/link';
+import { NavigationLink } from '../../../../components/navigation-link.tsx';
 import { ArrowRightIcon } from '@phosphor-icons/react/dist/ssr/ArrowRight';
 
 import { CalibrationEfficiency } from '../../../../components/calibration-efficiency.tsx';
@@ -131,14 +131,14 @@ export default async function CalibrationsPage({
                     {run.synthetic ? <small>Synthetic seed</small> : null}
                   </td>
                   <td className="calibration-detail">
-                    <Link
+                    <NavigationLink
                       className="ui-action"
                       aria-label="Inspect calibration"
                       href={`/benchmarks/intelligence/calibrations/${run.id}?${new URLSearchParams({ return: registerHref })}`}
                     >
                       <span>Inspect calibration</span>
                       <ArrowRightIcon size={15} aria-hidden="true" />
-                    </Link>
+                    </NavigationLink>
                   </td>
                 </tr>
               ))}
@@ -149,24 +149,24 @@ export default async function CalibrationsPage({
       {hasRuns ? (
         <nav className="history-pagination" aria-label="Calibration register pages">
           {runs.data.newerCursor ? (
-            <Link
+            <NavigationLink
               href={calibrationHref('/benchmarks/intelligence/calibrations', {
                 after: runs.data.newerCursor,
               })}
             >
               ← Newer calibrations
-            </Link>
+            </NavigationLink>
           ) : (
             <span aria-disabled="true">← Newer calibrations</span>
           )}
           {runs.data.olderCursor ? (
-            <Link
+            <NavigationLink
               href={calibrationHref('/benchmarks/intelligence/calibrations', {
                 before: runs.data.olderCursor,
               })}
             >
               Older calibrations →
-            </Link>
+            </NavigationLink>
           ) : (
             <span aria-disabled="true">Older calibrations →</span>
           )}

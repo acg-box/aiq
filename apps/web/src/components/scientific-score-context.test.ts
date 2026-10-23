@@ -4,13 +4,15 @@ import assert from 'node:assert/strict';
 import {
   buildRunScientificSummary,
   formatScientificScoreContextHtml,
+} from './scientific-score-context.ts';
+import {
   hasExactScientificIdentity,
   joinExactRunScientificEvidence,
-} from './scientific-score-context.ts';
+} from '../data/scientific-evidence.ts';
 import {
   resolveExactEfficiencyRows,
   resolveExactScientificEvidence,
-} from './scientific-evidence-resolution.ts';
+} from '../data/scientific-evidence.ts';
 import type { LeaderboardEntry, PublicModelEfficiency } from '../data/types.ts';
 import { scientificEvidenceFixture } from './scientific-evidence.fixture.ts';
 

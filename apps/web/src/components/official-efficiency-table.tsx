@@ -4,7 +4,7 @@ import { TableNotes } from './table-notes.tsx';
 import { TableColumnHeading } from './table-column-heading.tsx';
 import { alphabetical } from '../display-order.ts';
 import type { TokenCategoryCoverage } from '../data/types.ts';
-import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
+import type { ExactEfficiencyRow } from '../data/scientific-evidence.ts';
 
 function formatCoverage(coverage: TokenCategoryCoverage, resultCount: number): string {
   return coverage.count === null || coverage.percent === null

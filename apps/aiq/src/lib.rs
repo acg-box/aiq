@@ -9,6 +9,7 @@ pub mod workflow;
 
 mod credentials;
 mod lock;
+mod managed_fs;
 mod provision;
 
 use std::{

@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import type { ReactNode } from 'react';
 import { ArrowRightIcon } from '@phosphor-icons/react/dist/csr/ArrowRight';
 import { ReferenceHeader } from '../components/reference-layout.tsx';
@@ -185,9 +185,9 @@ function SelectedComparison({
         <p className="results-dataset">
           {sampleSizes} inputs / profile · {group.runs.length} profiles · {dates}
         </p>
-        <Link href={href({ view: 'method' })} scroll={false}>
+        <NavigationLink href={href({ view: 'method' })} scroll={false}>
           Test method
-        </Link>
+        </NavigationLink>
       </div>
       <StudyComparisonCharts group={group} subjects={study.subjects} />
       <div className="comparison-table-heading">
@@ -229,9 +229,9 @@ function SelectedComparison({
             ? 'Complete + bound: complete answer with every quote matched to its supplied source. Complete: complete answers, before quote binding. Quotes: matched / emitted quotes, with a separate denominator. Source binding alone does not establish semantic entailment.'
             : 'Inputs: paired extraction requests. Time: mean request duration. Cost: settled USD for the selected workload. Output counts and JSON parsing are not quality scores.'}
         </p>
-        <Link href={href({ view: 'method' })} scroll={false}>
+        <NavigationLink href={href({ view: 'method' })} scroll={false}>
           Full conditions and limitations
-        </Link>
+        </NavigationLink>
       </TableNotes>
     </div>
   );
@@ -377,13 +377,12 @@ export function MemoryCaseLink({
 }) {
   const { href } = useWorkspaceQuery();
   return (
-    <Link
+    <NavigationLink
       className="record-open memory-case-link"
-      prefetch={false}
       href={`/benchmarks/memory/records/${studyId}/${caseId}?return=${encodeURIComponent(href({ view: 'records' }))}`}
     >
       <span>{children}</span>
       <ArrowRightIcon size={15} aria-hidden="true" />
-    </Link>
+    </NavigationLink>
   );
 }

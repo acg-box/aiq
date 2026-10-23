@@ -64,6 +64,7 @@ const digestPattern = /^[0-9a-f]{64}(?![\s\S])/;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![\s\S])/;
 const artifactKinds = new Set([
+  'capability-marker.txt',
   'evaluator-results.json',
   'final-response.txt',
   'speed-observation.json',
@@ -192,8 +193,27 @@ function serviceHeaders(configuration: LifecycleConfiguration): Record<string, s
 
 async function boundedJson(response: Response, context: string): Promise<unknown> {
   if (!response.ok) throw new Error(`${context}_${response.status}`);
-  const text = await response.text();
-  assert.ok(text.length <= 4 * 1024 * 1024, `${context}_response_too_large`);
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- Read and bound the response in stream order.
+      const result = await reader.read();
+      if (result.done) break;
+      bytes += result.value.byteLength;
+      if (bytes > 4 * 1024 * 1024) {
+        // oxlint-disable-next-line no-await-in-loop -- Stop this response before accepting more bytes.
+        await reader.cancel();
+        throw new Error(`${context}_response_too_large`);
+      }
+      chunks.push(result.value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const text = new TextDecoder().decode(Buffer.concat(chunks, bytes));
   return text.length === 0 ? null : JSON.parse(text);
 }
 
@@ -289,9 +309,9 @@ async function deleteObject(
       body: JSON.stringify({ prefixes: [object.object_path] }),
     },
   );
+  await response.body?.cancel();
   if (response.status === 404) return 'not_found';
   if (!response.ok) throw new Error(`storage_delete_${response.status}`);
-  await response.arrayBuffer();
   return 'deleted';
 }
 

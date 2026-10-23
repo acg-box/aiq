@@ -269,7 +269,7 @@ test('native cases distinguish version protocols and keep all retained observati
       await expect(protocol).toBeVisible();
       await expect(protocol.locator('..')).toContainText(bundle);
       const href = await protocol.getAttribute('href');
-      assert.ok(href?.startsWith('/evidence/studies/'));
+      assert.ok(href !== null && href.startsWith('/evidence/studies/'));
       const response = await request.get(href);
       expect(response.status()).toBe(200);
       expect(href).toContain(

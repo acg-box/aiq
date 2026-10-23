@@ -1,5 +1,6 @@
 //! Bounded queue consumption, package verification, normalization, and acknowledgement.
 
+mod gateway;
 mod replay;
 
 use std::collections::BTreeMap;
@@ -12,7 +13,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread::{self, Builder};
 use std::{
 	collections::BTreeSet,
-	env, error,
+	env,
+	error::Error,
 	ffi::OsString,
 	fmt::{Debug, Display, Formatter},
 	fs::{self, OpenOptions},
@@ -28,36 +30,48 @@ use libc::O_NOFOLLOW;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use ureq::{
-	self, Body,
-	http::{Response, Uri, uri::PathAndQuery},
-};
 
+use crate::gateway::{HttpResponse, Transport, UreqTransport};
 use crate::replay::PRODUCTION_REPLAY_SCOPE;
-use aiq_runner::{benchmark_qualification::{
+use aiq_runner::{
+	benchmark_qualification::{
 		self, BenchmarkQualificationArtifact, BenchmarkQualificationManifest,
-	}, calibration_verification::{
+	},
+	calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION, CalibrationAdmissionBindings,
 		CalibrationAdmissionBundleV3, CalibrationVerifiedStageV1, CalibrationVerifierAttestationV1,
-	}, candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION}, corpus_commitment::{
+	},
+	candidate_catalog::{self, CANDIDATE_TASK_SET_VERSION},
+	corpus_commitment::{
 		self, RunClass, RunProvenanceCommitment, ValidatedCorpusCommitment, ValidatedModelToolchain,
-	}, model::{MODEL_MATRIX, ModelConfig}, normalization::{
+	},
+	model::{MODEL_MATRIX, ModelConfig},
+	normalization::{
 		self, AttestedDeploymentMetadata, MAX_VERIFICATION_REQUEST_BYTES, NormalizedBatchStage,
 		ReplayStatus, VerifiedPackageIdentity, VerifierAttestationV2, VerifierSigningIdentity,
-	}, protocol::{
+	},
+	protocol::{
 		self, CALIBRATION_RUN_PAYLOAD_TYPE, NodeIdentity, RUN_PAYLOAD_TYPE, SubmissionEnvelope,
 		TrustTier, VerifiedSubmission,
-	}, run_validation, runner::{
+	},
+	run_validation,
+	runner::{
 		self, CalibrationRunRecord, FailureKind, ProviderTokenUsage, ResultStatus, RunRecord,
 		TaskResult,
-	}, scoring::{self, AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION, AIQ_TASK_SET_ID, FalseOnly, OfficialCalibrationDiagnostic, OfficialCalibrationPolicy, OfficialCalibrationSummary, ScoreContext, ScoreOptions, ScoreReport, AIQ_TASK_SET_VERSION}, submission::{self, MAX_ARTIFACT_BYTES, MAX_SUBMISSION_BYTES}, task::{
+	},
+	scoring::{
+		self, AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION,
+		AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION, FalseOnly, OfficialCalibrationDiagnostic,
+		OfficialCalibrationPolicy, OfficialCalibrationSummary, ScoreContext, ScoreOptions,
+		ScoreReport,
+	},
+	submission::{self, MAX_SUBMISSION_BYTES},
+	task::{
 		self, DirectoryTaskSource, EvaluationResult, EvaluatorOutcome, EvaluatorRuntime,
 		TaskDefinition, TaskSource, Visibility,
-	}};
+	},
+};
 
-const MAX_GATEWAY_RESPONSE_BYTES: usize = 64 * 1_024;
-const MAX_OBJECT_RESPONSE_BYTES: usize = MAX_SUBMISSION_BYTES + 1;
-const MAX_ARTIFACT_RESPONSE_BYTES: usize = MAX_ARTIFACT_BYTES + 1;
 const RENEWED_LEASE_SECONDS: u64 = 900;
 const LEASE_RENEWAL_INTERVAL: Duration = Duration::from_secs(300);
 const DEFAULT_GATEWAY_TIMEOUT_SECONDS: u64 = 120;
@@ -101,17 +115,6 @@ pub trait ArtifactResolverClient: Sync {
 		kind: &str,
 		expected_bytes: u64,
 	) -> Result<Vec<u8>, WorkerError>;
-}
-
-trait Transport: Sync {
-	fn post_json(
-		&self,
-		url: &str,
-		token: &Secret,
-		body: &[u8],
-	) -> Result<HttpResponse, WorkerError>;
-	fn get_object(&self, url: &str) -> Result<HttpResponse, WorkerError>;
-	fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError>;
 }
 
 trait LeaseMaintenance: Sync {
@@ -379,7 +382,7 @@ impl Display for WorkerError {
 	}
 }
 
-impl error::Error for WorkerError {}
+impl Error for WorkerError {}
 
 /// Machine-readable record written after every claimed package.
 #[derive(Clone, Debug, Serialize)]
@@ -944,12 +947,6 @@ struct CalibrationVerificationRequest<'a> {
 	attestation: &'a CalibrationVerifierAttestationV1,
 }
 
-#[derive(Clone, Debug)]
-struct HttpResponse {
-	status: u16,
-	body: Vec<u8>,
-}
-
 struct HttpArtifactResolver<'a, T> {
 	transport: &'a T,
 	token: &'a Secret,
@@ -969,8 +966,8 @@ where
 		digest: &str,
 		kind: &str,
 		expected_bytes: u64,
-	) -> Result<Vec<u8>, ArtifactResolveAttemptError> {
-		self.maintain_lease().map_err(ArtifactResolveAttemptError::from_transport)?;
+	) -> Result<Vec<u8>, WorkerError> {
+		self.maintain_lease()?;
 
 		let body = serde_json::to_vec(&serde_json::json!({
 			"digest": digest,
@@ -978,75 +975,66 @@ where
 			"kind": kind,
 			"lease_token": self.lease_token,
 		}))
-		.map_err(|error| {
-			ArtifactResolveAttemptError::Final(WorkerError::configuration(error.to_string()))
-		})?;
-		let response = self
-			.transport
-			.post_json(&format!("{}/api/artifacts/resolve", self.endpoint), self.token, &body)
-			.map_err(ArtifactResolveAttemptError::from_transport)?;
+		.map_err(|error| WorkerError::configuration(error.to_string()))?;
+		let response = self.transport.post_json(
+			&format!("{}/api/artifacts/resolve", self.endpoint),
+			self.token,
+			&body,
+		)?;
 
 		match response.status {
 			200 => {},
 			404 => {
-				return Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+				return Err(WorkerError::terminal(
 					ReasonCode::ArtifactEvidenceUnavailable,
 					"required claim artifact is absent",
-				)));
+				));
 			},
 			408 | 409 | 429 | 500..=599 => {
-				return Err(ArtifactResolveAttemptError::Retry(WorkerError::transient(
-					"artifact resolver is unavailable",
-				)));
+				return Err(WorkerError::transient("artifact resolver is unavailable"));
 			},
 			401 | 403 => {
-				return Err(ArtifactResolveAttemptError::Final(WorkerError::configuration(
-					"artifact resolver authorization failed",
-				)));
+				return Err(WorkerError::configuration("artifact resolver authorization failed"));
 			},
 			_ => {
-				return Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+				return Err(WorkerError::terminal(
 					ReasonCode::ArtifactEvidenceUnavailable,
 					"artifact resolver denied required workspace evidence",
-				)));
+				));
 			},
 		}
 
 		let resolved: ArtifactResolveResponse =
-			parse_json(&response.body, "artifact resolver response")
-				.map_err(ArtifactResolveAttemptError::Final)?;
+			parse_json(&response.body, "artifact resolver response")?;
 
 		if resolved.artifact.kind != kind
 			|| resolved.artifact.content_sha256 != digest
 			|| resolved.artifact.bytes != expected_bytes
 			|| resolved.artifact.url_expires_in_seconds == 0
 		{
-			return Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+			return Err(WorkerError::terminal(
 				ReasonCode::ArtifactEvidenceMismatch,
 				"artifact resolver returned a mismatched object identity",
-			)));
+			));
 		}
 
-		let object = self
-			.transport
-			.get_artifact_object(&resolved.artifact.url)
-			.map_err(ArtifactResolveAttemptError::from_transport)?;
+		let object = self.transport.get_artifact_object(&resolved.artifact.url)?;
 
 		match object.status {
 			200 => Ok(object.body),
-			404 => Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+			404 => Err(WorkerError::terminal(
 				ReasonCode::ArtifactEvidenceUnavailable,
 				"resolved artifact object is absent",
-			))),
+			)),
 			// Supabase can return 403 when a short-lived signed object URL expires or is
 			// temporarily invalid. Re-resolving obtains a fresh claim-bound URL.
-			403 | 408 | 409 | 429 | 500..=599 => Err(ArtifactResolveAttemptError::Retry(
-				WorkerError::transient("resolved artifact object is unavailable"),
-			)),
-			_ => Err(ArtifactResolveAttemptError::Final(WorkerError::terminal(
+			403 | 408 | 409 | 429 | 500..=599 => {
+				Err(WorkerError::transient("resolved artifact object is unavailable"))
+			},
+			_ => Err(WorkerError::terminal(
 				ReasonCode::ArtifactEvidenceUnavailable,
 				"resolved artifact object could not be read",
-			))),
+			)),
 		}
 	}
 }
@@ -1065,22 +1053,9 @@ where
 		kind: &str,
 		expected_bytes: u64,
 	) -> Result<Vec<u8>, WorkerError> {
-		let mut delay = self.backoff;
-
-		for attempt in 1..=self.max_retries.max(1) {
-			match self.resolve_once(digest, kind, expected_bytes) {
-				Ok(bytes) => return Ok(bytes),
-				Err(ArtifactResolveAttemptError::Retry(_)) if attempt < self.max_retries.max(1) => {
-					thread::sleep(delay);
-
-					delay = delay.saturating_mul(2);
-				},
-				Err(ArtifactResolveAttemptError::Retry(error)) => return Err(error),
-				Err(ArtifactResolveAttemptError::Final(error)) => return Err(error),
-			}
-		}
-
-		Err(WorkerError::transient("artifact retry budget exhausted"))
+		gateway::retry_transient(self.max_retries.max(1), self.backoff, || {
+			self.resolve_once(digest, kind, expected_bytes)
+		})
 	}
 }
 
@@ -1106,7 +1081,8 @@ impl ArtifactResolverClient for LocalArtifactResolver {
 				kind,
 				"evaluator-results.json"
 					| "stdout.jsonl"
-					| "stderr.txt" | "capability-marker.txt"
+					| "stderr.txt"
+					| "capability-marker.txt"
 					| "final-response.txt"
 					| "workspace-manifest.json"
 					| "workspace-snapshot.json"
@@ -1180,91 +1156,6 @@ impl ArtifactResolverClient for LocalArtifactResolver {
 		}
 
 		Ok(input.bytes)
-	}
-}
-
-struct UreqTransport {
-	agent: ureq::Agent,
-	allow_loopback_http: bool,
-}
-impl UreqTransport {
-	fn new(timeout: Duration, allow_loopback_http: bool, replay_jobs: usize) -> Self {
-		let config = ureq::Agent::config_builder()
-			.timeout_global(Some(timeout))
-			.max_idle_connections(replay_jobs)
-			.max_idle_connections_per_host(replay_jobs)
-			.build();
-
-		Self { agent: config.into(), allow_loopback_http }
-	}
-
-	fn validate_url(&self, url: &str) -> Result<(), WorkerError> {
-		if transport_url_is_allowed(url, self.allow_loopback_http) {
-			Ok(())
-		} else {
-			Err(WorkerError::configuration("URLs must use HTTPS; test HTTP is limited to loopback"))
-		}
-	}
-
-	fn collect(
-		result: Result<Response<Body>, ureq::Error>,
-		limit: usize,
-	) -> Result<HttpResponse, WorkerError> {
-		let mut response = match result {
-			Ok(response) => response,
-			Err(ureq::Error::StatusCode(status)) => {
-				return Ok(HttpResponse { status, body: Vec::new() });
-			},
-			Err(ureq::Error::Timeout(_)) => {
-				return Err(WorkerError::transient("HTTP request timed out"));
-			},
-			Err(_) => return Err(WorkerError::transient("HTTP transport failed")),
-		};
-		let status = response.status().as_u16();
-		let body = response
-			.body_mut()
-			.with_config()
-			.limit((limit + 1) as u64)
-			.read_to_vec()
-			.map_err(|_| WorkerError::transient("HTTP response body could not be read"))?;
-
-		if body.len() > limit {
-			return Err(WorkerError::transient("HTTP response exceeds its byte limit"));
-		}
-
-		Ok(HttpResponse { status, body })
-	}
-}
-
-impl Transport for UreqTransport {
-	fn post_json(
-		&self,
-		url: &str,
-		token: &Secret,
-		body: &[u8],
-	) -> Result<HttpResponse, WorkerError> {
-		self.validate_url(url)?;
-
-		Self::collect(
-			self.agent
-				.post(url)
-				.header("Authorization", &format!("Bearer {}", token.expose()))
-				.header("Content-Type", "application/json")
-				.send(body),
-			MAX_GATEWAY_RESPONSE_BYTES,
-		)
-	}
-
-	fn get_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
-		self.validate_url(url)?;
-
-		Self::collect(self.agent.get(url).call(), MAX_OBJECT_RESPONSE_BYTES)
-	}
-
-	fn get_artifact_object(&self, url: &str) -> Result<HttpResponse, WorkerError> {
-		self.validate_url(url)?;
-
-		Self::collect(self.agent.get(url).call(), MAX_ARTIFACT_RESPONSE_BYTES)
 	}
 }
 
@@ -1731,25 +1622,11 @@ where
 		}
 	}
 
-	fn retry<F, R>(&self, mut operation: F) -> Result<R, WorkerError>
+	fn retry<F, R>(&self, operation: F) -> Result<R, WorkerError>
 	where
 		F: FnMut() -> Result<R, WorkerError>,
 	{
-		let mut delay = self.backoff;
-
-		for attempt in 1..=self.max_retries {
-			match operation() {
-				Ok(value) => return Ok(value),
-				Err(error) if error.is_transient() && attempt < self.max_retries => {
-					thread::sleep(delay);
-
-					delay = delay.saturating_mul(2);
-				},
-				Err(error) => return Err(error),
-			}
-		}
-
-		Err(WorkerError::transient("retry budget exhausted"))
+		gateway::retry_transient(self.max_retries, self.backoff, operation)
 	}
 }
 
@@ -2227,16 +2104,6 @@ impl ReasonCode {
 			Self::InvalidReplayEvidence => "Replay evidence is invalid.",
 			Self::EvaluatorReplayMismatch => "Evaluator replay did not match the signed result.",
 		}
-	}
-}
-
-enum ArtifactResolveAttemptError {
-	Retry(WorkerError),
-	Final(WorkerError),
-}
-impl ArtifactResolveAttemptError {
-	fn from_transport(error: WorkerError) -> Self {
-		if error.is_transient() { Self::Retry(error) } else { Self::Final(error) }
 	}
 }
 
@@ -3703,7 +3570,8 @@ fn approved_operational_nodes(
 					&& value
 						.bytes()
 						.all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-			}) || node.public_key.len() != 64
+			})
+			|| node.public_key.len() != 64
 			|| !node
 				.public_key
 				.bytes()
@@ -3776,9 +3644,7 @@ fn load_local_tasks(root: &Path) -> Result<Vec<TaskDefinition>, WorkerError> {
 
 	let mut tasks = load_tasks(root)?;
 
-	if tasks.len() == 72
-		&& tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION)
-	{
+	if tasks.len() == 72 && tasks.iter().all(|task| task.task_version == AIQ_TASK_SET_VERSION) {
 		candidate_catalog::order_tasks_by_checked_candidate(&mut tasks)
 			.map_err(|error| WorkerError::configuration(error.to_string()))?;
 	}
@@ -3838,7 +3704,7 @@ fn run_worker(cli: Cli) -> Result<(), WorkerError> {
 		environment.synthetic_test,
 	)?;
 	let worker_binary_sha256 = executable_digest()?;
-	let endpoint = validate_endpoint(&cli.endpoint, cli.allow_loopback_http)?;
+	let endpoint = crate::gateway::validate_endpoint(&cli.endpoint, cli.allow_loopback_http)?;
 	let replay_root = controlled_root(&cli.replay_root, "replay root")?;
 	let evaluator_root = cli
 		.evaluator_root
@@ -5295,55 +5161,6 @@ fn recompute_scores(
 		.collect()
 }
 
-fn validate_endpoint(endpoint: &str, allow_loopback_http: bool) -> Result<String, WorkerError> {
-	let endpoint = endpoint.trim_end_matches('/');
-
-	if endpoint_origin_is_allowed(endpoint, allow_loopback_http) {
-		Ok(endpoint.to_owned())
-	} else {
-		Err(WorkerError::configuration(
-			"endpoint must be an HTTPS origin; test HTTP is limited to a loopback origin",
-		))
-	}
-}
-
-fn parsed_uri_is_allowed(uri: &Uri, allow_loopback_http: bool) -> bool {
-	let Some(authority) = uri.authority() else {
-		return false;
-	};
-
-	if authority.as_str().contains('@') {
-		return false;
-	}
-
-	let loopback = matches!(uri.host(), Some("localhost" | "127.0.0.1" | "::1" | "[::1]"));
-
-	uri.scheme_str() == Some("https")
-		|| (allow_loopback_http && uri.scheme_str() == Some("http") && loopback)
-}
-
-fn transport_url_is_allowed(url: &str, allow_loopback_http: bool) -> bool {
-	if url.contains('#') {
-		return false;
-	}
-
-	url.parse::<Uri>().is_ok_and(|uri| parsed_uri_is_allowed(&uri, allow_loopback_http))
-}
-
-fn endpoint_origin_is_allowed(endpoint: &str, allow_loopback_http: bool) -> bool {
-	if endpoint.contains('#') {
-		return false;
-	}
-
-	let Ok(uri) = endpoint.parse::<Uri>() else {
-		return false;
-	};
-	let path_and_query = uri.path_and_query().map(PathAndQuery::as_str);
-
-	parsed_uri_is_allowed(&uri, allow_loopback_http)
-		&& matches!(path_and_query, None | Some("") | Some("/"))
-}
-
 fn parse_replay_jobs(value: &str) -> Result<usize, String> {
 	let jobs = value
 		.parse::<usize>()
@@ -5425,15 +5242,14 @@ fn validate_environment(environment: &VerifierEnvironment) -> Result<(), WorkerE
 		|| environment.expected_provenance.as_ref().is_some_and(|provenance| {
 			provenance.prompt_digest != environment.prompt_set_digest
 				|| provenance.catalog_digest != AIQ_CORE_TASK_IDENTITY_SHA256
-		}) || environment.runner_commit.len() < 7
+		})
+		|| environment.runner_commit.len() < 7
 		|| environment.runner_commit.len() > 40
 		|| !environment.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
 		|| !valid_identifier(&environment.region, 64)
-		|| environment
-			.artifact_resolver_endpoint
-			.as_ref()
-			.is_some_and(|url| url.ends_with('/') || !endpoint_origin_is_allowed(url, false))
-	{
+		|| environment.artifact_resolver_endpoint.as_ref().is_some_and(|url| {
+			url.ends_with('/') || !crate::gateway::endpoint_origin_is_allowed(url, false)
+		}) {
 		return Err(WorkerError::configuration("verifier environment is invalid"));
 	}
 
@@ -5471,11 +5287,9 @@ fn validate_candidate_qualification_environment(
 		|| environment.runner_commit.len() > 40
 		|| !environment.runner_commit.bytes().all(|byte| byte.is_ascii_hexdigit())
 		|| !valid_identifier(&environment.region, 64)
-		|| environment
-			.artifact_resolver_endpoint
-			.as_ref()
-			.is_some_and(|url| url.ends_with('/') || !endpoint_origin_is_allowed(url, false))
-	{
+		|| environment.artifact_resolver_endpoint.as_ref().is_some_and(|url| {
+			url.ends_with('/') || !crate::gateway::endpoint_origin_is_allowed(url, false)
+		}) {
 		return Err(WorkerError::configuration("candidate verifier environment is invalid"));
 	}
 
@@ -5708,16 +5522,15 @@ mod tests {
 	use sha2::{Digest, Sha256};
 
 	use crate::{
-		ArtifactResolveAttemptError, ArtifactResolverClient, Claim, ClaimLease, Cli,
-		DEFAULT_REPLAY_JOBS, DiagnoseRescoreCli, ErrorKind, HttpArtifactResolver, HttpResponse,
-		LEASE_RENEWAL_INTERVAL, LeaseMaintenance, LocalArtifactResolver,
-		MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES, OperatorDiagnostic,
-		OperatorErrorClass, PackageDisposition, PreparationRequest, PreparedEvidence,
-		PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE, REDACTED_ERROR_DETAIL,
-		RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse, RenewCalibrationAdmissionCli,
-		Secret, Transport, UreqTransport, ValidateEnvironmentCli, VerificationGatewayResponse,
-		VerificationRecord, VerifierEnvironment, VerifyLocalCli, VerifyQualificationCli, Worker,
-		WorkerError, replay,
+		ArtifactResolverClient, Claim, ClaimLease, Cli, DEFAULT_REPLAY_JOBS, DiagnoseRescoreCli,
+		ErrorKind, HttpArtifactResolver, HttpResponse, LEASE_RENEWAL_INTERVAL, LeaseMaintenance,
+		LocalArtifactResolver, MAX_OPERATOR_ERROR_DETAIL_BYTES, MAX_VERIFICATION_REQUEST_BYTES,
+		OperatorDiagnostic, OperatorErrorClass, PackageDisposition, PreparationRequest,
+		PreparedEvidence, PreparedVerification, RECORD_SCHEMA, REDACTED_ERROR_CODE,
+		REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse,
+		RenewCalibrationAdmissionCli, Secret, Transport, UreqTransport, ValidateEnvironmentCli,
+		VerificationGatewayResponse, VerificationRecord, VerifierEnvironment, VerifyLocalCli,
+		VerifyQualificationCli, Worker, WorkerError, replay,
 	};
 	use aiq_runner::calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION,
@@ -10227,52 +10040,6 @@ mod tests {
 	}
 
 	#[test]
-	fn verifier_url_policy_parses_the_authority_before_allowing_loopback_http() {
-		for allowed in [
-			"http://127.0.0.1:3100/api/claims",
-			"http://localhost:3100/api/claims?lease=1",
-			"http://[::1]:3100/api/claims",
-			"https://gateway.invalid/api/claims",
-		] {
-			assert!(crate::transport_url_is_allowed(allowed, true), "{allowed}");
-		}
-		for rejected in [
-			"http://localhost:3100@remote.invalid/api/claims",
-			"http://127.0.0.1:3100@remote.invalid/api/claims",
-			"http://localhost.invalid:3100/api/claims",
-			"http://remote.invalid/api/claims",
-			"https://user@gateway.invalid/api/claims",
-			"not-a-url",
-		] {
-			assert!(!crate::transport_url_is_allowed(rejected, true), "{rejected}");
-		}
-
-		assert!(!crate::transport_url_is_allowed("http://localhost:3100/api/claims", false));
-	}
-
-	#[test]
-	fn verifier_endpoint_policy_requires_one_exact_origin() {
-		assert_eq!(
-			crate::validate_endpoint("http://localhost:3100/", true).expect("loopback origin"),
-			"http://localhost:3100"
-		);
-		assert_eq!(
-			crate::validate_endpoint("https://gateway.invalid/", false).expect("HTTPS origin"),
-			"https://gateway.invalid"
-		);
-
-		for rejected in [
-			"http://localhost:3100@remote.invalid",
-			"https://user@gateway.invalid",
-			"https://gateway.invalid/api",
-			"https://gateway.invalid?query=1",
-			"https://gateway.invalid#fragment",
-		] {
-			assert!(crate::validate_endpoint(rejected, true).is_err(), "{rejected}");
-		}
-	}
-
-	#[test]
 	fn built_in_demo_tasks_are_explicit_and_synthetic_only() {
 		let required = [
 			"aiq-verifier",
@@ -10733,18 +10500,6 @@ mod tests {
 			assert_eq!(*transport.resolver_calls.lock().expect("resolver calls"), 1);
 			assert_eq!(*transport.object_calls.lock().expect("object calls"), 1);
 		}
-	}
-
-	#[test]
-	fn artifact_transport_errors_retry_only_when_transient() {
-		assert!(matches!(
-			ArtifactResolveAttemptError::from_transport(WorkerError::transient("network")),
-			ArtifactResolveAttemptError::Retry(_)
-		));
-		assert!(matches!(
-			ArtifactResolveAttemptError::from_transport(WorkerError::configuration("URL")),
-			ArtifactResolveAttemptError::Final(_)
-		));
 	}
 
 	#[test]

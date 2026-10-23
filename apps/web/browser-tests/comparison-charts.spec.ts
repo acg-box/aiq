@@ -6,7 +6,16 @@ test('Mem charts keep measured values, missingness and workload selection with t
   page,
 }) => {
   const failures: string[] = [];
+  const speculativeRoutes: string[] = [];
   page.on('pageerror', (error) => failures.push(error.message));
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (
+      url.origin === new URL(page.url()).origin &&
+      request.headers()['next-router-prefetch'] === '1'
+    )
+      speculativeRoutes.push(`${url.pathname}${url.search}`);
+  });
   await page.goto('/');
   const previewColors = await page
     .getByRole('list', { name: 'Native memory answer preview', exact: true })
@@ -187,6 +196,7 @@ test('Mem charts keep measured values, missingness and workload selection with t
     page.getByRole('region', { name: 'Writer · 3 paired inputs results', exact: true }),
   ).toContainText('$0.001142');
   expect(failures).toEqual([]);
+  expect(speculativeRoutes).toEqual([]);
 });
 
 test('Harness task matrix opens actual acceptance gates and preserves the absence of measurements', async ({

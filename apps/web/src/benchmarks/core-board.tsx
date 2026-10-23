@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import { WorkspaceDetailLink } from '../components/workspace-detail-link.tsx';
 import { CoreMethod } from './core-method.tsx';
 import { CoreTrends } from './core-trends.tsx';
@@ -12,10 +12,10 @@ import { BenchmarkHeading } from '../components/benchmark-heading.tsx';
 import { BoardTabs } from '../components/board-tabs.tsx';
 import { OfficialEfficiencyTable } from '../components/official-efficiency-table.tsx';
 import { ReadStateNote } from '../components/read-state-note.tsx';
-import { resolveExactEfficiencyRowsWithAvailability } from '../components/scientific-evidence-resolution.ts';
+import { resolveExactEfficiencyRowsWithAvailability } from '../data/scientific-evidence.ts';
 import { CoreResultsTable } from '../components/core-results-table.tsx';
 import { readPublicData } from '../data/read-state.ts';
-import { CALIBRATION_MODEL_CONFIGURATIONS } from '../data/repository.ts';
+import { CALIBRATION_MODEL_CONFIGURATIONS } from '../data/model-matrix.ts';
 import { readCoreResults } from './core-data.ts';
 import { ReferenceDisclosure } from '../components/reference-disclosure.tsx';
 import { ReferenceViewLinks } from '../components/reference-view-links.tsx';
@@ -101,9 +101,9 @@ export async function CoreBoardContent({
                     <WorkspaceDetailLink href="/benchmarks/intelligence/calibrations">
                       Calibration records
                     </WorkspaceDetailLink>
-                    <Link href={`/benchmarks/intelligence?${trendQuery}`}>
+                    <NavigationLink href={`/benchmarks/intelligence?${trendQuery}`}>
                       Time series and observation records
-                    </Link>
+                    </NavigationLink>
                     <WorkspaceDetailLink href="/benchmarks/intelligence/verification">
                       Verification and provenance records
                     </WorkspaceDetailLink>

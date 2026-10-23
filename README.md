@@ -416,6 +416,57 @@ identity and fresh release evidence.
 | `databases/`         | Desired database state, fresh initializer, and disposable SQL checks      |
 | `openwiki/`          | Architecture, method, operations, and deployment handoff                  |
 
+Keep imports at the owner of each contract:
+
+- `apps/web/src/data/repository.ts` selects a read-only data source and handles
+  pagination. `data/rows/` validates and maps Core, calibration, radar, and speed
+  rows. `data/model-matrix.ts` owns the fixed matrix; `data/result-outcomes.ts`
+  owns the shared task outcome rules. `data/scientific-evidence.ts` joins exact
+  run, configuration, scoring, and provenance identities. Components format
+  that evidence. Board and study definitions stay separate. Board readers and
+  archive downloads use the repository interface, without selecting a concrete
+  database adapter. Historical rows retain a separate admission method.
+- `apps/web/src/server/wire-json.ts` owns gateway JSON encoding and key checks.
+  `server/request-auth.ts` owns bearer-token comparison. Individual gateway
+  contracts retain their own admission, size, and publication rules.
+  `server/readiness-contract.ts` defines probe shapes and role grants;
+  `server/readiness.ts` performs the dependency probes.
+- `server/bounded-body.ts` collects byte streams and cancels overflow. Each
+  caller owns its content type, declared length, canonical encoding, and error
+  response. `server/artifact-contract.ts` owns artifact kinds, limits, and
+  evaluator bundle validation. Storage registration does not import a request
+  handler. `server/supabase-http.ts` owns role client options and deadlines that
+  remain active while response bodies arrive.
+- `components/analytical-url-state.ts` owns URL updates and change notification
+  for tables and charts. `workspace-query.ts` uses the same codec and writer.
+  Replacement updates preserve history length, unrelated filters, and anchors.
+  `components/navigation-link.tsx` loads internal routes on navigation.
+  This prevents cancelled speculative requests during rapid navigation.
+- `databases/connection.ts` validates database targets and constructs the `psql`
+  environment. Read-only commands import it directly. Only the initializer owns
+  fresh-state construction; `databases/schema.sql` remains the single SQL owner.
+- `apps/aiq-runner/src/cli/command.rs` owns argument definitions and parsing.
+  The parent CLI module dispatches workflows. `pinned_path.rs` owns kernel file
+  operations, including atomic rename and exchange. Corpus sealing uses that
+  owner directly. `apps/aiq-verifier/src/gateway.rs`
+  owns bounded HTTP requests, origin policy, and transient-error backoff. Each
+  operation classifies its own errors before retry. Replay and queue logic remain
+  separate. `apps/aiq/src/managed_fs.rs` owns shared JSON reads and managed private
+  directory creation. Credential directories keep their stricter owner and mode
+  checks in `credentials.rs`.
+
+The storage maintenance CLI keeps its own deletion allowlist and response reader.
+It must remain independent of upload code. It accepts the registered capability
+marker kind, bounds RPC responses before parsing, and does not retain unused
+Storage deletion response bodies. Its tests use simulated services.
+
+Versioned candidate generators and schemas preserve earlier source identities.
+Do not merge them into the current generator. The source inventory covers new
+Rust modules recursively and lists the gateway validation helpers explicitly.
+A source change requires fresh release evidence before a new publication; it
+does not change a retained result. Generated `openwiki/` pages are reference
+snapshots. Source code and current tests take precedence.
+
 Private tasks, expected outputs, controlled evaluators, signing keys, Codex
 authentication, and production data must stay outside Git.
 

@@ -14,6 +14,7 @@ import {
 class FakeUrlHost implements AnalyticalUrlHost {
   href: string;
   readonly pushed: string[] = [];
+  readonly replaced: string[] = [];
   private readonly listeners = new Map<string, Set<() => void>>();
 
   constructor(href: string) {
@@ -24,6 +25,10 @@ class FakeUrlHost implements AnalyticalUrlHost {
   currentSearch = () => new URL(this.href).search;
   pushState = (url: string) => {
     this.pushed.push(url);
+    this.href = new URL(url, this.href).href;
+  };
+  replaceState = (url: string) => {
+    this.replaced.push(url);
     this.href = new URL(url, this.href).href;
   };
   addEventListener = (type: string, listener: () => void) => {
@@ -47,6 +52,47 @@ class FakeUrlHost implements AnalyticalUrlHost {
 }
 
 void describe('analytical URL state codecs', () => {
+  void it('preserves workspace query order, unrelated scope, and anchors through updates', () => {
+    const host = new FakeUrlHost(
+      'https://aiq.wiki/benchmarks/harness?view=method&workload=workflow#tasks',
+    );
+    const store = createAnalyticalUrlStore(host);
+    store.update({ difficulty: 'hard', stack: 'TypeScript' }, { sort: false });
+    assert.deepEqual(host.pushed, [
+      '/benchmarks/harness?view=method&workload=workflow&difficulty=hard&stack=TypeScript#tasks',
+    ]);
+    assert.equal(
+      hrefWithParams(
+        '/benchmarks/harness',
+        new URL(host.href).searchParams,
+        { view: 'data' },
+        { sort: false },
+      ),
+      '/benchmarks/harness?view=data&workload=workflow&difficulty=hard&stack=TypeScript',
+    );
+    assert.equal(store.update({ stack: 'TypeScript' }, { sort: false }), false);
+  });
+
+  void it('replaces state without a history entry and merges successive updates from the current URL', () => {
+    const host = new FakeUrlHost('https://aiq.wiki/benchmarks/intelligence?view=records#results');
+    const store = createAnalyticalUrlStore(host);
+    let notifications = 0;
+    const unsubscribe = store.subscribe(() => {
+      notifications += 1;
+    });
+
+    store.update({ family: 'Sol' });
+    store.update({ effort: 'low' }, { replace: true });
+    assert.deepEqual(host.pushed, ['/benchmarks/intelligence?family=Sol&view=records#results']);
+    assert.deepEqual(host.replaced, [
+      '/benchmarks/intelligence?effort=low&family=Sol&view=records#results',
+    ]);
+    assert.equal(notifications, 2);
+    assert.equal(store.update({ family: 'Sol' }, { replace: true }), false);
+    assert.equal(notifications, 2);
+    unsubscribe();
+  });
+
   void it('accepts only declared enum and id values', () => {
     const params = new URLSearchParams('encoding=bar&family=unknown&model=terra-high');
     assert.equal(readEnumParam(params, 'encoding', ['line', 'bar'], 'line'), 'bar');
@@ -95,7 +141,7 @@ void describe('analytical URL state codecs', () => {
     const snapshots: string[] = [];
     const unsubscribe = store.subscribe(() => snapshots.push(store.getSnapshot()));
 
-    store.push({ trendFamily: 'Terra', trendEncoding: 'bar' });
+    store.update({ trendFamily: 'Terra', trendEncoding: 'bar' });
     assert.deepEqual(host.pushed, [
       '/benchmarks/intelligence?range=week&trendEncoding=bar&trendFamily=Terra#chart',
     ]);
@@ -129,13 +175,13 @@ void describe('analytical URL state codecs', () => {
       notifications += 1;
     });
 
-    assert.equal(store.push({ matrixEncoding: 'dots' }, { hasSemanticChange: false }), false);
-    assert.equal(store.push({ matrixFamily: 'All' }, { hasSemanticChange: false }), false);
+    assert.equal(store.update({ matrixEncoding: 'dots' }, { hasSemanticChange: false }), false);
+    assert.equal(store.update({ matrixFamily: 'All' }, { hasSemanticChange: false }), false);
     assert.deepEqual(host.pushed, []);
     assert.equal(notifications, 0);
 
-    assert.equal(store.push({ matrixEncoding: 'bars' }), true);
-    assert.equal(store.push({ matrixEncoding: 'bars' }), false);
+    assert.equal(store.update({ matrixEncoding: 'bars' }), true);
+    assert.equal(store.update({ matrixEncoding: 'bars' }), false);
     assert.deepEqual(host.pushed, ['/?matrixEncoding=bars#leaderboard']);
     assert.equal(notifications, 1);
 

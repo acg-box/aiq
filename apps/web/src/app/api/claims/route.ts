@@ -4,7 +4,7 @@ import 'server-only';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { handleVerifierClaim, type VerifierClaim } from '../../../server/verifier-claim-handler.ts';
-import { verificationRoleClientOptions } from '../../../server/verification-handler.ts';
+import { createSupabaseRoleClientOptions } from '../../../server/supabase-http.ts';
 import { createSupabaseRoleTokenIssuer } from '../../../server/supabase-role-token.ts';
 import { inspectVerifierClaimConfiguration } from '../../../server/production-configuration.ts';
 import { createSupabaseApiKeyFetch } from '../../../server/supabase-http.ts';
@@ -31,7 +31,10 @@ export async function POST(request: Request): Promise<Response> {
     verifier ??= createClient(
       configuration.serviceUrl,
       configuration.publishableKey,
-      verificationRoleClientOptions(() => issueRoleToken({ role: 'aiq_verifier' }), request.signal),
+      createSupabaseRoleClientOptions(
+        () => issueRoleToken({ role: 'aiq_verifier' }),
+        request.signal,
+      ),
     );
     return verifier;
   }
