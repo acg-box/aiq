@@ -1137,7 +1137,7 @@ select jsonb_build_object(
 }
 
 void test(
-  'initializes one real fresh PostgreSQL 17 database, reports readiness, and rejects reuse',
+  'initializes a fresh PostgreSQL database, rejects reuse, and verifies calibration publication',
   {
     skip:
       integrationDatabaseUrl === undefined ||
@@ -1164,7 +1164,7 @@ void test(
         env: integrationDatabaseEnvironment(integrationDatabaseUrl),
       },
     );
-    assert.match(versionOutput.trim(), /^17(?:\.|$)/);
+    assert.match(versionOutput.trim(), /^(?:17|18)(?:\.|$)/);
     await execFileAsync(
       integrationPsql,
       [
@@ -1433,5 +1433,21 @@ rollback;`,
       JSON.parse(readinessAfterReuseOutput.trim().split(/\r?\n/).at(-1) ?? 'null'),
     );
     deepStrictEqual(readinessAfterReuse, readiness);
+    await execFileAsync(
+      integrationPsql,
+      [
+        '-X',
+        '--no-psqlrc',
+        '--set',
+        'ON_ERROR_STOP=1',
+        '--file',
+        resolve(repositoryRoot, 'databases/calibration-integration.sql'),
+      ],
+      { env: integrationDatabaseEnvironment(integrationDatabaseUrl) },
+    );
+    deepStrictEqual(
+      await publicReferenceShape(integrationPsql, integrationDatabaseUrl, 'anon'),
+      expectedPublicShape,
+    );
   },
 );

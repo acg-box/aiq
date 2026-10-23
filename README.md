@@ -634,7 +634,7 @@ AIQ_DATABASE_URL='<disposable-loopback-postgres-url>' \
 cargo make smoke-calibration-database
 ```
 
-Use a separate fresh PostgreSQL 17 database for the deterministic synthetic
+Use a separate fresh PostgreSQL 17 or 18 database for the deterministic synthetic
 flow:
 
 ```sh

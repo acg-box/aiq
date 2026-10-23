@@ -127,6 +127,12 @@ declare
   terminal_attempt_lineage jsonb;
   payload jsonb;
   evaluator_digest text:=repeat('e',64);
+  probe_artifacts jsonb:=jsonb_build_array(
+    jsonb_build_object('kind','stdout.jsonl','content_hash','sha256:'||repeat('7',64),
+      'uri','aiq-artifact://sha256/'||repeat('7',64)||'/stdout.jsonl','bytes',107),
+    jsonb_build_object('kind','stderr.txt','content_hash','sha256:'||repeat('8',64),
+      'uri','aiq-artifact://sha256/'||repeat('8',64)||'/stderr.txt','bytes',108)
+  );
 begin
   select jsonb_agg(jsonb_build_object(
     'family',model_family,'reasoning_effort',reasoning_effort
@@ -150,14 +156,14 @@ begin
   cross join lateral (
     select jsonb_build_object(
       'status','failed','codex_version','integration','observed_at','unix-ms:1785672000000',
-      'result_digest',null,'result_preview',null,'artifacts','[]'::jsonb,
+      'result_digest',null,'result_preview',null,'artifacts',probe_artifacts,
       'failure',failure,
       'evidence_digest',aiq_private.jcs_sha256(jsonb_build_array(
-        model,'integration','unix-ms:1785672000000','failed',null,null,'[]'::jsonb,failure
+        model,'integration','unix-ms:1785672000000','failed',null,null,probe_artifacts,failure
       ))
     ) as probe
     from (select jsonb_build_object(
-      'artifacts','[]'::jsonb,'exit_code',null,'kind','spawn',
+      'artifacts',probe_artifacts,'exit_code',null,'kind','spawn',
       'message','Synthetic calibration capability is unavailable','stderr','',
       'stderr_truncated',false,'stdout_truncated',false
     ) as failure) failure_record
@@ -318,6 +324,146 @@ select pg_temp.aiq_assert(
   'Official provenance must not substitute the evaluator executable identity for the selected-evaluator commitment'
 ) from aiq_calibration_input;
 
+select pg_temp.aiq_assert(
+  aiq_private.run_provenance_v3_is_valid(jsonb_set(
+    envelope#>'{payload,provenance}','{run_class}','"preview"'::jsonb
+  )) is false,
+  'generic provenance must reject an unknown run class'
+) from aiq_calibration_input;
+
+do $$
+declare
+  envelope jsonb := (select input.envelope from aiq_calibration_input input);
+  provenance jsonb;
+  stage jsonb;
+begin
+  provenance:=envelope#>'{payload,provenance}'||jsonb_build_object(
+    'run_class','official',
+    'corpus_release_id',(select metadata->>'corpus_release_id'
+      from aiq_private.aiq_task_sets where task_set_id='aiq-core' and task_set_version='1.1.0'),
+    'evaluator_digest','sha256:4ea7463e7762aa498f1b314919cd0dc2eb07144e374f8ea743a59c3973c31ce0'
+  );
+  stage:=jsonb_build_object(
+    'run_class','official','task_set_id','aiq-core','task_set_version','1.1.0',
+    'task_set_hash',provenance->'task_set_digest',
+    'capability_validation_digest',provenance->'preflight_digest',
+    'prompt_set_digest',provenance->'prompt_digest','signer',envelope->'signer'
+  );
+  perform pg_temp.aiq_assert(aiq_private.run_provenance_v3_matches_stage(provenance,stage),
+    'matching Official provenance must bind to the initialized catalog and stage');
+  perform pg_temp.aiq_assert(not aiq_private.run_provenance_v3_matches_stage(
+    provenance,jsonb_set(stage,'{run_class}','"calibration"'::jsonb)
+  ) and not aiq_private.run_provenance_v3_matches_stage(
+    envelope#>'{payload,provenance}',stage
+  ),'stage and provenance must each require the Official class');
+  provenance:=jsonb_set(provenance,'{task_set_digest}',provenance->'catalog_digest');
+  stage:=jsonb_set(stage,'{task_set_hash}',provenance->'catalog_digest');
+  perform pg_temp.aiq_assert(not aiq_private.run_provenance_v3_matches_stage(provenance,stage),
+    'matching catalog digests must not replace the frozen task-set commitment');
+end;
+$$;
+
+-- Recompute the package and result digests so a catalog mismatch cannot be
+-- rejected only because a changed object still has its previous digest.
+do $$
+declare
+  envelope jsonb := (select input.envelope from aiq_calibration_input input);
+  changed jsonb;
+  result jsonb;
+begin
+  result:=jsonb_set(envelope#>'{payload,results,0}','{task_version}','"9.9.9"'::jsonb);
+  result:=jsonb_set(result,'{result_id}',to_jsonb(
+    'result_'||substr(aiq_private.jcs_sha256(result||'{"result_id":""}'::jsonb),8)
+  ));
+  perform pg_temp.aiq_assert(aiq_private.dto_result_is_valid(
+    result,envelope#>>'{payload,run_id}',false,envelope#>'{payload,capability_validation}'
+  ),'the wrong-version result must otherwise satisfy the result contract');
+  changed:=jsonb_set(envelope,'{payload,results,0}',result);
+  changed:=jsonb_set(changed,'{content_hash}',to_jsonb(aiq_private.jcs_sha256(changed->'payload')));
+  perform pg_temp.aiq_assert(aiq_private.calibration_package_v3_is_valid(changed) is false,
+    'a validly hashed result must not substitute a different catalog task version');
+end;
+$$;
+
+-- Successful probes require the exact marker. Failed probes require no marker.
+do $$
+declare
+  preflight jsonb := (select envelope#>'{payload,capability_validation}' from aiq_calibration_input);
+  models jsonb := (select envelope#>'{payload,models}' from aiq_calibration_input);
+  probe jsonb;
+  candidate jsonb;
+  changed record;
+  marker_digest text := encode(extensions.digest(
+    convert_to(E'AIQ_CAPABILITY_COMMAND_AND_WRITE_V1\n','utf8'),'sha256'),'hex');
+begin
+  perform pg_temp.aiq_assert(aiq_private.dto_preflight_is_valid(preflight,models),
+    'failed capability probes need no functional marker');
+  probe:=preflight#>'{models,0,probe}'||jsonb_build_object(
+    'status','available','failure',null,'result_preview','ok',
+    'result_digest','sha256:'||encode(extensions.digest('ok','sha256'),'hex'),
+    'artifacts',jsonb_build_array(jsonb_build_object(
+      'kind','capability-marker.txt','content_hash','sha256:'||marker_digest,
+      'uri','aiq-artifact://sha256/'||marker_digest||'/capability-marker.txt','bytes',36
+    ))
+  );
+  for changed in select * from (values
+    ('exact marker',probe,true),
+    ('missing marker',jsonb_set(probe,'{artifacts}','[]'::jsonb),false),
+    ('wrong size',jsonb_set(probe,'{artifacts,0,bytes}','35'::jsonb),false),
+    ('different object',jsonb_set(jsonb_set(probe,'{artifacts,0,content_hash}',
+      to_jsonb('sha256:'||repeat('f',64))),'{artifacts,0,uri}',
+      to_jsonb('aiq-artifact://sha256/'||repeat('f',64)||'/capability-marker.txt')),false)
+  ) cases(label,value,expected) loop
+    candidate:=jsonb_set(preflight,'{models,0,status}','"available"'::jsonb);
+    probe:=changed.value;
+    probe:=jsonb_set(probe,'{evidence_digest}',to_jsonb(aiq_private.jcs_sha256(jsonb_build_array(
+      models->0,probe->'codex_version',probe->'observed_at',probe->'status',
+      probe->'result_digest',probe->'result_preview',probe->'artifacts',probe->'failure'
+    ))));
+    candidate:=jsonb_set(candidate,'{models,0,probe}',probe);
+    perform pg_temp.aiq_assert(
+      aiq_private.dto_preflight_is_valid(candidate,models) is not distinct from changed.expected,
+      'functional marker validation: '||changed.label);
+  end loop;
+end;
+$$;
+
+savepoint functional_marker_ingress;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+do $$
+declare
+  run_id text := (select input.run_id from aiq_calibration_input input);
+  digest text := '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3';
+  changed record;
+begin
+  perform pg_temp.aiq_assert(public.aiq_record_artifact_ingress(
+    run_id,'capability-marker.txt',digest,36,jsonb_build_object(
+      'bucket','aiq-runner-artifacts','key','sha256/'||digest||'/capability-marker.txt'
+    ))='accepted','the exact marker must enter Storage');
+  for changed in select * from (values
+    (digest,35),(repeat('f',64),36)
+  ) cases(hash,bytes) loop
+    begin
+      perform public.aiq_record_artifact_ingress(
+        run_id,'capability-marker.txt',changed.hash,changed.bytes,jsonb_build_object(
+          'bucket','aiq-runner-artifacts','key','sha256/'||changed.hash||'/capability-marker.txt'
+        ));
+      raise exception 'marker ingress accepted a different size or digest';
+    exception when invalid_parameter_value then null;
+    end;
+  end loop;
+end;
+$$;
+reset role;
+select pg_temp.aiq_assert(
+  (select count(*)=1 and min(byte_size)=36
+   from aiq_private.aiq_storage_objects where artifact_kind='capability-marker.txt'),
+  'marker ingress must register exactly one immutable Storage object'
+);
+rollback to savepoint functional_marker_ingress;
+release savepoint functional_marker_ingress;
+
 set local role service_role;
 select set_config('request.jwt.claims','{"role":"service_role"}',true);
 create temp table aiq_calibration_enqueue on commit drop as
@@ -365,6 +511,14 @@ select pg_temp.aiq_assert(
     )
   )='accepted','calibration evaluator evidence must enter retained Storage'
 ) from aiq_calibration_input;
+select pg_temp.aiq_assert(
+  public.aiq_record_artifact_ingress(input.run_id,artifact.kind,artifact.digest,artifact.bytes,
+    jsonb_build_object('bucket','aiq-runner-artifacts',
+      'key','sha256/'||artifact.digest||'/'||artifact.kind))='accepted',
+  'capability probe logs must enter retained Storage'
+) from aiq_calibration_input input cross join (values
+  ('stdout.jsonl',repeat('7',64),107),('stderr.txt',repeat('8',64),108)
+) artifact(kind,digest,bytes);
 reset role;
 
 set local role aiq_verifier;
@@ -526,12 +680,15 @@ begin
 end;
 $$;
 select pg_temp.aiq_assert(
-  (select count(*)=1 from public.aiq_resolve_claim_artifact(
+  (select count(*)=3 from (values
+    ('evaluator-results.json',repeat('e',64)),
+    ('stdout.jsonl',repeat('7',64)),('stderr.txt',repeat('8',64))
+   ) artifact(kind,digest) cross join lateral public.aiq_resolve_claim_artifact(
     (select inbox_id from aiq_calibration_verification),
     (select lease_token from aiq_calibration_verification),
-    'evaluator-results.json',repeat('e',64)
+    artifact.kind,artifact.digest
   )),
-  'the verifier must bind the declared evaluator artifact to its exact claim'
+  'the verifier must bind evaluator evidence and capability logs to the exact claim'
 );
 select pg_temp.aiq_assert(
   (select public.aiq_record_calibration_attestation(
@@ -571,10 +728,10 @@ select pg_temp.aiq_assert(
 reset role;
 
 select pg_temp.aiq_assert(
-  (select count(*)=2 from aiq_private.aiq_publication_storage_evidence evidence
+  (select count(*)=4 from aiq_private.aiq_publication_storage_evidence evidence
    where evidence.publication_class='calibration'
      and evidence.publication_id=(select run_id from aiq_calibration_input))
-  and (select count(*)=2 from aiq_private.aiq_storage_object_references reference
+  and (select count(*)=4 from aiq_private.aiq_storage_object_references reference
        where reference.reference_type='calibration_run' and reference.active)
   and (select count(*)=0 from aiq_private.aiq_storage_object_references reference
        join aiq_private.aiq_artifact_claim_bindings binding
@@ -592,6 +749,70 @@ select pg_temp.aiq_assert(
    where inbox_id=(select inbox_id from aiq_calibration_verification)),
   'calibration publication must complete the exact claimed inbox lifecycle'
 );
+
+do $$
+declare
+  target text;
+  row_count integer;
+  identity_column text;
+begin
+  foreach target in array array[
+    'calibration_runs','calibration_model_scores','calibration_task_results',
+    'calibration_verification_stages','calibration_verification_audit',
+    'calibration_publications','aiq_publication_storage_evidence'
+  ] loop
+    execute format('select count(*) from aiq_private.%I',target) into row_count;
+    perform pg_temp.aiq_assert(row_count>0,'append-only test needs a row in '||target);
+    begin
+      execute format('delete from aiq_private.%I',target);
+      raise exception 'retained evidence was deleted from %',target;
+    exception when object_not_in_prerequisite_state then null;
+    end;
+    identity_column:=case when target='aiq_publication_storage_evidence'
+      then 'publication_id' else 'run_id' end;
+    begin
+      execute format('update aiq_private.%I set %I=%I',target,identity_column,identity_column);
+      raise exception 'retained evidence was updated in %',target;
+    exception when object_not_in_prerequisite_state then null;
+    end;
+  end loop;
+end;
+$$;
+
+-- Replace one row only inside a savepoint. Disable triggers for removal of the
+-- fixture row; restore them before the foreign key and outcome checks.
+savepoint calibration_result_constraints;
+create temp table aiq_result_constraint_input on commit drop as
+select * from aiq_private.calibration_task_results order by result_id limit 1;
+set local session_replication_role = replica;
+delete from aiq_private.calibration_task_results
+where result_id=(select result_id from aiq_result_constraint_input);
+set local session_replication_role = origin;
+do $$
+declare
+  valid aiq_private.calibration_task_results%rowtype;
+  candidate aiq_private.calibration_task_results%rowtype;
+begin
+  select * into strict valid from aiq_result_constraint_input;
+  candidate:=valid;
+  candidate.task_hash:='sha256:'||repeat('0',64);
+  begin
+    insert into aiq_private.calibration_task_results select candidate.*;
+    raise exception 'result retained a task hash from outside its catalog identity';
+  exception when foreign_key_violation then null;
+  end;
+  candidate:=valid;
+  candidate.task_score:=0;
+  begin
+    insert into aiq_private.calibration_task_results select candidate.*;
+    raise exception 'runtime-invalid evidence retained a semantic score';
+  exception when check_violation then null;
+  end;
+  insert into aiq_private.calibration_task_results select valid.*;
+end;
+$$;
+rollback to savepoint calibration_result_constraints;
+release savepoint calibration_result_constraints;
 
 set local role anon;
 select pg_temp.aiq_assert(

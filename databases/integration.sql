@@ -240,6 +240,42 @@ select pg_temp.aiq_assert(
   'unavailable context-band evidence must not retain a cost or cost authority'
 );
 
+-- Check the validator with independent cost arithmetic and one-field changes.
+do $$
+declare
+  valid jsonb := '{
+    "cost_evidence_level":"verifier_recomputed","cost_status":"estimated",
+    "model":{"family":"luna","reasoning_effort":"low"},"observed_wall_ms":1,
+    "provider_tokens":{"input":100,"cached_input":20,"cache_write_input":10,
+      "output":10,"reasoning":3,"total":999},
+    "provider_tokens_evidence_level":"verifier_recomputed",
+    "provider_tokens_source":"provider_reported",
+    "source_result_id":"result_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "standard_api_equivalent_usd_nanos":28900,"task_id":"coding-01",
+    "wall_time_evidence_level":"runner_observed"
+  }'::jsonb;
+  changed record;
+begin
+  perform pg_temp.aiq_assert(aiq_private.result_efficiency_v1_is_valid(valid),
+    '70 uncached + 20 cached + 10 cache-write input and 10 output tokens cost 28900 nanos; total is independent');
+  for changed in select * from (values
+    ('cached input exceeds input',array['provider_tokens','cached_input'],'101'::jsonb),
+    ('reasoning exceeds output',array['provider_tokens','reasoning'],'11'::jsonb),
+    ('negative duration',array['observed_wall_ms'],'-1'::jsonb),
+    ('missing duration authority',array['wall_time_evidence_level'],'null'::jsonb),
+    ('wrong token source',array['provider_tokens_source'],'"runner_observed"'::jsonb),
+    ('missing token authority',array['provider_tokens_evidence_level'],'null'::jsonb),
+    ('wrong price',array['standard_api_equivalent_usd_nanos'],'28901'::jsonb),
+    ('missing cost authority',array['cost_evidence_level'],'null'::jsonb),
+    ('unavailable cost with an amount',array['cost_status'],'"unavailable_missing_usage"'::jsonb)
+  ) cases(label,path,value) loop
+    perform pg_temp.aiq_assert(
+      aiq_private.result_efficiency_v1_is_valid(jsonb_set(valid,changed.path,changed.value)) is false,
+      'efficiency must reject '||changed.label);
+  end loop;
+end;
+$$;
+
 -- Build one valid signed-package shape for the ingress and lease checks. The
 -- signature is structural test data; this check does not claim cryptographic
 -- verification.
@@ -409,7 +445,7 @@ begin
     'models', models,
     'execution_concurrency', 1,
     'started_unix_ms', 1785164400000,
-    'finished_unix_ms', 1785164400001,
+    'finished_unix_ms', 1785164401000,
     'synthetic', true,
     'capability_validation', 'null'::jsonb,
     'provenance', 'null'::jsonb,
@@ -929,8 +965,25 @@ declare
   first_elapsed numeric;
   retry_elapsed numeric;
   staged_batch_id text;
+  changed record;
 begin
   select * into strict fixture from aiq_stage_resume_input;
+  for changed in select * from (values
+    ('concurrency differs from signed payload',array['execution_concurrency'],'31'::jsonb),
+    ('missing efficiency cell',array['result_efficiency'],(fixture.stage->'result_efficiency')-0),
+    ('duplicate result identity',array['result_efficiency','0','source_result_id'],
+      fixture.stage#>'{result_efficiency,1,source_result_id}'),
+    ('wrong task identity',array['result_efficiency','0','task_id'],'"unknown-task"'::jsonb)
+  ) cases(label,path,value) loop
+    begin
+      perform public.aiq_stage_verifier_result(
+        jsonb_set(fixture.stage,changed.path,changed.value),
+        fixture.inbox_id,fixture.lease_token,fixture.attempt
+      );
+      raise exception 'staging accepted %',changed.label;
+    exception when invalid_parameter_value then null;
+    end;
+  end loop;
   started_at := clock_timestamp();
   staged_batch_id := public.aiq_stage_verifier_result(
     fixture.stage, fixture.inbox_id, fixture.lease_token, fixture.attempt
@@ -1020,6 +1073,7 @@ $$;
 reset role;
 rollback to savepoint incomplete_stage_retry;
 release savepoint incomplete_stage_retry;
+\ir publication-regressions.sql
 rollback to savepoint stage_performance;
 release savepoint stage_performance;
 
@@ -1421,6 +1475,44 @@ select pg_temp.aiq_assert(
 select public.aiq_deactivate_storage_reference(
   'artifact_ingress_claim', 'integration/run/artifact'
 );
+savepoint expired_inventory_epoch;
+reset role;
+set local session_replication_role = replica;
+update aiq_private.aiq_storage_reconciliation_events
+set observed_at=now()-interval '25 hours',last_observed_at=now()-interval '25 hours',
+  resolved_at=now()-interval '25 hours'
+where mismatch_type='inventory_success';
+set local session_replication_role = origin;
+set local role service_role;
+select set_config('request.jwt.claims','{"role":"service_role"}',true);
+do $$
+begin
+  begin
+    perform public.aiq_claim_storage_deletions(1,60);
+    raise exception 'deletion leasing accepted an expired inventory epoch';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$$;
+rollback to savepoint expired_inventory_epoch;
+release savepoint expired_inventory_epoch;
+
+savepoint unresolved_inventory_mismatch;
+select public.aiq_record_storage_reconciliation(
+  'aiq-runner-artifacts','sha256/'||repeat('0',64)||'/stderr.txt',
+  'identity_mismatch','integration_identity_mismatch',null
+);
+do $$
+begin
+  begin
+    perform public.aiq_claim_storage_deletions(1,60);
+    raise exception 'deletion leasing accepted an unresolved inventory mismatch';
+  exception when object_not_in_prerequisite_state then null;
+  end;
+end;
+$$;
+rollback to savepoint unresolved_inventory_mismatch;
+release savepoint unresolved_inventory_mismatch;
 create temp table aiq_storage_deletion on commit drop as
 select * from public.aiq_claim_storage_deletions(1, 60);
 select pg_temp.aiq_assert(

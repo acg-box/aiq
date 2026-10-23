@@ -23,6 +23,7 @@ const resultArtifacts = [
 const capabilityArtifacts = [
   ['stdout.jsonl', '7'.repeat(64), 107],
   ['stderr.txt', '8'.repeat(64), 108],
+  ['capability-marker.txt', '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3', 36],
 ] as const;
 const artifacts = [...resultArtifacts, ...capabilityArtifacts] as const;
 const rejectedArtifacts = [
@@ -91,14 +92,11 @@ function fixtureSql(): string {
   const evaluator = resultArtifacts[0];
   const manifest = resultArtifacts[4];
   const capabilityReferences = [
-    `jsonb_build_object('kind','${capabilityArtifacts[0][0]}',` +
-      `'content_hash','sha256:${capabilityArtifacts[0][1]}',` +
-      `'uri','aiq-artifact://sha256/${capabilityArtifacts[0][1]}/${capabilityArtifacts[0][0]}',` +
-      `'bytes',${capabilityArtifacts[0][2]})`,
-    `jsonb_build_object('kind','${capabilityArtifacts[1][0]}',` +
-      `'content_hash','sha256:${capabilityArtifacts[1][1]}',` +
-      `'uri','aiq-artifact://sha256/${capabilityArtifacts[1][1]}/${capabilityArtifacts[1][0]}',` +
-      `'bytes',${capabilityArtifacts[1][2]})`,
+    ...capabilityArtifacts.map(
+      ([kind, digest, bytes]) =>
+        `jsonb_build_object('kind','${kind}','content_hash','sha256:${digest}',` +
+        `'uri','aiq-artifact://sha256/${digest}/${kind}','bytes',${bytes})`,
+    ),
     `jsonb_build_object('kind','${rejectedArtifacts[0][0]}',` +
       `'content_hash','sha256:${rejectedArtifacts[0][1]}',` +
       `'uri','aiq-artifact://sha256/${rejectedArtifacts[0][1]}/${rejectedArtifacts[0][0]}',` +
@@ -291,7 +289,7 @@ void test(
       'show server_version;',
       'aiq-resolver-concurrency-setup',
     );
-    assert.match(version, /^17(?:\.|$)/);
+    assert.match(version, /^(?:17|18)(?:\.|$)/);
     await runPsql(psqlCommand, databaseUrl, fixtureSql(), 'aiq-resolver-concurrency-setup');
     await Promise.all(
       rejectedArtifacts.map((artifact) =>
