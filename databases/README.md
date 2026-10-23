@@ -413,7 +413,7 @@ retry reconciles them again.
 ## Disposable validation
 
 The other SQL files are validation inputs, not production installers. Apply
-the following sequence to a separate fresh disposable PostgreSQL 17 database,
+the following sequence to a separate fresh disposable PostgreSQL 17 or 18 database,
 not to the database created by `init-database`:
 
 ```sh
@@ -429,7 +429,10 @@ psql "$AIQ_DATABASE_URL" -X --set ON_ERROR_STOP=1 \
   through the `anon` and `authenticated` roles.
 - `synthetic-demo.sql` loads deterministic non-production data.
 - `integration.sql` checks queue, lease, stage, attestation, publication, and
-  Storage state flows.
+  Storage state flows. Its `publication-regressions.sql` include checks stored
+  interval precision and nonempty browser result and efficiency projections.
+  It seeds predicate and projection states inside a savepoint. It does not
+  prove external signature verification or successful Official admission.
 
 Storage deletion leasing is DB-gated. The service must record a successful full
 inventory epoch with `aiq_record_storage_inventory_epoch(count, digest)` after
@@ -440,20 +443,33 @@ ordered bytewise by bucket and key. Each item has `bucket`, `key`,
 epoch is valid for 24 hours. Any later mismatch requires another successful
 epoch before the database leases more deletions.
 
-The opt-in PostgreSQL 17 initializer test also runs the initializer twice. The
+The opt-in PostgreSQL 17 or 18 initializer test runs the initializer twice. The
 first call must produce the complete production reference receipt. The second
 call must report the distinct safe reuse rejection, leave readiness unchanged,
 and not disclose its connection string. The same test requires both browser
 roles to see the complete 17-model, three-node, one-scoring-version, and
-ten-domain public reference shape.
+ten-domain public reference shape. It then runs `calibration-integration.sql`
+and checks that its rollback leaves the public reference shape unchanged.
+This flow checks wrong-class provenance, exact task identity, functional marker
+evidence, append-only storage, and retained capability logs with SQL execution.
 
-The PostgreSQL 17 artifact resolver concurrency check holds the Storage deletion
-gate, starts all six artifact resolutions for one verifier claim, and then
+The PostgreSQL 17 or 18 artifact resolver concurrency check holds the Storage deletion
+gate, starts nine artifact resolutions for one verifier claim, and then
 releases the gate. It requires every resolver to complete without SQLSTATE
-`40P01`. Three parallel replay waves must leave exactly six immutable claim
-bindings, six activation events, and six active claim Storage references.
+`40P01`. The set includes the exact functional marker, evaluator evidence,
+output logs, final response, workspace manifest, and workspace snapshot.
+Three parallel replay waves must leave exactly nine immutable claim bindings,
+nine activation events, and nine active claim Storage references.
 
-CI also runs `reset-postgres.integration.test.ts` against an exact loopback
+Supply `AIQ_DATABASE_INIT_TEST_URL` and `AIQ_DATABASE_INIT_TEST_PSQL` to run the
+initializer test against an empty disposable database. For the resolver test,
+supply `AIQ_DATABASE_CONCURRENCY_TEST_URL` and
+`AIQ_DATABASE_CONCURRENCY_TEST_PSQL` for an initialized disposable database.
+Run these tests in sequence. Roles are cluster-wide, so the synthetic flow
+and the initializer flow need separate fresh clusters. No test installs a
+PostgreSQL runtime or uses production connection secrets.
+
+The opt-in `reset-postgres.integration.test.ts` uses an exact loopback
 `aiq_reset_*` database. It proves that reset rejects changed dependencies,
 serializes concurrent objects at the cleanup boundary, removes only AIQ-owned
 state, preserves unrelated database and Storage objects, and permits one fresh
