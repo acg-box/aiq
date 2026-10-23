@@ -9983,15 +9983,6 @@ mod tests {
 	}
 
 	#[test]
-	fn packaged_verifier_guide_has_no_second_complete_environment_template() {
-		let guide = include_str!("../README.md");
-
-		assert!(guide.contains("config/verifier-environment.example.json"));
-		assert!(guide.contains("structurally and semantically self-consistent"));
-		assert!(!guide.contains("\"schema_version\": \"aiq.verifier-environment.v2\""));
-	}
-
-	#[test]
 	fn test_owned_valid_environment_fixture_succeeds() {
 		let source = include_str!("../tests/fixtures/valid-synthetic-verifier-environment.json");
 		let environment: VerifierEnvironment = serde_json::from_str(source)

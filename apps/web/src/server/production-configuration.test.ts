@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { registerHooks } from 'node:module';
 import { describe, it } from 'node:test';
 
 import {
@@ -11,6 +10,16 @@ import {
   inspectVerificationConfiguration,
   inspectVerifierClaimConfiguration,
 } from './production-configuration.ts';
+
+// Next resolves this marker to its empty module in the server runtime.
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    return nextResolve(
+      specifier === 'server-only' ? 'next/dist/compiled/server-only/empty.js' : specifier,
+      context,
+    );
+  },
+});
 
 const privateJwk = JSON.stringify({
   ...generateKeyPairSync('ec', { namedCurve: 'prime256v1' }).privateKey.export({
@@ -200,58 +209,98 @@ void describe('route-scoped production configuration', () => {
       undefined,
     );
   });
+});
 
-  void it('guards every privileged route with its exact inspector before client construction', async () => {
-    const repositoryRoot = resolve(import.meta.dirname, '../../../..');
-    const routes = new Map([
-      ['apps/web/src/app/api/submissions/route.ts', 'inspectSubmissionConfiguration(process.env)'],
-      [
-        'apps/web/src/app/api/artifacts/route.ts',
-        'inspectArtifactIngressConfiguration(process.env)',
-      ],
-      [
-        'apps/web/src/app/api/observations/speed/route.ts',
-        'inspectArtifactIngressConfiguration(process.env)',
-      ],
-      [
-        'apps/web/src/app/api/artifacts/resolve/route.ts',
-        'inspectVerifierClaimConfiguration(process.env)',
-      ],
-      ['apps/web/src/app/api/claims/route.ts', 'inspectVerifierClaimConfiguration(process.env)'],
-      [
-        'apps/web/src/app/api/verifications/route.ts',
-        'inspectVerificationConfiguration(process.env)',
-      ],
-    ]);
-    const routeSources = await Promise.all(
-      [...routes].map(async ([route, inspector]) => ({
-        inspector,
-        route,
-        source: await readFile(resolve(repositoryRoot, route), 'utf8'),
-      })),
-    );
-    for (const { inspector, route, source } of routeSources) {
-      const guard = source.indexOf(inspector);
-      const client = source.indexOf('createClient(');
-      assert.ok(guard >= 0, `${route} must use its route-scoped inspector`);
-      assert.ok(client > guard, `${route} must validate before constructing a client`);
-    }
+const routeScopes = [
+  {
+    name: 'submission',
+    load: () => import('../app/api/submissions/route.ts'),
+    required: [
+      'SUPABASE_SECRET_KEY',
+      'AIQ_RUNNER_SUBMISSION_TOKEN',
+      'AIQ_SUBMISSION_PACKAGE_BUCKET',
+    ],
+    token: runnerToken,
+  },
+  {
+    name: 'artifact upload',
+    load: () => import('../app/api/artifacts/route.ts'),
+    required: ['SUPABASE_SECRET_KEY', 'AIQ_RUNNER_SUBMISSION_TOKEN', 'AIQ_RUNNER_ARTIFACT_BUCKET'],
+    token: runnerToken,
+  },
+  {
+    name: 'speed observation',
+    load: () => import('../app/api/observations/speed/route.ts'),
+    required: ['SUPABASE_SECRET_KEY', 'AIQ_RUNNER_SUBMISSION_TOKEN', 'AIQ_RUNNER_ARTIFACT_BUCKET'],
+    token: runnerToken,
+  },
+  {
+    name: 'artifact resolution',
+    load: () => import('../app/api/artifacts/resolve/route.ts'),
+    required: [
+      'SUPABASE_SECRET_KEY',
+      'AIQ_VERIFIER_INGRESS_TOKEN',
+      'AIQ_SUPABASE_PUBLISHABLE_KEY',
+      'AIQ_SUPABASE_JWT_PRIVATE_JWK',
+    ],
+    token: verifierToken,
+  },
+  {
+    name: 'verifier claim',
+    load: () => import('../app/api/claims/route.ts'),
+    required: [
+      'SUPABASE_SECRET_KEY',
+      'AIQ_VERIFIER_INGRESS_TOKEN',
+      'AIQ_SUPABASE_PUBLISHABLE_KEY',
+      'AIQ_SUPABASE_JWT_PRIVATE_JWK',
+    ],
+    token: verifierToken,
+  },
+  {
+    name: 'verification',
+    load: () => import('../app/api/verifications/route.ts'),
+    required: [
+      'AIQ_VERIFIER_INGRESS_TOKEN',
+      'AIQ_SUPABASE_PUBLISHABLE_KEY',
+      'AIQ_SUPABASE_JWT_PRIVATE_JWK',
+      'AIQ_PUBLISHER_NODE_ID',
+    ],
+    token: verifierToken,
+  },
+] as const;
+
+function invalidRequest(token: string): Request {
+  return new Request('https://example.invalid/api', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: '{',
   });
+}
 
-  void it('keeps the long verification route server-only and within the Hobby duration limit', async () => {
-    const repositoryRoot = resolve(import.meta.dirname, '../../../..');
-    const [source, claimsSource, artifactResolveSource] = await Promise.all([
-      readFile(resolve(repositoryRoot, 'apps/web/src/app/api/verifications/route.ts'), 'utf8'),
-      readFile(resolve(repositoryRoot, 'apps/web/src/app/api/claims/route.ts'), 'utf8'),
-      readFile(resolve(repositoryRoot, 'apps/web/src/app/api/artifacts/resolve/route.ts'), 'utf8'),
-    ]);
-
-    assert.match(source, /import 'server-only';/);
-    assert.match(source, /export const maxDuration = 300;/);
-    assert.match(source, /createSupabaseRoleClientOptions/);
-    assert.match(source, /VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS/);
-    assert.doesNotMatch(claimsSource, /VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS/);
-    assert.doesNotMatch(artifactResolveSource, /VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS/);
-    assert.doesNotMatch(source, /NEXT_PUBLIC_(?:AIQ|SUPABASE)_(?:VERIFIER|PUBLISHER|SECRET|JWT)/);
+for (const scope of routeScopes) {
+  void it(`${scope.name} route accepts its own configuration and rejects requests before upstream access`, async (context) => {
+    const originalEnvironment = process.env;
+    context.after(() => {
+      process.env = originalEnvironment;
+    });
+    const network = context.mock.method(globalThis, 'fetch', () => {
+      throw new Error('Rejected requests must not reach Supabase.');
+    });
+    process.env = {
+      ...common,
+      ...Object.fromEntries(scope.required.map((key) => [key, validEnvironment[key]])),
+    };
+    const route = await scope.load();
+    assert.equal((await route.POST(invalidRequest(scope.token))).status, 400);
+    assert.equal((await route.POST(invalidRequest('wrong-token'))).status, 401);
+    delete process.env[scope.required[0]];
+    assert.equal((await route.POST(invalidRequest(scope.token))).status, 503);
+    assert.equal(network.mock.callCount(), 0);
   });
+}
+
+void it('verification deployment permits its bounded long RPCs', async () => {
+  const { maxDuration, runtime } = await import('../app/api/verifications/route.ts');
+  assert.equal(maxDuration, 300);
+  assert.equal(runtime, 'nodejs');
 });

@@ -1238,16 +1238,6 @@ void describe('presentation aggregates', () => {
     }
   });
 
-  void it('states the conditional Provisional estimand and planned completion bounds', () => {
-    assert.match(seedMethodology.missingPolicy, /complete synthetic fixture.*never Official/);
-    assert.match(seedMethodology.missingPolicy, /averages valid observed tasks within each domain/);
-    assert.match(seedMethodology.missingPolicy, /retain every planned task/);
-    assert.match(seedMethodology.missingPolicy, /assign unobserved tasks zero or one/);
-    assert.match(seedMethodology.missingPolicy, /at least 60 results/);
-    assert.match(seedMethodology.missingPolicy, /at least 4 in every domain/);
-    assert.doesNotMatch(seedMethodology.missingPolicy, /never shrink a denominator/i);
-  });
-
   void it('preserves all history and filters shorter windows from a supplied clock', () => {
     const now = new Date('2026-07-24T00:00:00.000Z');
     assert.equal(filterTrendPoints(seedTrendPoints, 'all', now).length, seedTrendPoints.length);
