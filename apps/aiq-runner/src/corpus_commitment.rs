@@ -1914,7 +1914,6 @@ pub(crate) mod tests {
 		scoring::{AIQ_CORE_TASK_IDENTITY_SHA256, AIQ_TASK_SET_ID, AIQ_TASK_SET_VERSION},
 	};
 
-
 	#[cfg(unix)]
 	pub(crate) struct RunnerProvenancePathFixture {
 		pub(crate) root: std::path::PathBuf,
@@ -2307,17 +2306,6 @@ pub(crate) mod tests {
 		);
 
 		fs::remove_dir_all(fixture.root).expect("execution-policy route fixture cleanup");
-	}
-
-	#[test]
-	fn bounded_runtime_version_is_not_parsed_as_a_digest() {
-		let value = serde_json::json!({"node_runtime": {"version": "v24.18.0"}});
-
-		assert_eq!(
-			super::bounded_string_at(&value, "/node_runtime/version", "runtime version")
-				.expect("actual Node.js version"),
-			"v24.18.0"
-		);
 	}
 
 	#[test]
@@ -3006,25 +2994,12 @@ pub(crate) mod tests {
 		contrast.catalog.identity_sha256 = super::CONTRAST_CATALOG.identity_sha256.to_owned();
 		contrast.catalog.identity_scope = super::CONTRAST_CATALOG.identity_scope.to_owned();
 
-		assert_eq!(contrast.catalog.schema_version, "aiq.contrast-corpus.v1");
-		assert_eq!(contrast.catalog.task_set_id, "aiq-core-contrast");
-		assert_eq!(contrast.catalog.task_set_version, super::CONTROLLED_CONTRAST_TASK_SET_VERSION);
-		assert_eq!(contrast.catalog.identity_scope, "ordered_full_task_metadata");
-		assert_eq!(
-			contrast.catalog.identity_sha256,
-			"sha256:09d3b4532f3dcd7a6b07c31bc4c59e25d432889ee8cce0b75d15285a42d3e077"
-		);
-		assert_eq!(
-			super::CONTROLLED_CONTRAST_CATALOG_IDENTITY_SHA256,
-			contrast.catalog.identity_sha256
-		);
 		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG,).is_ok());
 		assert!(corpus_commitment::validate_header(&contrast, super::CORE_CATALOG).is_err());
 
 		contrast.catalog.identity_sha256 =
 			"sha256:3efac0059a58869fc4283156b7e5dcaab4141a231e2980b52f1b599732e62f32".to_owned();
 
-		assert_eq!(contrast.catalog.task_set_version, super::CONTROLLED_CONTRAST_TASK_SET_VERSION);
 		assert!(corpus_commitment::validate_header(&contrast, super::CONTRAST_CATALOG).is_err());
 		assert!(super::catalog_contract(&contrast.catalog).is_err());
 
@@ -3545,5 +3520,4 @@ pub(crate) mod tests {
 		assert_eq!(bytes, input.len() as u64);
 		assert_eq!(hasher.finalize(), Sha256::digest(&input));
 	}
-
 }

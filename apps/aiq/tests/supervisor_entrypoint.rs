@@ -71,7 +71,7 @@ fn parent_sigkill_leaves_no_supervised_descendant() {
 	let mut parent = Command::new(executable);
 
 	parent
-		.args(["--exact", "parent_death_fixture", "--nocapture"])
+		.args(["--exact", "parent_death_fixture", "--ignored", "--nocapture"])
 		.env(PARENT_FIXTURE, "1")
 		.env(GUARDIAN_PID_PATH, &guardian_pid_path)
 		.env(WORKER_PID_PATH, &worker_pid_path)
@@ -107,6 +107,7 @@ fn parent_sigkill_leaves_no_supervised_descendant() {
 }
 
 #[test]
+#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 fn parent_death_fixture() {
 	if env::var_os(PARENT_FIXTURE).as_deref() != Some(OsStr::new("1")) {
 		return;
@@ -117,7 +118,7 @@ fn parent_death_fixture() {
 
 	guardian
 		.arg(executable)
-		.args(["--exact", "parent_death_worker_fixture", "--nocapture"])
+		.args(["--exact", "parent_death_worker_fixture", "--ignored", "--nocapture"])
 		.env(INTERNAL_SUPERVISOR_ENV, "1")
 		.env(WORKER_FIXTURE, "1")
 		.stdin(Stdio::piped())
@@ -137,6 +138,7 @@ fn parent_death_fixture() {
 }
 
 #[test]
+#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 fn parent_death_worker_fixture() {
 	if env::var_os(LEAF_FIXTURE).as_deref() == Some(OsStr::new("1")) {
 		write_pid_from_environment(LEAF_PID_PATH, process::id());
@@ -154,7 +156,7 @@ fn parent_death_worker_fixture() {
 	let executable = env::current_exe().expect("worker fixture executable");
 	let mut leaf = Command::new(executable);
 
-	leaf.args(["--exact", "parent_death_worker_fixture", "--nocapture"])
+	leaf.args(["--exact", "parent_death_worker_fixture", "--ignored", "--nocapture"])
 		.env(LEAF_FIXTURE, "1")
 		.stdin(Stdio::null())
 		.stdout(Stdio::null())

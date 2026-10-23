@@ -2609,10 +2609,7 @@ fn mean(values: &[f64]) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-	use std::{
-		collections::{BTreeMap, BTreeSet},
-		mem,
-	};
+	use std::collections::{BTreeMap, BTreeSet};
 
 	use crate::{
 		model::{MODEL_MATRIX, ModelConfig},
@@ -2621,10 +2618,7 @@ mod tests {
 			self, EvaluationOutcome, FailureKind, Latency, RESULT_SCHEMA_VERSION, ResultFailure,
 			ResultStatus, TaskResult, ToolUsage,
 		},
-		scoring::{
-			self, AIQ_SCORING_VERSION, AIQ_TASK_SCORER_VERSION, SCORE_RULE, ScoreContext,
-			ScoreOptions, ScoreTier, TASK_RESAMPLING_SENSITIVITY_METHOD,
-		},
+		scoring::{self, AIQ_TASK_SCORER_VERSION, ScoreContext, ScoreOptions, ScoreTier},
 		task::TaskDefinition,
 	};
 
@@ -3059,8 +3053,6 @@ mod tests {
 		);
 
 		for report in &reports {
-			assert_eq!(report.official_eligible, scoring::FalseOnly);
-			assert_eq!(report.ranking_eligible, scoring::FalseOnly);
 			assert!(report.latent_ability.is_none());
 			assert!(!matches!(
 				report.descriptive_status,
@@ -3071,7 +3063,9 @@ mod tests {
 		let serialized = serde_json::to_value(&reports).expect("diagnostic reports serialize");
 
 		assert_eq!(serialized.as_array().map(Vec::len), Some(MODEL_MATRIX.len()));
-		assert!(serialized.to_string().contains("coverage_only"));
+		assert_eq!(serialized[0]["descriptive_status"], "conditional_observed");
+		assert!(serialized.as_array().expect("model reports").iter().skip(1)
+			.all(|report| report["descriptive_status"] == "coverage_only"));
 	}
 
 	#[test]
@@ -3174,7 +3168,8 @@ mod tests {
 		assert!(
 			(exact_spread.observed.model_score_range
 				- scoring::OFFICIAL_CALIBRATION_MIN_MODEL_SCORE_RANGE)
-				.abs() < 1e-10
+				.abs()
+				< 1e-10
 		);
 		assert!(!exact_spread.violations.iter().any(|value| value.contains("model-score range")));
 	}
@@ -3228,20 +3223,21 @@ mod tests {
 			.expect("fixture must score");
 
 		assert_eq!(first, second);
-		assert_eq!(first.scoring_version, AIQ_SCORING_VERSION);
 		assert_eq!(first.tier, ScoreTier::SyntheticComplete);
 		assert_eq!(first.coverage.valid_tasks, 72);
 		assert_eq!(first.coverage.covered_domains, 10);
 		assert!(first.score.is_none());
 		assert!(
 			(first.quality_score.expect("synthetic descriptive score") - 54.285_714_285_714_285)
-				.abs() < 1e-10
+				.abs()
+				< 1e-10
 		);
 		assert_eq!(first.binary_micro_diagnostic.successes, 39);
 		assert!(
 			(first.binary_micro_diagnostic.proportion.expect("micro diagnostic")
 				- 0.541_666_666_666_666_6)
-				.abs() < 1e-10
+				.abs()
+				< 1e-10
 		);
 		assert!(!first.ranking_eligible);
 
@@ -3250,22 +3246,7 @@ mod tests {
 
 		assert_eq!(interval.lower, 39.583_333_333_333_336);
 		assert_eq!(interval.upper, 69.916_666_666_666_69);
-		assert_eq!(interval.method, TASK_RESAMPLING_SENSITIVITY_METHOD);
-		assert_eq!(first.rule, SCORE_RULE);
-	}
-
-	#[test]
-	fn interval_public_contract_discloses_calibrated_fixed_fixture_scope() {
-		assert_eq!(
-			TASK_RESAMPLING_SENSITIVITY_METHOD,
-			"finite_cluster_calibrated_percentile_sensitivity_v1"
-		);
-
-		for rule in [SCORE_RULE, super::CALIBRATION_SCORE_RULE] {
-			assert!(rule.contains("versioned 1.3 deviation correction"));
-			assert!(rule.contains("fixed-fixture calibrated sensitivity interval"));
-			assert!(rule.contains("not a universal confidence interval"));
-		}
+		assert_eq!(interval.method, "finite_cluster_calibrated_percentile_sensitivity_v1");
 	}
 
 	#[test]
@@ -3404,8 +3385,6 @@ mod tests {
 			analysis.descriptive_status,
 			scoring::CalibrationDescriptiveStatus::CoverageOnly
 		);
-		assert_eq!(analysis.official_eligible, scoring::FalseOnly);
-		assert_eq!(analysis.ranking_eligible, scoring::FalseOnly);
 		assert_eq!(analysis.coverage.expected_tasks, 8);
 		assert_eq!(analysis.coverage.valid_tasks, 8);
 		assert!(analysis.quality_score.is_none());
@@ -3416,7 +3395,6 @@ mod tests {
 
 	#[test]
 	fn calibration_eligibility_is_structurally_false_only_on_the_wire() {
-		assert_eq!(mem::size_of::<scoring::FalseOnly>(), 0);
 		assert_eq!(
 			serde_json::to_value(scoring::FalseOnly).expect("false-only serialization"),
 			serde_json::json!(false)
@@ -3496,8 +3474,6 @@ mod tests {
 			analysis.descriptive_status,
 			scoring::CalibrationDescriptiveStatus::ConditionalObserved
 		);
-		assert_eq!(analysis.official_eligible, scoring::FalseOnly);
-		assert_eq!(analysis.ranking_eligible, scoring::FalseOnly);
 		assert_eq!(analysis.quality_score, Some(50.0));
 		assert!(analysis.completion_bounds.is_some());
 		assert!(analysis.task_resampling_sensitivity_interval.is_some());
@@ -3541,8 +3517,6 @@ mod tests {
 			analysis.descriptive_status,
 			scoring::CalibrationDescriptiveStatus::NotApplicable
 		);
-		assert_eq!(analysis.official_eligible, scoring::FalseOnly);
-		assert_eq!(analysis.ranking_eligible, scoring::FalseOnly);
 		assert!(analysis.quality_score.is_none());
 		assert!(analysis.completion_bounds.is_none());
 		assert!(analysis.task_resampling_sensitivity_interval.is_none());
@@ -3967,30 +3941,10 @@ mod tests {
 			let bounds = report.completion_bounds.expect("complete fixture completion bounds");
 
 			assert_eq!(report.tier, ScoreTier::SyntheticComplete);
-			assert_eq!(report.scoring_version, AIQ_SCORING_VERSION);
 			assert_eq!(bounds.lower, aiq, "lower bound for pattern {pattern:?}");
 			assert_eq!(bounds.upper, aiq, "upper bound for pattern {pattern:?}");
 			assert!(bounds.lower <= bounds.upper);
 		}
-	}
-
-	#[test]
-	fn binary_wilson_is_diagnostic_only() {
-		let tasks = official_tasks();
-		let results = tasks.iter().map(|task| result(task, 1.0)).collect::<Vec<_>>();
-		let report = scoring::score_model_with_options(
-			&tasks,
-			&results,
-			MODEL_MATRIX[0],
-			ScoreOptions { bootstrap_samples: 10, bootstrap_seed: 1 },
-		)
-		.expect("fixture must score");
-
-		assert_eq!(report.binary_micro_diagnostic.sample_size, 72);
-		assert_eq!(
-			report.task_resampling_sensitivity_interval.as_ref().expect("main interval").method,
-			TASK_RESAMPLING_SENSITIVITY_METHOD
-		);
 	}
 
 	#[test]

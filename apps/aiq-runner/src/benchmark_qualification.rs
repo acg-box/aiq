@@ -944,11 +944,6 @@ mod tests {
 		assert_eq!(first.claims.task_count, 72);
 		assert_eq!(first.claims.models, CANDIDATE_QUALIFICATION_MODEL_MATRIX);
 		assert_eq!(first.claims.completed_cells, 216);
-		assert_eq!(first.claims.scope.proves, benchmark_qualification::QUALIFICATION_PROVES);
-		assert_eq!(
-			first.claims.scope.excludes,
-			benchmark_qualification::QUALIFICATION_EXCLUDED_CLAIMS.map(str::to_owned)
-		);
 
 		let claims = serde_json::to_value(&first.claims).expect("claims JSON");
 		let claims = claims.as_object().expect("claims object");

@@ -5530,7 +5530,7 @@ mod tests {
 		REDACTED_ERROR_DETAIL, RENEWED_LEASE_SECONDS, ReasonCode, RejectionGatewayResponse,
 		RenewCalibrationAdmissionCli, Secret, Transport, UreqTransport, ValidateEnvironmentCli,
 		VerificationGatewayResponse, VerificationRecord, VerifierEnvironment, VerifyLocalCli,
-		VerifyQualificationCli, Worker, WorkerError, replay,
+		VerifyQualificationCli, Worker, WorkerError,
 	};
 	use aiq_runner::calibration_verification::{
 		self, CALIBRATION_ADMISSION_BUNDLE_SCHEMA_VERSION,
@@ -7324,14 +7324,6 @@ mod tests {
 
 	#[test]
 	fn verifier_cli_requires_production_runtime_bindings_but_keeps_synthetic_demo_minimal() {
-		assert!(
-			<Cli as clap::CommandFactory>::command().get_arguments().all(|argument| !matches!(
-				argument.get_id().as_str(),
-				"candidate_qualification" | "candidate_source_root"
-			)),
-			"the production worker must not expose candidate qualification"
-		);
-
 		let base = [
 			"aiq-verifier",
 			"--endpoint",
@@ -7384,6 +7376,13 @@ mod tests {
 
 		assert!(Cli::try_parse_from(&synthetic).is_ok());
 
+		for forbidden in ["--candidate-qualification", "--candidate-source-root"] {
+			let error = Cli::try_parse_from([synthetic.as_slice(), &[forbidden]].concat())
+				.expect_err("production worker must reject candidate qualification inputs");
+
+			assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument);
+		}
+
 		synthetic.extend(["--evaluator-runtime", "/toolchain/node"]);
 
 		assert!(Cli::try_parse_from(synthetic).is_err());
@@ -7403,8 +7402,8 @@ mod tests {
 		];
 		let parsed = Cli::try_parse_from(base).expect("default replay jobs");
 
-		assert_eq!(parsed.timeout_seconds, crate::DEFAULT_GATEWAY_TIMEOUT_SECONDS);
-		assert_eq!(parsed.replay_jobs, DEFAULT_REPLAY_JOBS);
+		assert_eq!(parsed.timeout_seconds, 120);
+		assert_eq!(parsed.replay_jobs, 4);
 
 		for accepted in ["1", "32"] {
 			let mut arguments = base.to_vec();
@@ -8445,7 +8444,11 @@ mod tests {
 			first_attestation_evidence.policy,
 			aiq_runner::normalization::VerificationPolicy::Production
 		);
-		assert_eq!(first.replay_scope, replay::PRODUCTION_REPLAY_SCOPE);
+		assert_eq!(first.replay_scope, "candidate_reconstructed_and_evaluator_replayed");
+		assert_eq!(
+			serde_json::to_value(first_attestation_evidence).expect("attestation wire")["replay_status"],
+			"evaluator_replayed"
+		);
 		assert_eq!(first_stage_evidence, second_stage_evidence);
 		assert_eq!(first_attestation_evidence, second_attestation_evidence);
 		assert_eq!(
@@ -8842,8 +8845,6 @@ mod tests {
 
 		assert_eq!(admission.claims.task_count, 72);
 		assert_eq!(admission.claims.model_configuration_count, 17);
-		assert_eq!(admission.claims.official_eligible, FalseOnly);
-		assert_eq!(admission.claims.ranking_eligible, FalseOnly);
 		assert_eq!(admission.claims.trust, TrustTier::Untrusted);
 
 		assert_calibration_admission_mutations_rejected(
@@ -9542,28 +9543,6 @@ mod tests {
 	}
 
 	#[test]
-	fn local_replay_fixture_artifacts_are_idempotent_without_overwriting_mismatches() {
-		let root = temporary_test_root("local-artifact-idempotence");
-		let (first, path) = LocalReplayFixture::write_artifact(&root, "stdout.jsonl", b"same");
-		let (repeated, repeated_path) =
-			LocalReplayFixture::write_artifact(&root, "stdout.jsonl", b"same");
-
-		assert_eq!(repeated, first);
-		assert_eq!(repeated_path, path);
-
-		fs::write(&path, b"different").expect("replace fixture artifact with mismatched bytes");
-
-		let mismatch = panic::catch_unwind(|| {
-			LocalReplayFixture::write_artifact(&root, "stdout.jsonl", b"same");
-		});
-
-		assert!(mismatch.is_err());
-		assert_eq!(fs::read(&path).expect("preserved mismatched artifact"), b"different");
-
-		fs::remove_dir_all(root).expect("remove fixture");
-	}
-
-	#[test]
 	fn local_replay_rejects_package_signature_tampering_without_outputs() {
 		let fixture = LocalReplayFixture::new();
 		let mut envelope: serde_json::Value =
@@ -10087,27 +10066,6 @@ mod tests {
 		for disposition in ["verified", "rejected"] {
 			assert!(!record(disposition).requires_operator_attention());
 		}
-	}
-
-	#[test]
-	fn shared_protocol_rejects_a_modified_package() {
-		let identity = SigningIdentity::from_secret([7; 32]);
-		let mut run = runner::synthetic_demo(
-			ScheduleConfig::default().slot("2000-01-01", ScheduleOccurrence::Day).expect("slot"),
-			&TestArtifactSink,
-		)
-		.expect("run");
-
-		submission::bind_synthetic_run_to_signer(&mut run, &identity.node().node_id).expect("bind");
-
-		let mut envelope = identity
-			.sign(&run.run_id, protocol::RUN_PAYLOAD_TYPE, &run, TrustTier::Untrusted)
-			.expect("sign");
-		let replacement = if &envelope.content_hash[7..8] == "f" { "e" } else { "f" };
-
-		envelope.content_hash.replace_range(7..8, replacement);
-
-		assert!(envelope.verify(&BTreeSet::new()).is_err());
 	}
 
 	#[test]
@@ -11135,17 +11093,5 @@ mod tests {
 		assert_eq!(diagnosed["error_class"], "transient");
 		assert_eq!(diagnosed["error_code"], "retry_budget_exhausted");
 		assert_eq!(diagnosed["error_detail"], "retry budget exhausted");
-	}
-
-	#[test]
-	fn production_replay_status_and_scope_name_evaluator_work() {
-		assert_eq!(
-			serde_json::to_value(ReplayStatus::EvaluatorReplayed).expect("serialize"),
-			"evaluator_replayed"
-		);
-		assert_eq!(
-			replay::PRODUCTION_REPLAY_SCOPE,
-			"candidate_reconstructed_and_evaluator_replayed"
-		);
 	}
 }

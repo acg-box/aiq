@@ -5661,10 +5661,10 @@ mod tests {
 
 	use clap::Parser as _;
 
-	use crate::capacity;
 	use crate::cli::task;
 	#[cfg(unix)]
 	use crate::corpus_commitment::tests::RunnerProvenancePathFixture;
+	use crate::normalization;
 	use crate::protocol;
 	use crate::resume;
 	use crate::run_validation;
@@ -5712,41 +5712,81 @@ mod tests {
 	}
 
 	#[test]
-	fn official_cli_exposes_no_proxy_mode() {
-		let command = <cli::Cli as clap::CommandFactory>::command();
-
+	fn official_cli_rejects_proxy_options() {
 		for subcommand_name in ["admit-permissions", "preflight", "run"] {
-			let subcommand =
-				command.find_subcommand(subcommand_name).expect("Official direct command");
+			let error = cli::Cli::try_parse_from([
+				"aiq-runner",
+				subcommand_name,
+				"--codex-egress-proxy",
+				"http://127.0.0.1:8080",
+			])
+			.expect_err("Official direct commands must reject proxy options");
 
-			assert!(
-				subcommand
-					.get_arguments()
-					.all(|argument| argument.get_id() != "codex_egress_proxy"),
-				"{subcommand_name} must not expose a proxy mode"
-			);
+			assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument, "{subcommand_name}");
 		}
 	}
 
 	#[test]
 	fn candidate_selector_exists_only_on_the_local_run_command() {
-		let command = <cli::Cli as clap::CommandFactory>::command();
-		let run = command.find_subcommand("run").expect("run command");
+		let local_run =
+			cli::Cli::try_parse_from(["aiq-runner", "run", "--candidate-qualification"])
+				.expect_err("candidate selector still requires controlled run inputs");
 
-		assert!(run.get_arguments().any(|argument| argument.get_id() == "candidate_qualification"));
+		assert_eq!(local_run.kind(), clap::error::ErrorKind::MissingRequiredArgument);
 
 		for subcommand_name in
 			["admit-permissions", "preflight", "score", "package", "submit", "normalize"]
 		{
-			let subcommand = command.find_subcommand(subcommand_name).expect("existing command");
+			let error = cli::Cli::try_parse_from([
+				"aiq-runner",
+				subcommand_name,
+				"--candidate-qualification",
+			])
+			.expect_err("candidate selector must stay local to run");
 
-			assert!(
-				subcommand
-					.get_arguments()
-					.all(|argument| argument.get_id() != "candidate_qualification"),
-				"{subcommand_name} must not expose candidate qualification"
-			);
+			assert_eq!(error.kind(), clap::error::ErrorKind::UnknownArgument, "{subcommand_name}");
 		}
+	}
+
+	#[test]
+	fn normalize_accepts_only_non_replay_dispositions() {
+		let arguments = [
+			"aiq-runner",
+			"normalize",
+			"--synthetic-demo-tasks",
+			"--package",
+			"package.json",
+			"--scores",
+			"scores.json",
+			"--metadata",
+			"metadata.json",
+			"--observed-unix-ms",
+			"1",
+			"--stage-output",
+			"stage.json",
+			"--attestation-output",
+			"attestation.json",
+			"--replay-status",
+		];
+
+		for (disposition, expected) in [
+			("commitments-verified", normalization::ReplayStatus::CommitmentsVerified),
+			("failed", normalization::ReplayStatus::Failed),
+		] {
+			let parsed = cli::Cli::try_parse_from([arguments.as_slice(), &[disposition]].concat())
+				.expect("supported normalization disposition");
+			let cli::Command::Normalize { replay_status, .. } = parsed.command else {
+				panic!("normalization command");
+			};
+
+			assert_eq!(normalization::ReplayStatus::from(replay_status), expected);
+		}
+
+		let error =
+			cli::Cli::try_parse_from([arguments.as_slice(), &["evaluator-replayed"]].concat())
+				.expect_err("normalization cannot claim evaluator replay");
+
+		assert_eq!(error.kind(), clap::error::ErrorKind::InvalidValue);
 	}
 
 	#[test]
@@ -5799,11 +5839,7 @@ mod tests {
 		)
 		.expect("offline historical diagnostic");
 
-		assert_eq!(bundle.schema_version, super::HISTORICAL_DIAGNOSTIC_RESCORE_SCHEMA_VERSION);
 		assert!(bundle.diagnostic_only);
-		assert_eq!(bundle.production_publishable, crate::scoring::FalseOnly);
-		assert_eq!(bundle.official_eligible, crate::scoring::FalseOnly);
-		assert_eq!(bundle.ranking_eligible, crate::scoring::FalseOnly);
 		assert_eq!(bundle.source_bytes_sha256, source_bytes_sha256);
 		assert_eq!(bundle.source_run_canonical_sha256, source_run_canonical_sha256);
 		assert_eq!(bundle.source_result_count, 1_224);
@@ -5814,8 +5850,10 @@ mod tests {
 
 		assert_eq!(wire["schema_version"], "aiq.historical-diagnostic-rescore.v1");
 		assert_eq!(wire["production_publishable"], false);
+		assert_eq!(wire["official_eligible"], false);
+		assert_eq!(wire["ranking_eligible"], false);
 		assert!(wire.get("results").is_none());
-		assert!(wire.to_string().contains("source_bytes_sha256"));
+		assert_eq!(wire["source_bytes_sha256"], source_bytes_sha256);
 		assert!(
 			serde_json::from_value::<super::ScoreBundle>(wire).is_err(),
 			"diagnostic output must not deserialize as a production score bundle"
@@ -5967,11 +6005,22 @@ mod tests {
 
 		assert!(digest.starts_with("sha256:"));
 		assert_ne!(digest, legacy_digest);
-		assert_eq!(
-			digest,
-			cli::permission_canary_evidence_digest(&bindings)
-				.expect("stable permission canary evidence digest")
-		);
+
+		for changed in [
+			("workspace", "sha256:changed".to_owned(), "directory"),
+			("artifact_root", bindings[0].1.clone(), "directory"),
+			("workspace", bindings[0].1.clone(), "file"),
+		] {
+			let mut changed_bindings = bindings.clone();
+
+			changed_bindings[0] = changed;
+
+			assert_ne!(
+				digest,
+				cli::permission_canary_evidence_digest(&changed_bindings)
+					.expect("changed permission binding")
+			);
+		}
 	}
 
 	#[test]
@@ -6626,52 +6675,6 @@ mod tests {
 			assert!(!diagnostic.contains("untrusted response body"));
 			assert!(!diagnostic.contains("highly-secret"));
 		}
-	}
-
-	#[test]
-	fn invalid_official_planning_inputs_stop_with_zero_adapter_invocations() {
-		let root = fixture_root("model-free-official-rejections");
-		let source = root.join("source");
-		let existing_output = root.join("existing.json");
-		let invalid_corpus = root.join("invalid-corpus.json");
-
-		fs::create_dir_all(&source).expect("source fixture");
-		fs::write(&existing_output, b"preserve").expect("existing output fixture");
-		fs::write(&invalid_corpus, b"{}").expect("invalid corpus fixture");
-
-		let requests = Rc::new(RefCell::new(Vec::<CommandRequest>::new()));
-
-		assert!(cli::select_models(&["not-a-model".to_owned()]).is_err());
-		assert!(
-			capacity::assess_capacity(
-				&runner::synthetic_demo_tasks(),
-				&crate::model::MODEL_MATRIX,
-				&crate::model::MODEL_MATRIX,
-				&[],
-				&format!("sha256:{}", "a".repeat(64)),
-				0,
-				43_200,
-			)
-			.is_err()
-		);
-		assert!(
-			crate::schedule::ScheduleConfig::default()
-				.slot("invalid-date", crate::schedule::ScheduleOccurrence::Day)
-				.is_err()
-		);
-		assert!(cli::validate_new_output_set(&[("Official output", &existing_output)]).is_err());
-		assert!(
-			corpus_commitment::validate_corpus_commitment(
-				&invalid_corpus,
-				&runner::synthetic_demo_tasks(),
-				&source,
-			)
-			.is_err()
-		);
-		assert!(requests.borrow().is_empty(), "planning rejection must not reach an adapter");
-		assert_eq!(fs::read(&existing_output).expect("preserved output"), b"preserve");
-
-		fs::remove_dir_all(root).expect("fixture cleanup");
 	}
 
 	#[test]

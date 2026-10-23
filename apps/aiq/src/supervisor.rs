@@ -457,7 +457,12 @@ mod tests {
 		let mut command = Command::new(executable);
 
 		command
-			.args(["--exact", "supervisor::tests::process_guardian_fixture", "--nocapture"])
+			.args([
+				"--exact",
+				"supervisor::tests::process_guardian_fixture",
+				"--ignored",
+				"--nocapture",
+			])
 			.env(GUARDIAN_FIXTURE, "1")
 			.env(WORKER_PID_PATH, &worker_pid_path)
 			.env(LEAF_PID_PATH, &leaf_pid_path)
@@ -500,6 +505,7 @@ mod tests {
 	}
 
 	#[test]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn process_guardian_fixture() {
 		if env::var_os(GUARDIAN_FIXTURE).as_deref() != Some(std::ffi::OsStr::new("1")) {
 			return;
@@ -509,7 +515,12 @@ mod tests {
 		let mut worker = Command::new(executable);
 
 		worker
-			.args(["--exact", "supervisor::tests::process_worker_fixture", "--nocapture"])
+			.args([
+				"--exact",
+				"supervisor::tests::process_worker_fixture",
+				"--ignored",
+				"--nocapture",
+			])
 			.env(WORKER_FIXTURE, "1")
 			.stdin(Stdio::null())
 			.stdout(Stdio::null())
@@ -522,6 +533,7 @@ mod tests {
 	}
 
 	#[test]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn process_worker_fixture() {
 		if env::var_os(LEAF_FIXTURE).as_deref() == Some(std::ffi::OsStr::new("1")) {
 			write_pid_from_environment(LEAF_PID_PATH);
@@ -539,12 +551,17 @@ mod tests {
 		let executable = env::current_exe().expect("worker test executable");
 		let mut leaf = Command::new(executable);
 
-		leaf.args(["--exact", "supervisor::tests::process_worker_fixture", "--nocapture"])
-			.env(LEAF_FIXTURE, "1")
-			.stdin(Stdio::null())
-			.stdout(Stdio::null())
-			.stderr(Stdio::null())
-			.process_group(0);
+		leaf.args([
+			"--exact",
+			"supervisor::tests::process_worker_fixture",
+			"--ignored",
+			"--nocapture",
+		])
+		.env(LEAF_FIXTURE, "1")
+		.stdin(Stdio::null())
+		.stdout(Stdio::null())
+		.stderr(Stdio::null())
+		.process_group(0);
 
 		let mut leaf = leaf.spawn().expect("separate-group leaf fixture");
 		let _status = leaf.wait().expect("leaf fixture wait");

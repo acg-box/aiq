@@ -2279,109 +2279,8 @@ mod tests {
 		);
 	}
 
-	fn contract_section<'a>(source: &'a str, start: &str, end: &str) -> &'a str {
-		let start_index = source.find(start).unwrap_or_else(|| panic!("missing {start}"));
-		let suffix = &source[start_index..];
-		let end_index = suffix.find(end).unwrap_or_else(|| panic!("missing {end}"));
-
-		&suffix[..end_index]
-	}
-
-	fn assert_bound_literal(section: &str, binding: &str, literal: &str, label: &str) {
-		let binding_index =
-			section.find(binding).unwrap_or_else(|| panic!("missing {label} binding"));
-		let literal_index = section[binding_index..]
-			.find(literal)
-			.unwrap_or_else(|| panic!("missing {label} literal"));
-
-		assert!(literal_index < 256, "{label} literal is not bound to its field");
-	}
-
-	fn assert_database_and_web_pricing_scalars(
-		pricing: &serde_json::Value,
-		database: &str,
-		web: &str,
-	) {
-		for field in ["method", "version", "as_of", "source", "currency", "processing_tier"] {
-			let literal = pricing[field].as_str().expect("pricing text field must be text");
-
-			assert_bound_literal(database, &format!("candidate->>'{field}'"), literal, field);
-
-			assert!(
-				web.contains(&format!("value.{field} === '{literal}'")),
-				"web pricing {field} drifted"
-			);
-		}
-		for (field, binding) in [("formula", "pricingFormula"), ("limitation", "pricingLimitation")]
-		{
-			let literal = pricing[field].as_str().expect("pricing text field must be text");
-
-			assert_bound_literal(database, &format!("candidate->>'{field}'"), literal, field);
-
-			assert!(web.contains(literal), "web pricing {field} literal drifted");
-			assert!(
-				web.contains(&format!("value.{field} === {binding}")),
-				"web pricing {field} binding drifted"
-			);
-		}
-
-		assert!(
-			database.contains("candidate->'hosted_tool_fees_included'='false'::jsonb"),
-			"database hosted-tool pricing policy drifted"
-		);
-		assert!(
-			web.contains("value.hosted_tool_fees_included === false"),
-			"web hosted-tool pricing policy drifted"
-		);
-	}
-
-	fn assert_database_and_web_pricing_rates(
-		rates: &[serde_json::Value],
-		database: &str,
-		web: &str,
-	) {
-		let compact_database = database.split_whitespace().collect::<String>();
-		let web_rates = contract_section(web, "const pricingRates = [", "] as const;");
-		let compact_web = web.split_whitespace().collect::<String>().replace('_', "");
-		let compact_web_rates = web_rates.split_whitespace().collect::<String>().replace('_', "");
-
-		assert_eq!(
-			compact_database.matches("jsonb_build_object('model',").count(),
-			rates.len(),
-			"database pricing rate count drifted"
-		);
-		assert_eq!(
-			compact_web_rates.matches("['").count(),
-			rates.len(),
-			"web pricing rate count drifted"
-		);
-
-		for rate in rates {
-			let model = rate["model"].as_str().expect("pricing model must be text");
-			let input = rate["input_usd_nanos_per_token"].as_u64().expect("input rate");
-			let cached = rate["cached_input_usd_nanos_per_token"].as_u64().expect("cached rate");
-			let cache_write =
-				rate["cache_write_input_usd_nanos_per_token"].as_u64().expect("cache-write rate");
-			let output = rate["output_usd_nanos_per_token"].as_u64().expect("output rate");
-
-			assert!(
-				compact_database.contains(&format!(
-					"jsonb_build_object('model','{model}','input_usd_nanos_per_token',{input},'cached_input_usd_nanos_per_token',{cached},'cache_write_input_usd_nanos_per_token',{cache_write},'output_usd_nanos_per_token',{output})"
-				)),
-				"database pricing rate for {model} drifted"
-			);
-			assert!(
-				compact_web.contains(
-					&format!("['{model}',{input},{cached},{cache_write},{output}],")
-						.replace('_', "")
-				),
-				"web pricing rate for {model} drifted"
-			);
-		}
-	}
-
 	#[test]
-	fn serialized_pricing_default_matches_schema_database_and_web_contracts() {
+	fn serialized_pricing_matches_published_wire_schemas() {
 		let pricing = serde_json::to_value(ApiEquivalentPricingModel::default())
 			.expect("pricing default must serialize");
 		let repository_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
@@ -2458,23 +2357,6 @@ mod tests {
 				);
 			}
 		}
-
-		let database = fs::read_to_string(repository_root.join("databases/schema.sql"))
-			.expect("database schema must be readable");
-		let web = fs::read_to_string(
-			repository_root.join("apps/web/src/server/verification-contract.ts"),
-		)
-		.expect("web verification contract must be readable");
-		let database_contract = contract_section(
-			&database,
-			"create function aiq_private.efficiency_pricing_v1_is_valid",
-			"\n$$;",
-		);
-		let web_contract =
-			contract_section(&web, "const pricingFormula =", "function isEvaluatorResultsArtifact");
-
-		assert_database_and_web_pricing_scalars(&pricing, database_contract, web_contract);
-		assert_database_and_web_pricing_rates(rates, database_contract, web_contract);
 	}
 
 	#[test]

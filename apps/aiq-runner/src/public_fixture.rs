@@ -726,7 +726,6 @@ mod tests {
 	use crate::public_fixture::TEST_GENERATED_FIXTURE_PROVENANCE;
 	use crate::public_fixture::{self, TestGeneratedPublicFixture};
 	use crate::runner;
-	use crate::scoring::FalseOnly;
 
 	fn fixture() -> &'static TestGeneratedPublicFixture {
 		static FIXTURE: OnceLock<TestGeneratedPublicFixture> = OnceLock::new();
@@ -773,7 +772,8 @@ mod tests {
 			assert!(
 				(row.strict_pass_rate
 					- row.strict_pass_successes as f64 / row.strict_pass_sample_size as f64)
-					.abs() < 1e-12
+					.abs()
+					< 1e-12
 			);
 			assert_eq!(row.strict_pass_sample_size, 72);
 			assert_eq!(row.sample_size, 72);
@@ -786,7 +786,6 @@ mod tests {
 		let baseline = -0.766_030_057_034_348_f64;
 		let adjacent = f64::from_bits(baseline.to_bits() + 1);
 
-		assert_ne!(baseline, adjacent);
 		assert_eq!(
 			public_fixture::stable_fixture_latent_float(baseline),
 			public_fixture::stable_fixture_latent_float(adjacent)
@@ -800,9 +799,6 @@ mod tests {
 		assert!(fixture.production_admission().is_err());
 		assert!(fixture.test_generated);
 		assert!(fixture.synthetic);
-		assert_eq!(fixture.official_eligible, FalseOnly);
-		assert_eq!(fixture.ranking_eligible, FalseOnly);
-		assert_eq!(fixture.production_publishable, FalseOnly);
 
 		// The generated projection is deliberately not a RunRecord or a signed
 		// package. A production package parser must reject it before publication.

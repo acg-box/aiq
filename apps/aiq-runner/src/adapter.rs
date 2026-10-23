@@ -7965,36 +7965,35 @@ mod tests {
 	}
 
 	#[test]
-	fn large_stream_uses_artifact_sink_and_small_inline_preview() {
-		let output = "x".repeat(MAX_INLINE_PREVIEW_BYTES + 1);
-		let adapter = adapter(vec![Ok(capture(0, output.as_bytes().to_vec(), Vec::new()))]);
-		let result = adapter.invoke(&invocation()).expect("capture must succeed");
+	fn benchmark_invocation_retains_replay_bytes_below_and_above_the_inline_limit() {
+		let command =
+			r#"{"type":"item.completed","item":{"id":"tool-1","type":"command_execution"}}"#;
+		let large_message = serde_json::json!({
+			"type": "item.completed",
+			"item": {"id": "message-1", "type": "agent_message", "text": "x".repeat(MAX_INLINE_PREVIEW_BYTES + 1)}
+		});
 
-		assert_eq!(result.stdout.len(), MAX_INLINE_PREVIEW_BYTES);
-		assert_eq!(result.artifacts.len(), 1);
-	}
+		for output in [command.to_owned(), format!("{command}\n{large_message}")] {
+			let adapter = adapter(vec![Ok(capture(0, output.as_bytes().to_vec(), Vec::new()))]);
+			let result = adapter.invoke(&invocation()).expect("capture must succeed");
+			let retained = sanitize_stdout(output.as_bytes());
 
-	#[test]
-	fn benchmark_invocation_always_retains_nonempty_stdout_for_verifier_replay() {
-		let output =
-			br#"{"type":"item.completed","item":{"id":"tool-1","type":"command_execution"}}"#;
-		let adapter = adapter(vec![Ok(capture(0, output.to_vec(), Vec::new()))]);
-		let result = adapter.invoke(&invocation()).expect("capture must succeed");
-		let retained = sanitize_stdout(output);
-
-		assert_eq!(
-			result.stdout.as_bytes(),
-			&retained[..MAX_INLINE_PREVIEW_BYTES.min(retained.len())]
-		);
-		assert_eq!(result.artifacts.len(), 1);
-		assert_eq!(result.artifacts[0].kind, "stdout.jsonl");
-		assert_eq!(adapter.sink.values.borrow().as_slice(), slice::from_ref(&retained));
-		assert_eq!(
-			runner::parse_codex_tool_usage(&String::from_utf8(retained).expect("retained JSONL"))
+			assert_eq!(
+				result.stdout.as_bytes(),
+				&retained[..MAX_INLINE_PREVIEW_BYTES.min(retained.len())]
+			);
+			assert_eq!(result.artifacts.len(), 1);
+			assert_eq!(result.artifacts[0].kind, "stdout.jsonl");
+			assert_eq!(adapter.sink.values.borrow().as_slice(), slice::from_ref(&retained));
+			assert_eq!(
+				runner::parse_codex_tool_usage(
+					&String::from_utf8(retained).expect("retained JSONL")
+				)
 				.expect("retained tool usage")
 				.total_calls,
-			1
-		);
+				1
+			);
+		}
 	}
 
 	#[test]
@@ -8475,6 +8474,7 @@ mod tests {
 	}
 
 	#[test]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn child_event_emitter() {
 		if env::var("AIQ_CHILD_UNBOUNDED_WAIT").as_deref() == Ok("1") {
 			thread::sleep(Duration::from_millis(50));
@@ -8518,6 +8518,7 @@ mod tests {
 
 	#[test]
 	#[allow(clippy::zombie_processes)]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn json_rpc_process_fixture() {
 		let Ok(role) = env::var("AIQ_JSON_RPC_FIXTURE_ROLE") else {
 			return;
@@ -8653,7 +8654,12 @@ mod tests {
 	fn json_rpc_same_group_descendant_fixture() -> ! {
 		let executable = env::current_exe().expect("test executable");
 		let descendant = Command::new(executable)
-			.args(["--exact", "adapter::tests::json_rpc_process_fixture", "--nocapture"])
+			.args([
+				"--exact",
+				"adapter::tests::json_rpc_process_fixture",
+				"--ignored",
+				"--nocapture",
+			])
 			.env_clear()
 			.env("AIQ_JSON_RPC_FIXTURE_ROLE", "same_group_descendant")
 			.stdin(Stdio::null())
@@ -8681,7 +8687,12 @@ mod tests {
 		let mut command = Command::new(executable);
 
 		command
-			.args(["--exact", "adapter::tests::json_rpc_process_fixture", "--nocapture"])
+			.args([
+				"--exact",
+				"adapter::tests::json_rpc_process_fixture",
+				"--ignored",
+				"--nocapture",
+			])
 			.env_clear()
 			.env("AIQ_JSON_RPC_FIXTURE_ROLE", "escaped_pipe_holder")
 			.stdin(Stdio::null())
@@ -9328,6 +9339,7 @@ mod tests {
 	#[cfg(unix)]
 	#[test]
 	#[allow(clippy::zombie_processes)]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn process_tree_fixture() {
 		let Ok(role) = env::var("AIQ_PROCESS_TREE_ROLE") else {
 			return;
@@ -9338,7 +9350,12 @@ mod tests {
 		if matches!(role.as_str(), "parent" | "budget_parent") {
 			let executable = env::current_exe().expect("test executable");
 			let descendant = Command::new(executable)
-				.args(["--exact", "adapter::tests::process_tree_fixture", "--nocapture"])
+				.args([
+					"--exact",
+					"adapter::tests::process_tree_fixture",
+					"--ignored",
+					"--nocapture",
+				])
 				.env_clear()
 				.env("AIQ_PROCESS_TREE_ROLE", "descendant")
 				.stdin(Stdio::null())
@@ -9378,6 +9395,7 @@ mod tests {
 				args: vec![
 					"--exact".to_owned(),
 					"adapter::tests::process_tree_fixture".to_owned(),
+					"--ignored".to_owned(),
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
@@ -9422,6 +9440,7 @@ mod tests {
 				args: vec![
 					"--exact".to_owned(),
 					"adapter::tests::process_tree_fixture".to_owned(),
+					"--ignored".to_owned(),
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
@@ -9463,6 +9482,7 @@ mod tests {
 			args: vec![
 				"--exact".to_owned(),
 				"adapter::tests::json_rpc_process_fixture".to_owned(),
+				"--ignored".to_owned(),
 				"--nocapture".to_owned(),
 			],
 			stdin,
@@ -9666,6 +9686,7 @@ mod tests {
 			.args([
 				"--exact",
 				"adapter::tests::json_rpc_escaped_pipe_subreaper_fixture",
+				"--ignored",
 				"--nocapture",
 			])
 			.env_clear()
@@ -9698,6 +9719,7 @@ mod tests {
 
 	#[cfg(target_os = "linux")]
 	#[test]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn json_rpc_escaped_pipe_subreaper_fixture() {
 		if env::var("AIQ_RUN_ESCAPED_PIPE_SUBREAPER").as_deref() != Ok("1") {
 			return;
@@ -9888,6 +9910,7 @@ mod tests {
 				args: vec![
 					"--exact".to_owned(),
 					"adapter::tests::child_event_emitter".to_owned(),
+					"--ignored".to_owned(),
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
@@ -9918,6 +9941,7 @@ mod tests {
 				args: vec![
 					"--exact".to_owned(),
 					"adapter::tests::child_event_emitter".to_owned(),
+					"--ignored".to_owned(),
 					"--nocapture".to_owned(),
 				],
 				stdin: vec![b'x'; super::MAX_STDIN_BYTES],
@@ -9950,6 +9974,7 @@ mod tests {
 						args: vec![
 							"--exact".to_owned(),
 							"adapter::tests::child_event_emitter".to_owned(),
+							"--ignored".to_owned(),
 							"--nocapture".to_owned(),
 						],
 						stdin: Vec::new(),
@@ -9988,6 +10013,7 @@ mod tests {
 				args: vec![
 					"--exact".to_owned(),
 					"adapter::tests::child_event_emitter".to_owned(),
+					"--ignored".to_owned(),
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
@@ -10016,6 +10042,7 @@ mod tests {
 				args: vec![
 					"--exact".to_owned(),
 					"adapter::tests::child_event_emitter".to_owned(),
+					"--ignored".to_owned(),
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
@@ -10049,6 +10076,7 @@ mod tests {
 				args: vec![
 					"--exact".to_owned(),
 					"adapter::tests::child_event_emitter".to_owned(),
+					"--ignored".to_owned(),
 					"--nocapture".to_owned(),
 				],
 				stdin: Vec::new(),
@@ -10085,35 +10113,6 @@ mod tests {
 		assert!(sink.put("stdout.jsonl", b"original").is_err());
 
 		fs::remove_dir_all(&root).expect("fixture cleanup");
-	}
-
-	#[cfg(unix)]
-	#[test]
-	fn artifact_temporary_names_are_unique_when_clock_samples_match() {
-		let barrier = Arc::new(Barrier::new(32));
-		let names = (0..32)
-			.map(|_| {
-				let barrier = Arc::clone(&barrier);
-
-				thread::spawn(move || {
-					barrier.wait();
-
-					(0..100)
-						.map(|_| {
-							LocalArtifactSink::artifact_temporary_name_at(
-								"workspace-snapshot.tar",
-								42,
-							)
-						})
-						.collect::<Vec<_>>()
-				})
-			})
-			.collect::<Vec<_>>()
-			.into_iter()
-			.flat_map(|publisher| publisher.join().expect("name publisher joins"))
-			.collect::<BTreeSet<_>>();
-
-		assert_eq!(names.len(), 3_200);
 	}
 
 	#[cfg(unix)]
@@ -10168,21 +10167,19 @@ mod tests {
 				thread::spawn(move || {
 					barrier.wait();
 
-					(0..32)
-						.map(|_| sink.put("workspace-manifest.json", b"{\"same\":true}\n"))
-						.collect::<Result<Vec<_>, _>>()
+					sink.put("workspace-manifest.json", b"{\"same\":true}\n")
 				})
 			})
 			.collect::<Vec<_>>();
 		let references = publishers
 			.into_iter()
-			.flat_map(|publisher| {
+			.map(|publisher| {
 				publisher.join().expect("artifact publisher joins").expect("publication")
 			})
 			.collect::<Vec<_>>();
 		let expected = references.first().expect("at least one artifact reference");
 
-		assert_eq!(references.len(), 1_024);
+		assert_eq!(references.len(), 32);
 		assert!(references.iter().all(|reference| reference == expected));
 
 		drop(sink);

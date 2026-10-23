@@ -476,23 +476,28 @@ mod tests {
 
 	use crate::{
 		Error, schedule,
-		workflow::{self, OFFICIAL_RESULT_COUNT, official},
+		workflow::{self, official},
 	};
 
 	#[test]
 	fn publication_requires_a_complete_semantic_official_matrix() {
 		assert!(official::publication_ready(&official::RunSummary {
-			total_results: OFFICIAL_RESULT_COUNT,
+			total_results: 1_224,
 			non_semantic_results: 0,
 			failure_kinds: BTreeMap::new(),
 		}));
 		assert!(!official::publication_ready(&official::RunSummary {
-			total_results: OFFICIAL_RESULT_COUNT - 1,
+			total_results: 1_223,
 			non_semantic_results: 0,
 			failure_kinds: BTreeMap::new(),
 		}));
 		assert!(!official::publication_ready(&official::RunSummary {
-			total_results: OFFICIAL_RESULT_COUNT,
+			total_results: 1_225,
+			non_semantic_results: 0,
+			failure_kinds: BTreeMap::new(),
+		}));
+		assert!(!official::publication_ready(&official::RunSummary {
+			total_results: 1_224,
 			non_semantic_results: 1,
 			failure_kinds: BTreeMap::from([("evaluator_failure".to_owned(), 1)]),
 		}));

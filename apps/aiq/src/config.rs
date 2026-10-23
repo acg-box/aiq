@@ -377,13 +377,10 @@ mod tests {
 	}
 
 	#[test]
-	fn accepts_exact_v2_configuration() {
-		assert!(valid_configuration().validate().is_ok());
-	}
-
-	#[test]
 	fn rejects_non_origin_endpoint_and_unbounded_work() {
 		let mut configuration = valid_configuration();
+
+		configuration.validate().expect("valid configuration control");
 
 		configuration.endpoint = "https://aiq.wiki/path".to_owned();
 
