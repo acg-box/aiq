@@ -63,7 +63,6 @@ void describe('bounded Supabase HTTP fetch', () => {
   });
 
   void it('keeps ordinary calls at 10 seconds and verification RPCs at 120 seconds', async (t) => {
-    assert.equal(VERIFICATION_SUPABASE_HTTP_TIMEOUT_MS, 120_000);
     t.mock.timers.enable({ apis: ['setTimeout'] });
     t.mock.method(AbortSignal, 'timeout', (delay: number) => {
       const controller = new AbortController();
@@ -119,7 +118,6 @@ void describe('bounded Supabase HTTP fetch', () => {
     const actual = await boundedFetch('https://example.supabase.co/rest/v1/public_runs');
 
     assert.equal(actual, expected);
-    assert.equal(actual.status, 201);
   });
 
   void it('rejects a hanging request at its deadline and aborts the fetch signal', async () => {

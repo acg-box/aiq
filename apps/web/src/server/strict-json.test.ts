@@ -27,12 +27,10 @@ void describe('strict JSON parser', () => {
   });
 
   void it('accepts the complete JSON value grammar through the bounded depth', () => {
-    const value = parseJsonWithoutDuplicateKeys(
-      `{"array":[null,true,false,-0,0,1.25,1e+2,"\\b\\f\\n\\r\\t\\\\\\/\\"","\\ud83d\\ude00"],"nested":${nestedArray(
-        30,
-      )}}`,
-    );
-    assert.equal(typeof value, 'object');
+    const source = `{"array":[null,true,false,-0,0,1.25,1e+2,"\\b\\f\\n\\r\\t\\\\\\/\\"","\\ud83d\\ude00"],"nested":${nestedArray(
+      30,
+    )}}`;
+    assert.deepEqual(parseJsonWithoutDuplicateKeys(source), JSON.parse(source));
   });
 
   void it('rejects malformed numbers, escapes, surrogates, excess depth, and trailing data', () => {

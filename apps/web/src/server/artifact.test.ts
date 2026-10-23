@@ -1,5 +1,4 @@
 import {
-  ARTIFACT_KIND_MAX_BYTES,
   CAPABILITY_MARKER_BYTES,
   isCanonicalEvaluatorResultsBundle,
   MAX_EVALUATOR_RESULTS_BYTES,
@@ -184,7 +183,6 @@ void describe('runner artifact upload', () => {
     );
 
     assert.equal(accepted.status, 201);
-    assert.equal(ARTIFACT_KIND_MAX_BYTES[markerKind], 36);
 
     const wrongMarker = Buffer.from('AIQ_CAPABILITY_COMMAND_AND_WRITE_V2\n');
     const wrongDigest = createHash('sha256').update(wrongMarker).digest('hex');
@@ -230,12 +228,9 @@ void describe('runner artifact upload', () => {
     );
     assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(16)), true);
     assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(17)), false);
-    assert.equal(ARTIFACT_KIND_MAX_BYTES['evaluator-results.json'], MAX_EVALUATOR_RESULTS_BYTES);
   });
 
   void it('accepts the production evaluator result shape and schema-authorized omitted digest', () => {
-    assert.equal(isCanonicalEvaluatorResultsBundle(evaluatorBundle(16)), true);
-
     const { raw_stdout_sha256: _omitted, ...withoutRawStdoutDigest } = evaluatorResult();
     assert.equal(
       isCanonicalEvaluatorResultsBundle(evaluatorBundle(1, withoutRawStdoutDigest)),

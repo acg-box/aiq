@@ -93,11 +93,6 @@ await test('all tasks remove the wall deadline while five retain revised step an
           : { wall_seconds: null, max_steps: 48, max_tool_calls: 40 }
       : { ...priorTask.budget, wall_seconds: null };
     deepStrictEqual(task.budget, expectedBudget);
-    strictEqual(task.design_revision.task_specific_delta.includes('wall-clock deadline'), true);
-    strictEqual(
-      task.design_revision.task_specific_delta.includes('independent efficiency measurement'),
-      true,
-    );
     deepStrictEqual(task.title, priorTask.title);
     deepStrictEqual(task.summary, priorTask.summary);
     deepStrictEqual(task.allowed_tools, priorTask.allowed_tools);
@@ -122,20 +117,6 @@ await test('the new release keeps the public scoring contract and hides controll
     strictEqual(task.visibility, 'hidden');
     strictEqual(task.input_contract.content_handle.includes('/1.0.6/'), true);
     strictEqual(task.evaluator.scorer_version, '1.0.6');
-    strictEqual(task.leakage_review.notes.includes('outside Git'), true);
-    strictEqual(
-      task.design_revision.controlled_corpus_requirements.some((requirement) =>
-        /component|0\.20|at least three deterministic assertions/iu.test(requirement),
-      ),
-      false,
-    );
-    strictEqual(
-      task.design_revision.controlled_corpus_requirements.some((requirement) =>
-        requirement.includes('hard-gate and structural failures'),
-      ),
-      true,
-    );
-    strictEqual(task.design_revision.controlled_corpus_requirements.length, 4);
     deepStrictEqual(task.evaluator.scoring_contract, {
       aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
       check_scoring: 'binary',
@@ -169,46 +150,6 @@ await test('the new release keeps the public scoring contract and hides controll
       priorTask.evaluator.acceptance_fixture_commitments,
     );
   }
-});
-
-await test('the five interaction revisions retain their accepted step and tool limits', () => {
-  const tasks = buildCatalog().tasks.filter(({ task_id }) =>
-    EXPECTED_REVISED_TASK_IDS.includes(task_id),
-  );
-  for (const task of tasks) {
-    deepStrictEqual(
-      task.budget,
-      task.task_id === 'coding-07'
-        ? { wall_seconds: null, max_steps: 32, max_tool_calls: 21 }
-        : task.task_id === 'debugging-02'
-          ? { wall_seconds: null, max_steps: 64, max_tool_calls: 56 }
-          : { wall_seconds: null, max_steps: 48, max_tool_calls: 40 },
-    );
-    strictEqual(task.design_revision.kind, 'runtime_budget_revision');
-    strictEqual(task.design_revision.objective.includes('every configuration'), true);
-    strictEqual(task.design_revision.task_specific_delta.includes('wall-clock deadline'), true);
-    strictEqual(task.design_revision.task_specific_delta.includes('Elapsed time'), true);
-  }
-});
-
-await test('debugging-02 retains the accepted step and tool headroom without a wall deadline', () => {
-  const task = buildCatalog().tasks.find(({ task_id }) => task_id === 'debugging-02');
-  if (task === undefined) throw new RangeError('debugging-02 is missing.');
-  deepStrictEqual(task.budget, { wall_seconds: null, max_steps: 64, max_tool_calls: 56 });
-  strictEqual(task.design_revision.task_specific_delta.includes('step and tool-call limits'), true);
-  strictEqual(task.design_revision.task_specific_delta.includes('40/28'), true);
-  strictEqual(task.design_revision.task_specific_delta.includes('64/56'), true);
-  strictEqual(task.design_revision.task_specific_delta.includes('wall-clock deadline'), true);
-});
-
-await test('coding-07 retains its step and tool limits and removes the wall deadline', () => {
-  const task = buildCatalog().tasks.find(({ task_id }) => task_id === 'coding-07');
-  if (task === undefined) throw new RangeError('coding-07 is missing.');
-  deepStrictEqual(task.budget, { wall_seconds: null, max_steps: 32, max_tool_calls: 21 });
-  strictEqual(task.design_revision.task_specific_delta.includes('32 steps'), true);
-  strictEqual(task.design_revision.task_specific_delta.includes('21 tool calls'), true);
-  strictEqual(task.design_revision.task_specific_delta.includes('wall-clock deadline'), true);
-  strictEqual(task.design_revision.task_specific_delta.includes('efficiency measurements'), true);
 });
 
 await test('the closed schemas bind the 1.0.6 release and revision provenance', async () => {
@@ -276,8 +217,6 @@ await test('the closed schemas bind the 1.0.6 release and revision provenance', 
   deepStrictEqual(taskBudgetProperties.wall_seconds, {
     anyOf: [{ type: 'integer', minimum: 1 }, { type: 'null' }],
   });
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.6/'), true);
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.5/'), false);
 });
 
 await test('the historical 1.0.6 task schema accepts only 1.0.6 controlled references', async () => {

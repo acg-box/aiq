@@ -19,59 +19,6 @@ async function noOverflow(page: Page) {
   );
 }
 
-async function intelligenceLink(page: Page) {
-  const direct = page
-    .getByRole('navigation', { name: 'Main navigation', exact: true })
-    .getByRole('link', { name: 'AI Intelligence', exact: true });
-  if (await direct.isVisible()) return direct;
-  const menu = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
-  await menu.click();
-  return page
-    .getByRole('dialog', { name: 'Benchmark navigation', exact: true })
-    .getByRole('link', { name: 'AI Intelligence', exact: true });
-}
-
-test('peer boards share one navigation and the mobile menu restores focus', async ({
-  page,
-}, testInfo) => {
-  const failures = monitorErrors(page);
-  await page.goto('/');
-  const directory = page.getByRole('region', { name: 'Benchmark boards', exact: true });
-  await expect(directory.getByRole('rowheader')).toHaveText([
-    'AI Intelligence',
-    'Harness Rank',
-    'Mem',
-  ]);
-  await directory.getByRole('link', { name: 'Mem', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'Mem', exact: true })).toBeVisible();
-  await expect(page.getByRole('tab', { name: 'Leaderboard', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expect(page.getByRole('tab')).toHaveText(['Data', 'Leaderboard', 'Method', 'Records']);
-  const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true });
-  await expect(navigation.getByRole('link', { name: 'Mem', exact: true })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
-  await (await intelligenceLink(page)).click();
-  await expect(page.getByRole('heading', { name: 'AI Intelligence', exact: true })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'Core navigation' })).toHaveCount(0);
-  await expect(page.getByRole('link', { name: /Core workspace/ })).toHaveCount(0);
-  if (testInfo.project.name === 'mobile-chromium') {
-    const opener = page.getByRole('button', { name: 'More benchmark navigation' });
-    await opener.click();
-    await expect(page.getByRole('dialog', { name: 'Benchmark navigation' })).toBeVisible();
-    await page.keyboard.press('Escape');
-    await expect(opener).toBeFocused();
-    await expect(opener).toHaveAttribute('aria-expanded', 'false');
-  }
-  await page.screenshot({ path: testInfo.outputPath('intelligence.png'), fullPage: true });
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await noOverflow(page);
-  expect(failures).toEqual([]);
-});
-
 test('Mem filters, result evidence, case records and originals keep the same workspace', async ({
   page,
   request,

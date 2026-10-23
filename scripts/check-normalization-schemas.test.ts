@@ -925,46 +925,49 @@ await test('the current corpus commitment has one direct state', async () => {
     '1.1.0',
   );
   strictEqual(schema.additionalProperties, false);
-
-  for (const retiredField of ['release_status', 'lineage', 'review']) {
-    strictEqual(retiredField in properties, false);
-  }
 });
 
-await test('corpus runtime components keep stable fields and bounded diagnostics', async () => {
+await test('corpus runtime components enforce required identities and diagnostic bounds', async () => {
   const schema = await parseSchema('benchmarks/schema/corpus-commitment-v3.schema.json');
   const definitions = requireObjectProperty(schema, '$defs');
   const runtime = requireObjectProperty(definitions, 'runtimeProvenance');
   const runtimeProperties = requireObjectProperty(runtime, 'properties');
   const nodeRuntime = requireObjectProperty(runtimeProperties, 'node_runtime');
-  const nodeProperties = requireObjectProperty(nodeRuntime, 'properties');
-  const components = requireObjectProperty(nodeProperties, 'components');
-  const componentProperties = requireObjectProperty(components, 'properties');
-
-  deepStrictEqual(components.required, [
-    'icu',
-    'tz',
-    'unicode',
-    'v8',
-    'modules',
-    'openssl',
-    'zlib',
-  ]);
-  deepStrictEqual(Object.keys(componentProperties), components.required);
-  strictEqual(components.minProperties, 7);
-  strictEqual(components.maxProperties, 64);
-  strictEqual(
-    requireObjectProperty(components, 'propertyNames').pattern,
-    '^[a-z][a-z0-9_]{0,31}(?![\\s\\S])',
+  const components = requireObjectProperty(
+    requireObjectProperty(nodeRuntime, 'properties'),
+    'components',
   );
-  strictEqual(
-    requireObjectProperty(components, 'additionalProperties').$ref,
-    '#/$defs/additionalComponentVersion',
+  const required = {
+    icu: null,
+    tz: '2026b',
+    unicode: '17.0',
+    v8: '14.2',
+    modules: '137',
+    openssl: '3.5.4',
+    zlib: '1.3.1',
+  };
+  strictEqual(matchesSchema(required, components, schema), true);
+  for (const field of Object.keys(required)) {
+    const missing: JsonObject = { ...required };
+    delete missing[field];
+    strictEqual(matchesSchema(missing, components, schema), false, field);
+  }
+  const maximum = Object.assign(
+    {},
+    required,
+    Object.fromEntries(
+      Array.from({ length: 57 }, (_, index) => [`extra_${index}`, 'v'.repeat(80)]),
+    ),
   );
-  const additionalVersion = requireObjectProperty(definitions, 'additionalComponentVersion');
-  strictEqual(additionalVersion.type, 'string');
-  strictEqual(additionalVersion.maxLength, 80);
-  strictEqual(additionalVersion.pattern, '^[A-Za-z0-9.+_-]{0,80}(?![\\s\\S])');
+  strictEqual(matchesSchema(maximum, components, schema), true);
+  strictEqual(matchesSchema({ ...maximum, extra_overflow: '1' }, components, schema), false);
+  strictEqual(matchesSchema({ ...required, optional: '' }, components, schema), true);
+  for (const name of ['Upper', 'with-dash', 'a'.repeat(33), 'extra\n']) {
+    strictEqual(matchesSchema({ ...required, [name]: '1' }, components, schema), false, name);
+  }
+  for (const value of [null, 'v'.repeat(81), '1\n', '1\r\n', '1\u2028', '1\u2029']) {
+    strictEqual(matchesSchema({ ...required, optional: value }, components, schema), false);
+  }
 });
 
 await test('public wire schemas bind only the active AIQ Core 1.1.0 release', async () => {
@@ -1070,78 +1073,17 @@ await test('public wire schemas bind only the active AIQ Core 1.1.0 release', as
     ).const,
     '1.1.0',
   );
-});
-
-await test('Official method and rule stay identical across Rust, schemas, database, and cutover', async () => {
-  const method = 'rasch_fractional_fixed_bank_map_v2';
-  const paths = [
-    'apps/aiq-runner/src/scoring.rs',
-    'benchmarks/schema/result-package-v4.schema.json',
-    'benchmarks/schema/normalized-batch-v4.schema.json',
-    'databases/init.ts',
-    'databases/schema.sql',
-    'databases/integration.sql',
-    'databases/synthetic-demo.sql',
-    'scripts/check-aiq-2-cutover.ts',
-  ];
-  const sources = await Promise.all(
-    paths.map(async (path): Promise<readonly [string, string]> => [
-      path,
-      await readFile(path, 'utf8'),
-    ]),
-  );
-  const retiredJointMethod = ['rasch_fractional', 'joint_map'].join('_');
-
-  for (const [path, source] of sources) {
-    strictEqual(source.includes(method), true, `${path} must use the fixed-bank method`);
-    strictEqual(
-      source.includes(retiredJointMethod),
-      false,
-      `${path} must not retain the joint-fit Official method`,
+  for (const [schema, definitions, definition] of [
+    [resultPackage, resultDefinitions, 'calibrationBank'],
+    [normalizedBatchSchema, normalizedDefinitions, 'latentAbility'],
+  ] as const) {
+    const properties = requireObjectProperty(
+      requireObjectProperty(definitions, definition),
+      'properties',
     );
-  }
-
-  const rust = sources[0]?.[1] ?? '';
-  const rustMethod = rust.match(/LATENT_ABILITY_METHOD: &str = "([^"]+)";/)?.[1];
-  const rustRule = rust.match(/const SCORE_RULE: &str = "([^"]+)";/)?.[1];
-  const resultSchema = await parseSchema('benchmarks/schema/result-package-v4.schema.json');
-  const normalizedSchema = await parseSchema('benchmarks/schema/normalized-batch-v4.schema.json');
-  const resultMethod = requireObjectProperty(
-    requireObjectProperty(
-      requireObjectProperty(requireObjectProperty(resultSchema, '$defs'), 'calibrationBank'),
-      'properties',
-    ),
-    'method',
-  ).const;
-  const normalizedDefinitions = requireObjectProperty(normalizedSchema, '$defs');
-  const normalizedMethod = requireObjectProperty(
-    requireObjectProperty(
-      requireObjectProperty(normalizedDefinitions, 'latentAbility'),
-      'properties',
-    ),
-    'method',
-  ).const;
-  const normalizedRule = requireObjectProperty(
-    requireObjectProperty(
-      requireObjectProperty(normalizedDefinitions, 'scoreReport'),
-      'properties',
-    ),
-    'rule',
-  ).const;
-
-  strictEqual(rustMethod, method);
-  strictEqual(resultMethod, method);
-  strictEqual(normalizedMethod, method);
-  strictEqual(normalizedRule, rustRule);
-  strictEqual(typeof rustRule, 'string');
-  strictEqual(rustRule?.includes('freezes those item difficulties'), true);
-  strictEqual(rustRule?.includes('drift diagnostics and never re-fit or gate'), true);
-  strictEqual(rustRule?.includes('auxiliary measurements and never alter AIQ'), true);
-
-  const escapedRule = rustRule?.replaceAll("'", "''") ?? '';
-  for (const path of ['databases/schema.sql', 'databases/integration.sql']) {
-    const source = sources.find(([candidate]) => candidate === path)?.[1] ?? '';
-    strictEqual(source.includes(escapedRule), true, `${path} must enforce the Rust score rule`);
+    const method = requireObjectProperty(properties, 'method');
+    strictEqual(matchesSchema('rasch_fractional_fixed_bank_map_v2', method, schema), true);
+    strictEqual(matchesSchema('rasch_fractional_joint_map', method, schema), false);
   }
 });
 
@@ -1255,6 +1197,10 @@ await test('all current run provenance digests are nonzero', async () => {
         false,
         `${field} must reject the zero digest`,
       );
+      for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
+        changed[field] = `${String(runProvenance()[field])}${suffix}`;
+        strictEqual(matchesSchema(changed, provenanceSchema, schema), false, `${field} is exact`);
+      }
     }
   }
 
@@ -1266,6 +1212,51 @@ await test('all current run provenance digests are nonzero', async () => {
     const changedCatalog = runProvenance();
     changedCatalog.catalog_digest = sha256(99);
     strictEqual(matchesSchema(changedCatalog, provenanceSchema, schema), false);
+  }
+});
+
+await test('public wire identifiers reject trailing line terminators after a valid value', async () => {
+  const resultPackage = requireObject(
+    JSON.parse(await readFile('benchmarks/fixtures/result-package-v4.synthetic.json', 'utf8')),
+    'result package fixture',
+  );
+  const cases = await Promise.all(
+    (
+      [
+        ['result-package-v4', resultPackage, ['idempotency_key', 'content_hash', 'signature']],
+        [
+          'normalized-batch-v4',
+          normalizedBatch(),
+          ['matrix_batch_id', 'package_sha256', 'content_hash'],
+        ],
+        [
+          'verifier-attestation-v4',
+          attestation(),
+          ['matrix_batch_id', 'package_sha256', 'content_hash', 'signature'],
+        ],
+      ] as const
+    ).map(async ([path, fixture, fields]) => ({
+      path,
+      fixture,
+      fields,
+      schema: await parseSchema(`benchmarks/schema/${path}.schema.json`),
+    })),
+  );
+  for (const { path, fixture, fields, schema } of cases) {
+    const properties = requireObjectProperty(schema, 'properties');
+    for (const field of fields) {
+      const fieldSchema = requireObjectProperty(properties, field);
+      const value = fixture[field];
+      strictEqual(typeof value, 'string', `${path}.${field}`);
+      strictEqual(matchesSchema(value, fieldSchema, schema), true, `${path}.${field}`);
+      for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
+        strictEqual(
+          matchesSchema(`${String(value)}${suffix}`, fieldSchema, schema),
+          false,
+          `${path}.${field}`,
+        );
+      }
+    }
   }
 });
 

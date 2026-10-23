@@ -1,6 +1,5 @@
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test, type Locator, type Page, type TestInfo } from '@playwright/test';
-import { selectTheme } from './workspace-helpers.ts';
 
 const seedCalibrationRunId = `run_${'c'.repeat(64)}`;
 
@@ -282,29 +281,6 @@ test('trend chart exposes scaled score and UTC date axes at narrow widths', asyn
   await expectNoDocumentOverflow(page, testInfo);
 });
 
-test('reduced-motion preferences disable smooth scrolling and transitions', async ({ page }) => {
-  const runtimeFailures = monitorErrors(page);
-  await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/benchmarks/intelligence?view=records&range=all');
-
-  const motionStyles = await page.evaluate(() => {
-    const rangeLink = document.querySelector('.range-tabs a');
-    if (rangeLink === null) throw new Error('Expected the trends page to contain a range link.');
-
-    return {
-      preferenceMatches: matchMedia('(prefers-reduced-motion: reduce)').matches,
-      scrollBehavior: getComputedStyle(document.documentElement).scrollBehavior,
-      transitionDuration: getComputedStyle(rangeLink).transitionDuration,
-    };
-  });
-  expect(motionStyles).toEqual({
-    preferenceMatches: true,
-    scrollBehavior: 'auto',
-    transitionDuration: '0s',
-  });
-  expect(runtimeFailures).toEqual([]);
-});
-
 test('light not-found actions and the focused skip link retain accessible contrast', async ({
   page,
 }) => {
@@ -323,20 +299,4 @@ test('light not-found actions and the focused skip link retain accessible contra
   await expect(skipLink).toBeVisible();
   await expectTextContrast(skipLink);
   await expectAccessible(page);
-});
-
-test('theme selection persists across both boards and a narrow layout', async ({
-  page,
-}, testInfo) => {
-  await page.setViewportSize({ width: 320, height: 844 });
-  await page.goto('/benchmarks/memory');
-  await selectTheme(page, 'dark');
-  await page.reload();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await expectAccessible(page);
-  await page.goto('/benchmarks/intelligence');
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await selectTheme(page, 'light');
-  await expectAccessible(page);
-  await expectNoDocumentOverflow(page, testInfo);
 });

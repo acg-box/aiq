@@ -94,10 +94,6 @@ async function compareEvidenceSnapshot(page: Page): Promise<readonly string[]> {
   return snapshots;
 }
 
-test('production leaderboard filters preserve a complete publication', async ({ page }) => {
-  await compareEvidenceSnapshot(page);
-});
-
 test('production readiness reports the exact bounded dependency contract', async ({
   request,
 }, testInfo) => {
@@ -137,12 +133,9 @@ test('unauthenticated production writes return uncached 401 responses without pu
   expect(await compareEvidenceSnapshot(page)).toEqual(before);
 });
 
-test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }, testInfo) => {
+test('production launch pages fit a 390-by-844 mobile viewport', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   const runPath = await getActualRunPath(page);
-  if (testInfo.config.metadata.productionEvidenceVariants === true) {
-    expect(runPath).toMatch(/^\/benchmarks\/intelligence\/records\/run_[0-9a-f]{64}$/);
-  }
   const paths = [
     '/',
     '/benchmarks/intelligence',

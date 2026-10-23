@@ -102,6 +102,9 @@ void describe('speed observation contract', () => {
     const tampered = structuredClone(valid);
     const trials = tampered.trials as Record<string, unknown>[];
     trials[1] = { ...trials[1], estimated_credits_nanos: 1 };
+    const { batch_id: _batchId, content_sha256: _contentSha256, ...identity } = tampered;
+    tampered.content_sha256 = sha(canonicalJson(identity));
+    tampered.batch_id = `speed_${String(tampered.content_sha256).slice('sha256:'.length)}`;
     assert.deepEqual(validateSpeedObservation(tampered), {
       ok: false,
       code: 'INVALID_SPEED_OBSERVATION',

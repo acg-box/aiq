@@ -98,6 +98,9 @@ test('workspace interactions preserve search, browser history, and light dismiss
 test('reduced motion keeps navigation, filters, and details usable', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/benchmarks/memory');
+  expect(await page.evaluate(() => getComputedStyle(document.documentElement).scrollBehavior)).toBe(
+    'auto',
+  );
   const opened = await openStudyEvidence(page, 'OpenViking');
   const dialog = opened.content;
   await expect(dialog).toBeVisible();

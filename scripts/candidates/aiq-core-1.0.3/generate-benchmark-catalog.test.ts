@@ -57,12 +57,6 @@ await test('the generated active catalog is deterministic and keeps all 72 task 
       'timeout',
     ]);
   }
-  strictEqual(
-    catalog.content_policy.controlled_source.includes(
-      'Near-miss and paired-contrast calibration belongs to the separate AIQ Core Contrast suite',
-    ),
-    true,
-  );
   strictEqual(taskMetadataIdentityDigest(catalog.tasks), AIQ_CORE_V1_TASK_METADATA_IDENTITY_SHA256);
   strictEqual(catalog.catalog_release_identity.digest, AIQ_CORE_V1_CATALOG_RELEASE_IDENTITY_SHA256);
 });
@@ -167,6 +161,14 @@ await test('the active task schema accepts only AIQ Core 1.0.3 task bindings', a
 
   deepStrictEqual(properties.task_version, { const: '1.0.3' });
   deepStrictEqual(properties.scorer_version, { const: '1.0.3' });
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.3/'), true);
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.2/'), false);
+  const items = jsonObject(jsonObject(properties.fixture_refs).items);
+  if (!Array.isArray(items.oneOf)) throw new TypeError('fixture references need oneOf');
+  const pattern = items.oneOf
+    .map((item) => jsonObject(item).pattern)
+    .find((value) => typeof value === 'string' && value.includes('aiq-controlled'));
+  if (typeof pattern !== 'string') throw new TypeError('controlled-reference pattern is missing');
+  const reference = new RegExp(pattern, 'u');
+  strictEqual(reference.test('aiq-controlled-fixture://aiq-core/1.0.3/coding-01'), true);
+  strictEqual(reference.test('aiq-controlled-acceptance://aiq-core/1.0.3/coding-01'), true);
+  strictEqual(reference.test('aiq-controlled-fixture://aiq-core/1.0.2/coding-01'), false);
 });

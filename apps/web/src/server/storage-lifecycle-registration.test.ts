@@ -161,17 +161,20 @@ void describe('Storage lifecycle registration', () => {
         bytes: CAPABILITY_MARKER_BYTES.byteLength - 1,
       },
     ] satisfies StorageLifecycleObject[]) {
+      const rejectedCalls: Array<{
+        functionName: string;
+        parameters: StorageRegistrationRpcArguments;
+      }> = [];
       // oxlint-disable-next-line eslint/no-await-in-loop -- Each invalid marker owns an independent RPC assertion.
       await assert.rejects(
         registerStorageObject({
           object,
-          rpc: async () => {
-            throw new Error('RPC must not be called.');
-          },
+          rpc: rpc(rejectedCalls),
           now: () => fixedNow,
         }),
         /Storage lifecycle registration failed/,
       );
+      assert.deepEqual(rejectedCalls, []);
     }
   });
 

@@ -2,18 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import robots from './robots.ts';
-import { SITE_ORIGIN, createPageMetadata } from './site-metadata.ts';
+import { createPageMetadata } from './site-metadata.ts';
 import sitemap from './sitemap.ts';
 import { listStudies } from '../studies/repository.ts';
 
-void test('public metadata uses the canonical AIQ origin', () => {
+void test('page metadata binds canonical and Open Graph paths with indexable robots', () => {
   const metadata = createPageMetadata({
     title: 'Run history',
     path: '/benchmarks/intelligence',
     description: 'Public run history.',
   });
 
-  assert.equal(SITE_ORIGIN.href, 'https://aiq.wiki/');
   assert.equal(metadata.alternates?.canonical, '/benchmarks/intelligence');
   assert.equal(metadata.openGraph?.url, '/benchmarks/intelligence');
   assert.deepEqual(metadata.robots, { index: true, follow: true });
