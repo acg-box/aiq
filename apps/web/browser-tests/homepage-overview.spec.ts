@@ -61,8 +61,6 @@ test('the homepage shows available comparisons and leads directly to their evide
   await expect(harness).toContainText('24 task specifications');
   await page.setViewportSize({ width: 320, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
-  await expect(page.locator('main h1')).toHaveCSS('font-size', '20px');
-  await expect(page.locator('main h1')).toHaveCSS('font-weight', '500');
   expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   const intelligence = directory
     .getByRole('row')

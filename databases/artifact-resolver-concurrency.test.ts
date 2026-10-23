@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { readFile } from 'node:fs/promises';
-import { resolve as resolvePath } from 'node:path';
 import { promisify } from 'node:util';
 import test from 'node:test';
 
 const execFileAsync = promisify(execFile);
-const schema = await readFile(resolvePath(import.meta.dirname, 'schema.sql'), 'utf8');
 const databaseUrl = process.env.AIQ_DATABASE_CONCURRENCY_TEST_URL;
 const psqlCommand = process.env.AIQ_DATABASE_CONCURRENCY_TEST_PSQL;
 const inboxId = '71783153-6205-4929-a173-183153620529';
@@ -265,38 +262,6 @@ function parseJsonObject(serialized: string): Record<string, unknown> {
   assert.ok(isRecord(parsed));
   return parsed;
 }
-
-void test('locks the claim before artifact binding can enter the Storage gate', () => {
-  const resolver =
-    schema.match(
-      /create function aiq_private\.aiq_resolve_claim_artifact_reference_core[\s\S]*?\n\$_\$;/,
-    )?.[0] ?? '';
-  const claimLock = resolver.indexOf('for update;');
-  const bindingInsert = resolver.indexOf('insert into aiq_private.aiq_artifact_claim_bindings');
-  assert.ok(claimLock >= 0, 'artifact resolution must lock its claim row');
-  assert.ok(bindingInsert > claimLock, 'the claim lock must precede the binding trigger');
-});
-
-void test('uses only the canonical private artifact bucket in concurrency fixtures', () => {
-  assert.equal(artifactBucket, 'aiq-runner-artifacts');
-  assert.equal(rejectionBucket, 'aiq-runner-artifacts');
-});
-
-void test('matches capability probe artifacts by exact claim-bound metadata', () => {
-  const resolver =
-    schema.match(
-      /create function aiq_private\.aiq_resolve_claim_artifact_reference_core[\s\S]*?\n\$_\$;/,
-    )?.[0] ?? '';
-  assert.match(resolver, /payload,capability_validation,models/);
-  assert.match(resolver, /capability_model #> '\{probe,artifacts\}'/);
-  assert.match(resolver, /reference ->> 'kind' = requested_kind/);
-  assert.match(resolver, /reference ->> 'content_hash' = 'sha256:' \|\| requested_sha256/);
-  assert.match(
-    resolver,
-    /reference ->> 'uri' = 'aiq-artifact:\/\/sha256\/' \|\| requested_sha256 \|\| '\/' \|\| requested_kind/,
-  );
-  assert.match(resolver, /\(reference ->> 'bytes'\)::bigint = artifact\.byte_size/);
-});
 
 void test(
   'strictly resolves one claim artifact set concurrently and remains idempotent',

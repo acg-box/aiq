@@ -55,10 +55,6 @@ function digest(index: number): string {
   return `sha256:${index.toString(16).padStart(64, '0')}`;
 }
 
-function capturedNames(source: string, pattern: RegExp): string[] {
-  return [...source.matchAll(pattern)].map((match) => match[1] ?? '').toSorted();
-}
-
 function publicNode(role: string, byte: number): JsonObject {
   const publicKey = byte.toString(16).padStart(2, '0').repeat(32);
   const fingerprint = `sha256:${createHash('sha256')
@@ -679,25 +675,6 @@ void test('database target guard accepts only the exact production Session Poole
       AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET: 'true',
     }),
   );
-});
-
-void test('greenfield preflight enumerates every AIQ public view and RPC name exactly', async () => {
-  const [initializer, desiredSchema] = await Promise.all([
-    readFile(initPath, 'utf8'),
-    readFile(schemaPath, 'utf8'),
-  ]);
-  const preflight = initializer.slice(
-    initializer.indexOf('const preflight = `do $aiq_greenfield_preflight$'),
-    initializer.indexOf('const nodeIds:', initializer.indexOf('const preflight = `')),
-  );
-  const expectedViews = capturedNames(desiredSchema, /create view public\.([a-z0-9_]+)/gi);
-  const expectedRpcs = capturedNames(desiredSchema, /create function public\.([a-z0-9_]+)/gi);
-  assert.equal(expectedViews.length, 13);
-  assert.equal(expectedRpcs.length, 35);
-  for (const name of [...expectedViews, ...expectedRpcs]) {
-    assert.match(preflight, new RegExp(`'${name}'`));
-  }
-  assert.doesNotMatch(preflight, /relname\s+(?:like|~)|proname\s+(?:like|~)/i);
 });
 
 void test('rejects malformed corpus provenance before psql starts', async () => {

@@ -2,54 +2,6 @@ import { openStudyEvidence } from './workspace-helpers.ts';
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 
-test('top navigation keeps peer boards accessible and gives the workspace its full width', async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1120, height: 900 });
-  await page.goto('/benchmarks/memory');
-  const navigation = page.getByRole('navigation', { name: 'Main navigation', exact: true });
-  await expect(navigation.getByRole('link')).toHaveText(['AI Intelligence', 'Harness Rank', 'Mem']);
-  await expect(navigation.getByRole('link', { name: 'Mem', exact: true })).toHaveAttribute(
-    'aria-current',
-    'page',
-  );
-  const labelInsets = await navigation.getByRole('link').evaluateAll((links) =>
-    links.map((link) => {
-      const label = [...link.childNodes].find((node) => node.nodeType === Node.TEXT_NODE);
-      if (!label) throw new Error('A board link must have a text label.');
-      const range = document.createRange();
-      range.selectNodeContents(label);
-      return link.getBoundingClientRect().width - range.getBoundingClientRect().width;
-    }),
-  );
-  labelInsets.forEach((inset) => expect(inset).toBeLessThanOrEqual(2));
-  const geometry = await page.locator('.benchmark-workspace').boundingBox();
-  expect(geometry?.x).toBeLessThanOrEqual(32);
-  expect(geometry?.width).toBeGreaterThanOrEqual(1056);
-  await expect(
-    page.getByRole('button', { name: 'More benchmark navigation', exact: true }),
-  ).not.toBeVisible();
-  await page.setViewportSize({ width: 320, height: 844 });
-  await expect(navigation.getByRole('link')).toHaveText(['Mem']);
-  await expect(navigation.getByRole('link', { name: 'Mem', exact: true })).toBeVisible();
-  const menu = page.getByRole('button', { name: 'More benchmark navigation', exact: true });
-  const visible = await navigation.getByRole('link').allTextContents();
-  await menu.click();
-  const dialog = page.getByRole('dialog', { name: 'Benchmark navigation', exact: true });
-  const overflow = dialog.getByRole('navigation', { name: 'More benchmarks', exact: true });
-  const hidden = await overflow.getByRole('link').allTextContents();
-  expect([...visible, ...hidden]).toHaveLength(3);
-  expect(new Set([...visible, ...hidden])).toEqual(
-    new Set(['AI Intelligence', 'Harness Rank', 'Mem']),
-  );
-  expect(hidden).not.toContain('Mem');
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  await page.keyboard.press('Escape');
-  await expect(menu).toBeFocused();
-  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-});
-
 test('a slow board navigation has visible progress until the destination is ready', async ({
   page,
 }) => {

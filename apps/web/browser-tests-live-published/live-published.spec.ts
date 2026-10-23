@@ -348,6 +348,21 @@ test('full calibration detail keeps one run and one selected-task subset bounded
   await expect(results.getByRole('row')).toHaveCount(73);
   await expect(page.locator('.calibration-chart svg')).toHaveCount(1);
   await expect(page.locator('.calibration-chart canvas')).toHaveCount(0);
+  const chart = page.getByRole('img', { name: /^Calibration scatter/ });
+  const metric = page.getByRole('group', { name: 'Horizontal metric' });
+  await expect(chart.locator('svg')).toContainText('(USD)');
+  await metric.getByRole('button', { name: 'Observed time', exact: true }).click();
+  await expect(metric.getByRole('button', { name: 'Observed time', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(chart.locator('svg')).toContainText(/\((?:s|seconds)\)/);
+  await metric.getByRole('button', { name: 'Estimated cost', exact: true }).click();
+  await expect(metric.getByRole('button', { name: 'Estimated cost', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await expect(chart.locator('svg')).toContainText('(USD)');
   const workspaceIntegrity = results
     .getByRole('row')
     .filter({ hasText: 'aiq-v1-calibration-task-01' });

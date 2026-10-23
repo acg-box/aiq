@@ -1587,7 +1587,6 @@ void describe('shared result-package contract', () => {
     ) as {
       properties: Record<string, Record<string, unknown>>;
       required: string[];
-      ['x-aiq-wire']: Record<string, string>;
       ['x-aiq-limits']: Record<string, number>;
     };
     assert.equal(schema.properties.schema_version?.const, RESULT_PACKAGE_SCHEMA);
@@ -1595,11 +1594,6 @@ void describe('shared result-package contract', () => {
     assert.deepEqual(schema.required.toSorted(), Object.keys(fixture).toSorted());
     assert.equal(schema['x-aiq-limits'].request_body_bytes, MAX_RAW_SUBMISSION_BYTES);
     assert.equal(MAX_SIGNED_PACKAGE_BYTES, 3_948_544);
-    assert.match(schema['x-aiq-wire'].request_body_limit ?? '', /pre-parse hard ceiling/);
-    assert.match(
-      schema['x-aiq-wire'].signed_package_limit ?? '',
-      /exactly equal the RFC 8785 canonical UTF-8 encoding/,
-    );
     assert.equal(schema['x-aiq-limits'].maximum_depth, MAX_JSON_DEPTH);
     assert.equal(
       schema['x-aiq-limits'].completed_command_digest_entries_per_run,

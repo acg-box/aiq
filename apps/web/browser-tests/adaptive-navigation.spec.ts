@@ -44,6 +44,11 @@ test('compact navigation keeps only the current board while desktop fits peers t
     for (const width of [1440, 900, 861, 860, 640, 390, 320, 760, 1120]) {
       await page.setViewportSize({ width, height: 844 });
       await expectHeaderFits(page);
+      if (id === 'memory' && width === 1120) {
+        const workspace = await page.locator('.benchmark-workspace').boundingBox();
+        expect(workspace?.x).toBeLessThanOrEqual(32);
+        expect(workspace?.width).toBeGreaterThanOrEqual(width - 64);
+      }
       const header = page.locator('.workspace-header');
       expect(
         await header.evaluate((element) => element.getBoundingClientRect().height),

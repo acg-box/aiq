@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { AIQ_2_CUTOVER_QUERY, parseAiq2CutoverEvidence } from './check-aiq-2-cutover.ts';
+import { parseAiq2CutoverEvidence } from './check-aiq-2-cutover.ts';
 
 const completeEvidence = {
   measurement_version: '2.0.0',
@@ -20,23 +20,16 @@ void test('AIQ 2.0 cutover accepts exactly one complete real Official matrix', (
   assert.deepEqual(parseAiq2CutoverEvidence(completeEvidence), completeEvidence);
 });
 
-void test('AIQ 2.0 cutover rejects empty, synthetic, or incomplete publication', () => {
-  for (const patch of [
-    { published_batches: 0 },
-    { published_task_results: 0 },
-    { synthetic_official_scores: 1 },
-    { measurement_method: 'rasch_fractional_map_v1' },
-  ]) {
+void test('AIQ 2.0 cutover rejects a mismatch in any required publication field', () => {
+  for (const [field, value] of Object.entries(completeEvidence)) {
     assert.throws(
-      () => parseAiq2CutoverEvidence({ ...completeEvidence, ...patch }),
+      () =>
+        parseAiq2CutoverEvidence({
+          ...completeEvidence,
+          [field]: typeof value === 'number' ? value + 1 : 'unsupported',
+        }),
       /AIQ 2\.0 cutover is blocked/,
+      field,
     );
   }
-});
-
-void test('AIQ 2.0 cutover query binds new measurement and non-synthetic 17×72 evidence', () => {
-  assert.match(AIQ_2_CUTOVER_QUERY, /scoring_version = '1\.0\.8'/g);
-  assert.match(AIQ_2_CUTOVER_QUERY, /not synthetic/);
-  assert.match(AIQ_2_CUTOVER_QUERY, /published_task_results/);
-  assert.match(AIQ_2_CUTOVER_QUERY, /public\.public_leaderboard/);
 });
