@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
 import { AxeBuilder } from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
@@ -12,6 +13,8 @@ for (const [board, query, label, heading] of [
   test(`${board} keeps view navigation available in long content and restarts the selected view`, async ({
     page,
   }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
     await page.goto(`/benchmarks/${board}?view=method${query}`);
     await page
       .getByRole('navigation', { name: 'On this page', exact: true })
@@ -57,6 +60,8 @@ for (const [board, query, label, heading] of [
     for (const [key, value] of new URLSearchParams(query)) {
       expect(new URL(page.url()).searchParams.get(key)).toBe(value);
     }
+    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+    expect(errors).toEqual([]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );
@@ -128,53 +133,26 @@ test('run details return to the original homepage and verification stays in the 
   );
 });
 
-for (const [board, query, label, section] of [
-  ['intelligence', '', 'Uncertainty', 'Uncertainty and task mix'],
-  ['harness', '&taskSearch=refund', 'Budget', 'Proposed budget'],
-  ['memory', '&study=luna-effort', 'Versions', 'Compared versions'],
+for (const [board, label, definition] of [
+  ['intelligence', /Task catalogue.*JSON/u, 'candidates/aiq-core-1.1.0/catalog.json'],
+  ['harness', /Task set and protocol.*JSON/u, 'harness-rank/protocol.json'],
 ] as const) {
-  test(`${board} method index reaches its section and keeps scope`, async ({ page }) => {
-    const errors: string[] = [];
-    page.on('pageerror', (error) => errors.push(error.message));
-    await page.goto(`/benchmarks/${board}?view=method${query}`);
-    await page
-      .getByRole('navigation', { name: 'On this page', exact: true })
-      .getByRole('link', { name: label, exact: true })
-      .click();
-    const target = page.getByRole('heading', { name: section, exact: true });
-    await expect(target).toBeInViewport();
-    await expect(page.getByRole('tab', { name: 'Method', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    if (board === 'harness') await expect(page).toHaveURL(/taskSearch=refund/);
-    if (board === 'memory') await expect(page).toHaveURL(/study=luna-effort/);
-    expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
-    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
-      true,
-    );
-    expect(errors).toEqual([]);
-  });
-}
-
-for (const [board, label] of [
-  ['intelligence', /Task catalogue.*JSON/u],
-  ['harness', /Task set and protocol.*JSON/u],
-] as const) {
-  test(`${board} definition download serves the declared JSON file`, async ({ page, request }) => {
+  test(`${board} definition download serves the declared JSON file`, async ({ page }) => {
     await page.goto(`/benchmarks/${board}?view=data`);
     const file = page.getByRole('link', { name: label, exact: true });
     await expect(file).toBeVisible();
     await expect(file).toHaveAttribute('download', '');
-    const href = await file.getAttribute('href');
-    assert.ok(href);
-    const response = await request.get(href);
-    expect(response.status()).toBe(200);
-    expect(response.headers()['content-type']).toContain('application/json');
     const downloadStarted = page.waitForEvent('download');
     await file.click();
     const download = await downloadStarted;
     expect(await download.failure()).toBeNull();
+    const downloaded = await download.path();
+    assert.ok(downloaded);
+    expect(JSON.parse(await readFile(downloaded, 'utf8'))).toEqual(
+      JSON.parse(
+        await readFile(new URL(`../../../benchmarks/${definition}`, import.meta.url), 'utf8'),
+      ),
+    );
     expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
   });
 }

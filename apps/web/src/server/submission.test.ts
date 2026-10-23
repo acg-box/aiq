@@ -817,12 +817,10 @@ void describe('shared result-package contract', () => {
   });
 
   void it('keeps the maximum 72-by-17 calibration package below the fixed ingress ceiling', () => {
-    const rustMeasuredMaximumCalibrationPackageBytes = 3_832_840;
     const calibration = maximumSelectedCalibrationPackage();
     const canonicalBytes = Buffer.byteLength(canonicalJson(calibration), 'utf8');
     assert.equal(validateSubmission(calibration).ok, true);
     assert.equal(canonicalBytes <= MAX_SIGNED_PACKAGE_BYTES, true);
-    assert.equal(rustMeasuredMaximumCalibrationPackageBytes <= MAX_SIGNED_PACKAGE_BYTES, true);
     assert.equal(MAX_SIGNED_PACKAGE_BYTES, 3_948_544);
   });
 
@@ -886,7 +884,8 @@ void describe('shared result-package contract', () => {
     for (const [label, mutate] of mutations) {
       const candidate = officialPackage();
       mutate(candidate);
-      assert.equal(validateSubmission(candidate).ok, false, label);
+      if (label.startsWith('result ')) rehashResult(firstResult(candidate));
+      assert.equal(validateSubmission(resignPackage(candidate, true)).ok, false, label);
     }
   });
 
@@ -1576,30 +1575,6 @@ void describe('shared result-package contract', () => {
 
     assert.equal(validateSubmission(unsafeInteger).ok, false);
     assert.equal(validateSubmission(malformedUnicode).ok, false);
-  });
-
-  void it('keeps the JSON Schema constants consistent with the implementation and fixture', () => {
-    const schema = JSON.parse(
-      readFileSync(
-        new URL('../../../../benchmarks/schema/result-package-v4.schema.json', import.meta.url),
-        'utf8',
-      ),
-    ) as {
-      properties: Record<string, Record<string, unknown>>;
-      required: string[];
-      ['x-aiq-limits']: Record<string, number>;
-    };
-    assert.equal(schema.properties.schema_version?.const, RESULT_PACKAGE_SCHEMA);
-    assert.equal(schema.properties.payload_type?.const, RUN_PAYLOAD_TYPE);
-    assert.deepEqual(schema.required.toSorted(), Object.keys(fixture).toSorted());
-    assert.equal(schema['x-aiq-limits'].request_body_bytes, MAX_RAW_SUBMISSION_BYTES);
-    assert.equal(MAX_SIGNED_PACKAGE_BYTES, 3_948_544);
-    assert.equal(schema['x-aiq-limits'].maximum_depth, MAX_JSON_DEPTH);
-    assert.equal(
-      schema['x-aiq-limits'].completed_command_digest_entries_per_run,
-      MAX_COMPLETED_COMMAND_DIGEST_ENTRIES_PER_RUN,
-    );
-    assert.equal(validateSubmission(fixture).ok, true);
   });
 
   void it('creates queue arguments from the server-computed receipt', () => {

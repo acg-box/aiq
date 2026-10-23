@@ -212,6 +212,8 @@ test('compact themes live in More and retain one setting across desktop, mobile 
   await expect(trigger).toBeFocused();
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
+  await page.goto('/benchmarks/intelligence');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await trigger.click();
   await expect(
     dialog.getByRole('button', { name: 'Use light theme', exact: true }),

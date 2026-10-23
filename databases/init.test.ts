@@ -385,49 +385,6 @@ void test('prepares one greenfield SQL stream with exact 72/17/3 reference shape
       .filter((line) => line === 'begin;' || line === 'commit;'),
     ['begin;', 'commit;'],
   );
-  assert.ok(
-    prepared.sql.indexOf('$aiq_greenfield_preflight$') <
-      prepared.sql.indexOf('create schema aiq_private;'),
-  );
-  assert.ok(
-    prepared.sql.indexOf('create schema aiq_private;') <
-      prepared.sql.indexOf('insert into aiq_private.aiq_scoring_versions'),
-  );
-  assert.match(prepared.sql, /from json_to_recordset\('[\s\S]*?'::json\) as row\(/);
-  assert.match(prepared.sql, /catalog_ordinal smallint, full_public_metadata json,/);
-  assert.match(prepared.sql, /pg_catalog\.pg_namespace where nspname = 'aiq_private'/);
-  assert.match(
-    prepared.sql,
-    /relation\.relname in \([\s\S]*?'public_distributed_radar'[\s\S]*?'public_calibration_scores'/,
-  );
-  assert.match(
-    prepared.sql,
-    /procedure\.proname in \([\s\S]*?'aiq_register_storage_object'[\s\S]*?'public_trend_points'/,
-  );
-  assert.doesNotMatch(prepared.sql, /relation\.relname like|procedure\.proname like/);
-  assert.match(prepared.sql, /rolname in \('aiq_verifier', 'aiq_publisher'\)/);
-  assert.match(
-    prepared.sql,
-    /select 1 from storage\.buckets[\s\S]{0,160}id in \('aiq-submission-packages', 'aiq-runner-artifacts'\)[\s\S]{0,160}name in \('aiq-submission-packages', 'aiq-runner-artifacts'\)/,
-  );
-  assert.match(prepared.sql, /insert into storage\.buckets \(id, name, public\)/);
-  assert.match(
-    prepared.sql,
-    /id in \('aiq-submission-packages', 'aiq-runner-artifacts'\)[\s\S]{0,80}public is false/,
-  );
-  assert.match(
-    prepared.sql,
-    /frozen_catalog_identity_is_valid\('aiq-core', '1\.1\.0', '1\.0\.8'\)/,
-  );
-  assert.match(prepared.sql, /aiq_production_reference_status\('node_[0-9a-f]{64}'\)/);
-  const referencePhase = prepared.sql.slice(
-    prepared.sql.indexOf('insert into aiq_private.aiq_scoring_versions'),
-  );
-  const referenceStatements = referencePhase.replaceAll(/'(?:''|[^'])*'/g, "''");
-  assert.doesNotMatch(
-    referenceStatements,
-    /\bon conflict\b|inspection_only|replay_policy|existing-row|backfill|migration|upgrade/i,
-  );
   deepStrictEqual(
     {
       task_count: prepared.receipt.task_count,

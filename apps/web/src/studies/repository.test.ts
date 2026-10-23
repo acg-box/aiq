@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import snapshot from './catalogue.json' with { type: 'json' };
-import { findEvidence, findStudy, listStudies, studyEvidence } from './repository.ts';
+import { findEvidence, findStudy, studyEvidence } from './repository.ts';
 import { formatMetric } from './format.ts';
 import type { CaseObservation, StudyCase, StudyResult, Subject } from './types.ts';
 
@@ -13,7 +13,6 @@ function original(id: string): unknown {
 }
 
 void test('the catalogue removes retired measurements and serves retained records directly', () => {
-  assert.deepEqual(listStudies(), snapshot.studies);
   assert.doesNotMatch(JSON.stringify(snapshot.studies), /\belf\b/i);
   assert.ok(snapshot.evidence.every((file) => !/\belf\b/i.test(file.id)));
   assert.equal(findEvidence('2026-10-15-elf-native-kb-memory/review-elf.json'), undefined);

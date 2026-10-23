@@ -19,7 +19,6 @@ async function expectFits(page: Page) {
 
 test('Harness Rank is a peer board and preserves draft selections without invented results', async ({
   page,
-  request,
 }, testInfo) => {
   const errors = observeErrors(page);
   await page.goto('/');
@@ -95,34 +94,6 @@ test('Harness Rank is a peer board and preserves draft selections without invent
   ).toBeVisible();
   const download = page.getByRole('link', { name: /Task set and protocol.*JSON/u, exact: true });
   await expect(download).toHaveAttribute('href', '/api/benchmarks/harness/protocol');
-  const response = await request.get('/api/benchmarks/harness/protocol');
-  expect(response.status()).toBe(200);
-  expect(response.headers()['content-disposition']).toContain('harness-rank-protocol-0.3.0.json');
-  const plan: unknown = await response.json();
-  expect(plan).toMatchObject({
-    status: 'design_only',
-    harnesses: [{ id: 'codex' }, { id: 'hermes' }, { id: 'pi' }],
-    comparisons: [{ id: 'model-harness' }, { id: 'same-model' }],
-    cohort: {
-      model: 'gpt-6-sol',
-      reasoning_effort: 'medium',
-      model_identity_status: 'proposed_not_qualified',
-    },
-    task_set: {
-      planned_tasks: 24,
-      planned_workspaces: 12,
-      planned_scored_attempts: 216,
-      status: 'specifications_authored_packages_not_built',
-      validated_packages: 0,
-      measured_attempts: 0,
-    },
-    budget: {
-      api_ceiling: 534,
-      compute_ceiling: 50,
-      total_cash_ceiling_before_tax: 584,
-      status: 'proposal_not_spending_authority',
-    },
-  });
   await page.getByRole('tab', { name: 'Leaderboard', exact: true }).click();
   await expect(page.getByLabel('Harness', { exact: true })).toHaveValue('hermes');
   await expect(

@@ -98,6 +98,7 @@ async function withDependencyFetch(
       assert.ok(isPublicViewName(view));
       seenViews.add(view);
       assert.equal(url.searchParams.get('select'), PUBLIC_VIEW_SELECTS[view]);
+      assert.notEqual(url.searchParams.get('select'), '*');
       assert.equal(url.searchParams.get('limit'), '1');
       assert.equal(
         request.headers.get('apikey'),
@@ -471,14 +472,21 @@ void describe('bounded readiness probe', () => {
   });
 
   void it('rejects line terminators after readiness key and bucket shapes', () => {
-    for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
-      const configuration = inspectProductionConfiguration({
-        ...validEnvironment,
-        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: `${validEnvironment.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}${suffix}`,
-        AIQ_SUBMISSION_PACKAGE_BUCKET: `${validEnvironment.AIQ_SUBMISSION_PACKAGE_BUCKET}${suffix}`,
-      });
-      assert.equal(configuration.values, undefined);
-      assert.ok(configuration.issues.length > 0);
+    for (const field of [
+      'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+      'AIQ_SUBMISSION_PACKAGE_BUCKET',
+    ] as const) {
+      for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
+        const configuration = inspectProductionConfiguration({
+          ...validEnvironment,
+          [field]: `${validEnvironment[field]}${suffix}`,
+        });
+        assert.equal(configuration.values, undefined, field);
+        assert.ok(
+          configuration.issues.some((issue) => issue.includes(field)),
+          field,
+        );
+      }
     }
   });
 
@@ -521,12 +529,6 @@ void describe('bounded readiness probe', () => {
   });
 
   void it('probes all application reads, both private buckets, and each role credential', async () => {
-    await withDependencyFetch();
-  });
-
-  void it('keeps empty public views ready and uses exact required-column selects', async () => {
-    assert.equal(Object.keys(PUBLIC_VIEW_SELECTS).length, 13);
-    assert.ok(Object.values(PUBLIC_VIEW_SELECTS).every((select) => select !== '*'));
     await withDependencyFetch();
   });
 

@@ -83,7 +83,10 @@ test('homepage links to each peer and retired pages stay removed', async ({ page
   expect(await robots.text()).toContain('Disallow: /api/');
 });
 
-test('every retained case and original file is served intact', async ({ request }, testInfo) => {
+test('every retained case and original file is served intact', async ({
+  request,
+  page,
+}, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'HTTP content is viewport-independent.');
   for (const [path, expected] of [
     ['/api/benchmarks/harness/protocol', harnessPlan],
@@ -97,9 +100,12 @@ test('every retained case and original file is served intact', async ({ request 
   for (const study of listStudies()) {
     for (const item of study.cases) {
       const path = `/benchmarks/memory/records/${study.id}/${item.id}`;
-      const response = await request.get(path);
-      expect(response.status(), path).toBe(200);
-      expect(await response.text()).toContain('case-comparison');
+      const response = await page.goto(path);
+      expect(response?.status(), path).toBe(200);
+      await expect(page.getByRole('heading', { name: item.title, exact: true })).toBeVisible();
+      const input = page.locator('#case-question');
+      await input.locator(':scope > summary').click();
+      await expect(input).toContainText(item.question);
     }
     for (const file of studyEvidence(study)) files.set(file.href, file.sha256);
   }

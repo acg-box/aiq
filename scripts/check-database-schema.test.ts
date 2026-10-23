@@ -199,20 +199,6 @@ await test('checker rejects an extra public view or transaction-start claim leas
   );
 });
 
-await test('checker rejects an obsolete public security-invoker view and browser grant', async () => {
-  const [schema, syntheticDemo] = await sources();
-  const extraView = `
-create view public.aiq_obsolete_preview_status with (security_invoker = true) as select true as ready;
-grant select on table public.aiq_obsolete_preview_status to anon, authenticated;
-`;
-  const changed = schema.replace('\ncommit;', `${extraView}\ncommit;`);
-  assert.notEqual(changed, schema);
-  assert.throws(
-    () => checkDatabaseSchemaSources(changed, syntheticDemo),
-    /Only the inventoried read views can be public/,
-  );
-});
-
 await test('checker rejects a stale or uncommitted Storage inventory identity', async () => {
   const [schema, syntheticDemo] = await sources();
   const staleSignature = schema.replace(

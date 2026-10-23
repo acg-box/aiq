@@ -1,4 +1,4 @@
-import { deepStrictEqual, rejects, strictEqual } from 'node:assert';
+import { deepStrictEqual, rejects, strictEqual, throws } from 'node:assert';
 import { createHash } from 'node:crypto';
 import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import test from 'node:test';
 
 import type { InitializationReceipt, PreparedInitialization } from './init.ts';
-import { canonicalSchemaNames, cleanupSql, inventorySql, resetDatabase } from './reset.ts';
+import { canonicalSchemaNames, resetDatabase } from './reset.ts';
 
 const root = resolve(import.meta.dirname, '..');
 const databaseUrl = 'postgresql://postgres:test@127.0.0.1:5432/postgres';
@@ -163,26 +163,31 @@ function storageFetch(calls: { url: string; method: string; body: unknown }[]): 
   };
 }
 
-void test('canonical names come from schema.sql and include all overload names once', async () => {
-  const names = canonicalSchemaNames(await readFile(resolve(root, 'databases/schema.sql'), 'utf8'));
-  strictEqual(names.views.length, 13);
-  strictEqual(names.policies.length, 21);
-  strictEqual(
-    names.policies.every(({ schema }) => schema === 'aiq_private'),
-    true,
-  );
-  strictEqual(names.functions.includes('aiq_enqueue_submission'), true);
-  strictEqual(names.functions.includes('public_trend_points'), true);
-  strictEqual(new Set(names.functions).size, names.functions.length);
-  const inventory = inventorySql(names);
-  const cleanup = cleanupSql(names);
-  strictEqual(inventory.includes("'unexpected_role_memberships'"), true);
-  strictEqual(inventory.includes("member.rolname = 'postgres'"), true);
-  strictEqual(inventory.includes("grantor.rolname = 'supabase_admin'"), true);
-  strictEqual(cleanup.includes('lock table pg_catalog.'), false);
-  strictEqual(cleanup.includes('lock table storage.buckets in share mode'), true);
-  strictEqual(cleanup.includes('$aiq_reset_boundary_guard$'), true);
-  strictEqual(cleanup.includes('-- AIQ_RESET_BOUNDARY_LOCKED'), true);
+void test('canonical discovery sorts names, deduplicates overloads, and rejects unsafe policies', () => {
+  const schema = `
+create function public.zeta(value text) returns text language sql as $$ select value $$;
+create function public.alpha(value text) returns text language sql as $$ select value $$;
+create function public.alpha(value integer) returns integer language sql as $$ select value $$;
+create view public.zeta as select 1;
+create view public.alpha as select 1;
+create policy zeta on aiq_private.records for select using (true);
+create policy alpha on aiq_private.records for select using (true);
+`;
+  deepStrictEqual(canonicalSchemaNames(schema), {
+    functions: ['alpha', 'zeta'],
+    policies: [
+      { name: 'alpha', schema: 'aiq_private', relation: 'records' },
+      { name: 'zeta', schema: 'aiq_private', relation: 'records' },
+    ],
+    views: ['alpha', 'zeta'],
+  });
+  for (const invalid of [
+    '',
+    schema.replace('create policy alpha on aiq_private.', 'create policy alpha on public.'),
+    `${schema}create policy alpha on aiq_private.records for select using (true);`,
+  ]) {
+    throws(() => canonicalSchemaNames(invalid), /canonical AIQ public namespace/);
+  }
 });
 
 void test('destructive reset fails before inventory without the exact confirmation', async () => {

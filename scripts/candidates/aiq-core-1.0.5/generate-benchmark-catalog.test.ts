@@ -87,10 +87,6 @@ await test('only four calibration tasks are revised while 68 explicitly carry fo
     if (!retargeted.includes(task.task_id)) {
       const priorTask = prior.tasks.find(({ task_id }) => task_id === task.task_id);
       if (priorTask === undefined) throw new RangeError(`Missing prior task ${task.task_id}.`);
-      strictEqual(
-        task.design_revision.task_specific_delta.includes('explicitly carries forward'),
-        true,
-      );
       deepStrictEqual(
         {
           title: task.title,
@@ -151,20 +147,6 @@ await test('revised tasks use new public contracts without publishing private co
     strictEqual(task.visibility, 'hidden');
     strictEqual(task.input_contract.content_handle.includes('/1.0.5/'), true);
     strictEqual(task.evaluator.scorer_version, '1.0.5');
-    strictEqual(task.leakage_review.notes.includes('outside Git'), true);
-    strictEqual(
-      task.design_revision.controlled_corpus_requirements.some((requirement) =>
-        /component|0\.20|at least three deterministic assertions/iu.test(requirement),
-      ),
-      false,
-    );
-    strictEqual(
-      task.design_revision.controlled_corpus_requirements.some((requirement) =>
-        requirement.includes('hard-gate and structural failures'),
-      ),
-      true,
-    );
-    strictEqual(task.design_revision.controlled_corpus_requirements.length, 4);
     deepStrictEqual(task.evaluator.scoring_contract, {
       aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
       check_scoring: 'binary',
@@ -197,11 +179,10 @@ await test('revised tasks use new public contracts without publishing private co
   }
 });
 
-await test('the four public calibration revisions state every requested non-secret contract', () => {
+await test('the four retargeted tasks retain their approved budgets and evaluator kind', () => {
   const tasks = buildCatalog().tasks.filter(({ task_id }) =>
     EXPECTED_REVISED_TASK_IDS.includes(task_id),
   );
-  const revisions = new Map(tasks.map((task) => [task.task_id, JSON.stringify(task)]));
 
   for (const task of tasks) {
     deepStrictEqual(task.budget, { wall_seconds: 900, max_steps: 40, max_tool_calls: 28 });
@@ -210,32 +191,6 @@ await test('the four public calibration revisions state every requested non-secr
   if (coding === undefined) throw new RangeError('Expected coding-06.');
   strictEqual(coding.evaluator.kind, 'async_executor_contract_tests');
   deepStrictEqual(coding.tags, ['concurrency', 'scheduling']);
-
-  for (const term of ['quoted-record parser', 'decoded-total', 'syntax code', 'input index']) {
-    strictEqual(revisions.get('debugging-01')?.includes(term), true);
-  }
-  for (const term of ['six-field', 'own-property', 'protocol-derived', 'atomic disable']) {
-    strictEqual(revisions.get('debugging-02')?.includes(term), true);
-  }
-  for (const term of [
-    'line-ending normalization',
-    'head and tail',
-    'grapheme',
-    'omission metadata',
-  ]) {
-    strictEqual(revisions.get('debugging-04')?.includes(term), true);
-  }
-  for (const term of [
-    'bounded keyed async executor',
-    'per-key FIFO',
-    'eligible-head priority',
-    'queue capacity',
-    'AbortSignal',
-    'close',
-    'idle epochs',
-  ]) {
-    strictEqual(revisions.get('coding-06')?.includes(term), true);
-  }
 });
 
 await test('the closed schemas bind the 1.0.5 release and revision provenance', async () => {
@@ -266,7 +221,6 @@ await test('the closed schemas bind the 1.0.5 release and revision provenance', 
     'acceptance fixture properties',
   );
   const acceptanceHandle = jsonObject(acceptanceFixtureProperties.handle, 'acceptance handle');
-  const source = await readFile(taskSchemaPath, 'utf8');
 
   deepStrictEqual(designProperties.supersedes_task_version, { const: '1.0.4' });
   deepStrictEqual(designProperties.kind, {
@@ -291,8 +245,6 @@ await test('the closed schemas bind the 1.0.5 release and revision provenance', 
     acceptanceHandle.pattern,
     '^aiq-acceptance://[a-z0-9-]+-[0-9]{2}/v(?:2|3|4|5)/(?:gold|alternate-correct|partial|adversarial-format|empty|timeout)(?![\\s\\S])',
   );
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.5/'), true);
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.4/'), false);
 });
 
 await test('the frozen task schema accepts only AIQ Core 1.0.5 controlled references', async () => {

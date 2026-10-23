@@ -18,7 +18,6 @@ import {
   summarizeRun,
   summarizeRunDomains,
   summarizeRunOutcomes,
-  TRUST_LEVELS,
 } from './format.ts';
 import {
   presentLeaderboardEntry,
@@ -42,7 +41,6 @@ import {
   decodeRunHistoryCursor,
   encodeCalibrationRunCursor,
   encodeRunHistoryCursor,
-  PUBLIC_READ_PAGE_SIZE,
   RUN_HISTORY_PAGE_SIZE,
   SeedAiqRepository,
   SPEED_TREND_MAX_POINTS,
@@ -78,6 +76,8 @@ import { classifyDataProvenance } from './provenance.ts';
 import {
   CALIBRATION_OUTCOMES,
   isScoredLeaderboardEntry,
+  type BenchmarkRun,
+  type TrendPoint,
   type PublicCalibrationResult,
   type PublicCalibrationRunSummary,
   type RadarNode,
@@ -393,21 +393,6 @@ void describe('seed repository', () => {
       }),
       'live',
     );
-    assert.deepEqual(Object.values(PUBLIC_VIEW_NAMES), [
-      'public_model_matrix',
-      'public_leaderboard',
-      'public_runs',
-      'public_run_results',
-      'public_nodes',
-      'public_distributed_radar',
-      'public_scoring_versions',
-      'public_task_coverage',
-      'public_calibration_runs',
-      'public_calibration_results',
-      'public_calibration_scores',
-      'public_model_efficiency',
-      'public_speed_observations',
-    ]);
   });
 
   void it('preserves a precise sanitized diagnostic for partial public configuration', async () => {
@@ -755,10 +740,20 @@ void describe('seed repository', () => {
 });
 
 void describe('presentation aggregates', () => {
-  void it('orders scores descriptively and formats task-resampling sensitivity bounds', () => {
-    const ordered = sortLeaderboardByPointEstimate(seedLeaderboard);
-    assert.ok((ordered[0]?.score ?? 0) >= (ordered.at(-1)?.score ?? 100));
-    assert.ok(ordered.every((entry) => !('rank' in entry)));
+  void it('orders point estimates with stable ties and missing scores last', () => {
+    const template = seedLeaderboard[0];
+    assert.ok(template);
+    const entries = [
+      { id: 'low', score: 20 },
+      { id: 'high-b', score: 80 },
+      { id: 'missing-b', score: null },
+      { id: 'high-a', score: 80 },
+      { id: 'missing-a', score: null },
+    ].map((entry) => Object.assign({}, template, entry));
+    assert.deepEqual(
+      sortLeaderboardByPointEstimate(entries).map((entry) => entry.id),
+      ['high-a', 'high-b', 'low', 'missing-a', 'missing-b'],
+    );
     assert.equal(
       formatSensitivityInterval({ sensitivityLow: 78.15, sensitivityHigh: 82.94 }),
       '78.2–82.9',
@@ -1057,42 +1052,6 @@ void describe('presentation aggregates', () => {
     });
   });
 
-  void it('does not present an all-runtime run as all failed', () => {
-    const source = seedRuns[0];
-    assert.ok(source);
-    const run = {
-      ...source,
-      tasks: source.tasks.map((task) =>
-        Object.assign({}, task, {
-          outcome: 'timeout' as const,
-          executionStatus: 'runtime_issue' as const,
-          score: null,
-          explanation: { code: 'timeout', summary: 'Timed out', retryable: true },
-        }),
-      ),
-    };
-    const summary = summarizeRunOutcomes(run);
-    assert.deepEqual(summary, {
-      correct: 0,
-      partial: 0,
-      incorrect: 0,
-      runtimeIssues: 72,
-      invalid: 0,
-      missing: 0,
-      notApplicable: 0,
-      anyCredit: 0,
-      completedOutcomes: 0,
-      total: 72,
-      anyCreditRate: null,
-    });
-    assert.equal(formatAnyCreditRate(summary.anyCreditRate), '—');
-    assert.deepEqual(classifyRunCompleteness(run), {
-      label: 'Coverage-only · not ranked',
-      validResults: 0,
-      notApplicable: false,
-    });
-  });
-
   void it('keeps uniform incorrect, runtime, invalid, and missing matrices distinct', () => {
     const source = seedRuns[0];
     assert.ok(source);
@@ -1164,10 +1123,11 @@ void describe('presentation aggregates', () => {
     ];
 
     for (const fixture of cases) {
-      const summary = summarizeRunOutcomes({
+      const run: BenchmarkRun = {
         ...source,
         tasks: source.tasks.map((task) => Object.assign({}, task, fixture.task)),
-      });
+      };
+      const summary = summarizeRunOutcomes(run);
       assert.deepEqual(
         {
           incorrect: summary.incorrect,
@@ -1179,6 +1139,14 @@ void describe('presentation aggregates', () => {
         },
         fixture.expected,
       );
+      if (summary.completedOutcomes === 0) {
+        assert.equal(formatAnyCreditRate(summary.anyCreditRate), '—');
+        assert.deepEqual(classifyRunCompleteness(run), {
+          label: 'Coverage-only · not ranked',
+          validResults: 0,
+          notApplicable: false,
+        });
+      }
     }
   });
 
@@ -1238,13 +1206,23 @@ void describe('presentation aggregates', () => {
     }
   });
 
-  void it('preserves all history and filters shorter windows from a supplied clock', () => {
-    const now = new Date('2026-07-24T00:00:00.000Z');
-    assert.equal(filterTrendPoints(seedTrendPoints, 'all', now).length, seedTrendPoints.length);
-    assert.ok(
-      filterTrendPoints(seedTrendPoints, 'month', now).length <
-        filterTrendPoints(seedTrendPoints, 'all', now).length,
-    );
+  void it('filters day, week, and 31-day history at the exact supplied-clock boundary', () => {
+    const template = seedTrendPoints[0];
+    assert.ok(template);
+    const now = new Date('2026-08-31T00:00:00.000Z');
+    for (const [range, cutoff] of [
+      ['day', '2026-08-30T00:00:00.000Z'],
+      ['week', '2026-08-24T00:00:00.000Z'],
+      ['month', '2026-07-31T00:00:00.000Z'],
+    ] as const) {
+      const points: TrendPoint[] = [-1, 0, 1].map((delta) =>
+        Object.assign({}, template, {
+          recordedAt: new Date(Date.parse(cutoff) + delta).toISOString(),
+        }),
+      );
+      assert.deepEqual(filterTrendPoints(points, range, now), points.slice(1), range);
+      assert.deepEqual(filterTrendPoints(points, 'all', now), points);
+    }
   });
 
   void it('does not attach changing synthetic trend fixtures to unrelated run details', () => {
@@ -1936,12 +1914,11 @@ void describe('presentation aggregates', () => {
       return { data: rows.slice(first, last + 1), error: null };
     });
 
-    assert.equal(PUBLIC_READ_PAGE_SIZE, 1_000);
     assert.deepEqual(paged, rows);
     assert.deepEqual(ranges, [
-      [0, PUBLIC_READ_PAGE_SIZE - 1],
-      [PUBLIC_READ_PAGE_SIZE, PUBLIC_READ_PAGE_SIZE * 2 - 1],
-      [PUBLIC_READ_PAGE_SIZE * 2, PUBLIC_READ_PAGE_SIZE * 3 - 1],
+      [0, 999],
+      [1_000, 1_999],
+      [2_000, 2_999],
     ]);
   });
 
@@ -2022,6 +1999,14 @@ void describe('presentation aggregates', () => {
         };
       }),
     );
+    const privateFields = {
+      signature: 'private-wire-marker',
+      package_sha256: 'private-wire-marker',
+      content_hash: 'private-wire-marker',
+      artifacts: ['private-wire-marker'],
+      response: 'private-wire-marker',
+      envelope: { payload: 'private-wire-marker' },
+    };
     const resultRequests: Request[] = [];
     const repository = new SupabaseAiqRepository(
       'https://example.supabase.co',
@@ -2029,12 +2014,15 @@ void describe('presentation aggregates', () => {
       async (input, init) => {
         const request = input instanceof Request ? input : new Request(input, init);
         const url = new URL(request.url);
-        if (url.pathname.endsWith('/public_calibration_runs')) return Response.json([run]);
+        if (url.pathname.endsWith('/public_calibration_runs'))
+          return Response.json([{ ...run, ...privateFields }]);
         resultRequests.push(request.clone());
         const family = url.searchParams.get('model_family')?.replace(/^eq\./, '');
         const effort = url.searchParams.get('reasoning_effort')?.replace(/^eq\./, '');
         return Response.json(
-          rows.filter((row) => row.model_family === family && row.reasoning_effort === effort),
+          rows
+            .filter((row) => row.model_family === family && row.reasoning_effort === effort)
+            .map((row) => Object.assign({}, row, privateFields)),
         );
       },
     );
@@ -2044,6 +2032,7 @@ void describe('presentation aggregates', () => {
       reasoningEffort: 'low',
     });
     assert.ok(calibration);
+    assert.equal(JSON.stringify(calibration).includes('private-wire-marker'), false);
     assert.equal(rows.length, 1_224);
     assert.equal(calibration.resultCount, 1_224);
     assert.equal(calibration.results.length, 72);
@@ -3052,12 +3041,6 @@ void describe('presentation aggregates', () => {
     assert.equal(classifyDataProvenance([true, false]), 'mixed');
     assert.equal(classifyDataProvenance([true, null]), 'synthetic');
     assert.equal(classifyDataProvenance([null]), 'unavailable');
-    assert.deepEqual(TRUST_LEVELS, [
-      'unverified',
-      'signed_community',
-      'trusted_verified',
-      'independently_reproduced',
-    ]);
     assert.ok(seedRadarNodes.every((node) => node.registryTrust === 'unverified'));
     assert.ok(
       seedRadarNodes.every(
@@ -3123,111 +3106,6 @@ void describe('presentation aggregates', () => {
     assert.equal(nodeWithoutEvidence?.latestCapability, null);
     assert.equal(nodeWithoutEvidence?.latestObservation, null);
     assert.equal(nodeWithoutEvidence?.aggregation.aggregatedAt, null);
-  });
-
-  void it('keeps the three fallback radar rows equivalent to the public synthetic seed', () => {
-    assert.deepEqual(
-      seedRadarNodes.map((node) => ({
-        id: node.id,
-        name: node.name,
-        operator: node.operator,
-        trust: node.registryTrust,
-        status: node.registryStatus,
-        capability: [node.latestCapability?.status, node.latestCapability?.signatureStatus],
-        observation: [
-          node.latestObservation?.state,
-          node.latestObservation?.recordStatus,
-          node.latestObservation?.signatureStatus,
-        ],
-        assignments: node.assignmentCounts,
-        receipts: node.receiptCounts,
-        aggregation: node.aggregation,
-      })),
-      [
-        {
-          id: 'node_33518601c2f58e370fd02c26a1a3dc8172285fb40231393d3aa735608d5fe633',
-          name: 'Atlas / IAD',
-          operator: 'official',
-          trust: 'unverified',
-          status: 'active',
-          capability: ['declared', 'unverified'],
-          observation: ['ready', 'observed', 'unverified'],
-          assignments: {
-            total: 3,
-            offered: 1,
-            accepted: 1,
-            running: 1,
-            completed: 0,
-            revoked: 0,
-            expired: 0,
-          },
-          receipts: { total: 1, received: 1, accepted: 0, rejected: 0 },
-          aggregation: {
-            receiverVerifiedTrusted: 0,
-            signedUntrusted: 1,
-            rejected: 0,
-            missing: 0,
-            aggregatedAt: '2026-07-24T14:30:00.000Z',
-          },
-        },
-        {
-          id: 'node_eee08e5881ce3843a8a5002a2391accbf897a06049889cb691730eda20b18cf0',
-          name: 'Kepler / FRA',
-          operator: 'verifier',
-          trust: 'unverified',
-          status: 'degraded',
-          capability: ['rejected', 'rejected'],
-          observation: ['busy', 'rejected', 'rejected'],
-          assignments: {
-            total: 2,
-            offered: 0,
-            accepted: 0,
-            running: 0,
-            completed: 1,
-            revoked: 1,
-            expired: 0,
-          },
-          receipts: { total: 2, received: 0, accepted: 1, rejected: 1 },
-          aggregation: {
-            receiverVerifiedTrusted: 0,
-            signedUntrusted: 1,
-            rejected: 1,
-            missing: 0,
-            aggregatedAt: '2026-07-24T14:32:00.000Z',
-          },
-        },
-        {
-          id: 'node_bd09f64ce3b8a251a9e7c1d8587b39fb296edb68981e0bc92a279d0bff85cfdf',
-          name: 'Nomad / unknown',
-          operator: 'community',
-          trust: 'unverified',
-          status: 'offline',
-          capability: ['declared', 'unverified'],
-          observation: ['offline', 'stale', 'unverified'],
-          assignments: {
-            total: 1,
-            offered: 0,
-            accepted: 0,
-            running: 0,
-            completed: 0,
-            revoked: 0,
-            expired: 1,
-          },
-          receipts: { total: 0, received: 0, accepted: 0, rejected: 0 },
-          aggregation: {
-            receiverVerifiedTrusted: 0,
-            signedUntrusted: 0,
-            rejected: 0,
-            missing: 1,
-            aggregatedAt: '2026-07-24T14:33:00.000Z',
-          },
-        },
-      ],
-    );
-    assert.deepEqual(
-      parseDistributedRadarRows(seedRadarNodes.map(distributedRadarRowFromNode)),
-      seedRadarNodes,
-    );
   });
 
   void it('fails closed for every distributed radar identity and evidence invariant', () => {

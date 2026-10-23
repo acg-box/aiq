@@ -217,7 +217,7 @@ void describe('verifier artifact resolution', () => {
     assert.match(await response.text(), /workspace-snapshot\.json/);
   });
 
-  void it('permits only the exact-size claim-bound functional marker', async () => {
+  void it('resolves a claim-bound functional capability marker', async () => {
     const markerKind = 'capability-marker.txt';
     const markerDigest = '83741534dc3125175944ec8e34d515ff35682d83fba0a4cf40d32ccaaaacacf3';
     const response = await handleArtifactResolve(
@@ -359,20 +359,19 @@ void describe('verifier artifact resolution', () => {
     });
   });
 
-  void it('rejects line terminators after exact claim-bound artifact identifiers', async () => {
-    for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- Each adversarial body is independent.
-      const response = await handleArtifactResolve(
-        request(`Bearer ${token}`, {
-          inbox_id: `${inboxId}${suffix}`,
-          lease_token: leaseToken,
-          kind,
-          digest: `${digest}${suffix}`,
-        }),
-        dependencies(),
-      );
-      assert.equal(response.status, 400);
-    }
+  void it('rejects line terminators on each claim-bound artifact identifier', async () => {
+    const valid = { inbox_id: inboxId, lease_token: leaseToken, kind, digest };
+    const responses = await Promise.all(
+      Object.entries(valid).flatMap(([field, value]) =>
+        ['\n', '\r\n', '\u2028', '\u2029'].map((suffix) =>
+          handleArtifactResolve(
+            request(`Bearer ${token}`, { ...valid, [field]: `${value}${suffix}` }),
+            dependencies(),
+          ),
+        ),
+      ),
+    );
+    assert.ok(responses.every((response) => response.status === 400));
   });
 
   void it('rejects line terminators after the artifact-resolution content-length header', async () => {

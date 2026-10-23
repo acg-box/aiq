@@ -436,35 +436,34 @@ void describe('verifier claim gateway', () => {
     assert.equal(invalidIdentity.status, 502);
   });
 
-  void it('rejects line terminators after exact lease, digest, and run identifiers', async () => {
+  void it('rejects line terminators on each lease and upstream claim identifier', async () => {
     for (const suffix of ['\n', '\r\n', '\u2028', '\u2029']) {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- Each adversarial request is independent.
-      const invalidLease = await handleVerifierClaim(
-        request(
-          JSON.stringify({
+      // oxlint-disable-next-line eslint/no-await-in-loop -- Each suffix owns independent request and upstream observations.
+      await Promise.all([
+        ...(['inbox_id', 'lease_token'] as const).map(async (field) => {
+          const valid = {
             action: 'renew',
-            inbox_id: `${inboxId}${suffix}`,
+            inbox_id: inboxId,
             lease_token: leaseToken,
             lease_seconds: 30,
-          }),
-        ),
-        dependencies(),
-      );
-      // oxlint-disable-next-line eslint/no-await-in-loop -- Each adversarial upstream row is independent.
-      const invalidClaim = await handleVerifierClaim(
-        request(JSON.stringify({ action: 'claim' })),
-        dependencies({
-          claim: async () => [
-            {
-              ...claimRow(),
-              idempotency_key: `${claimRunId}${suffix}`,
-              package_sha256: `${digest}${suffix}`,
-            },
-          ],
+          };
+          const response = await handleVerifierClaim(
+            request(JSON.stringify({ ...valid, [field]: `${valid[field]}${suffix}` })),
+            dependencies(),
+          );
+          assert.equal(response.status, 400, field);
         }),
-      );
-      assert.equal(invalidLease.status, 400);
-      assert.equal(invalidClaim.status, 502);
+        ...(['idempotency_key', 'package_sha256'] as const).map(async (field) => {
+          const row = claimRow();
+          const response = await handleVerifierClaim(
+            request(JSON.stringify({ action: 'claim' })),
+            dependencies({
+              claim: async () => [{ ...row, [field]: `${String(row[field])}${suffix}` }],
+            }),
+          );
+          assert.equal(response.status, 502, field);
+        }),
+      ]);
     }
   });
 

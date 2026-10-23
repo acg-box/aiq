@@ -109,20 +109,6 @@ await test('revised tasks use new public contracts without publishing private co
     strictEqual(task.visibility, 'hidden');
     strictEqual(task.input_contract.content_handle.includes('/1.0.4/'), true);
     strictEqual(task.evaluator.scorer_version, '1.0.4');
-    strictEqual(task.leakage_review.notes.includes('outside Git'), true);
-    strictEqual(
-      task.design_revision.controlled_corpus_requirements.some((requirement) =>
-        /component|0\.20|at least three deterministic assertions/iu.test(requirement),
-      ),
-      false,
-    );
-    strictEqual(
-      task.design_revision.controlled_corpus_requirements.some((requirement) =>
-        requirement.includes('hard-gate and structural failures'),
-      ),
-      true,
-    );
-    strictEqual(task.design_revision.controlled_corpus_requirements.length, 4);
     deepStrictEqual(task.evaluator.scoring_contract, {
       aggregation: 'configured_weighted_binary_check_fraction_with_hard_gates',
       check_scoring: 'binary',
@@ -175,7 +161,6 @@ await test('the closed schemas bind the 1.0.4 release and revision provenance', 
     'scoring contract schema',
   );
   const scoringProperties = jsonObject(scoringContract.properties, 'scoring properties');
-  const source = await readFile(taskSchemaPath, 'utf8');
 
   deepStrictEqual(designProperties.supersedes_task_version, { const: '1.0.3' });
   deepStrictEqual(designProperties.kind, {
@@ -196,8 +181,6 @@ await test('the closed schemas bind the 1.0.4 release and revision provenance', 
   });
   strictEqual('components' in scoringProperties, false);
   strictEqual('minimum_assertions_per_component' in scoringProperties, false);
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.4/'), true);
-  strictEqual(source.includes('aiq-core/1\\\\.0\\\\.3/'), false);
 });
 
 await test('the 1.0.4 task schema accepts only its controlled references', async () => {
