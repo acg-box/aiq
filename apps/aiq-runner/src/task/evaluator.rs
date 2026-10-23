@@ -1478,38 +1478,23 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
-	fn formal_node_scenario_configuration_has_one_natural_completion_contract() {
-		let binding = with_configuration(
-			echo_binding("{}"),
-			serde_json::json!({
-				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
-				"completion_policy": "natural_completion",
-				"checks": [{
-					"check_id": "scenario",
-					"type": "node_scenario",
-					"weight": 1
-				}]
-			}),
-		);
+	fn formal_node_scenario_configuration_accepts_natural_completion_and_rejects_deadlines() {
+		let mut configuration = serde_json::json!({
+			"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
+			"completion_policy": "natural_completion",
+			"checks": [{
+				"check_id": "scenario",
+				"type": "node_scenario",
+				"weight": 1
+			}]
+		});
+		let valid = with_configuration(echo_binding("{}"), configuration.clone());
 
-		assert!(binding.validation_issues("1.0.0").is_empty());
-	}
+		assert!(valid.validation_issues("1.0.0").is_empty());
 
-	#[test]
-	fn formal_node_scenario_configuration_rejects_per_check_deadlines() {
-		let binding = with_configuration(
-			echo_binding("{}"),
-			serde_json::json!({
-				"schema_version": EVALUATOR_CONFIG_SCHEMA_VERSION,
-				"completion_policy": "natural_completion",
-				"checks": [{
-					"check_id": "scenario",
-					"type": "node_scenario",
-					"timeout_ms": 1_000,
-					"weight": 1
-				}]
-			}),
-		);
+		configuration["checks"][0]["timeout_ms"] = serde_json::json!(1_000);
+
+		let binding = with_configuration(echo_binding("{}"), configuration);
 
 		assert!(binding.validation_issues("1.0.0").iter().any(|issue| {
 			issue == "configuration checks[0] node_scenario must not declare timeout_ms"
@@ -1815,6 +1800,7 @@ process.stdin.on('end', () => {{
 
 	#[test]
 	#[allow(clippy::zombie_processes)]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn descendant_pipe_fixture() {
 		let Ok(directory) = env::current_dir() else {
 			return;
@@ -1829,7 +1815,12 @@ process.stdin.on('end', () => {{
 		if !marker.exists() {
 			let executable = env::current_exe().expect("test executable");
 			let descendant = Command::new(executable)
-				.args(["--exact", "task::evaluator::tests::descendant_pipe_fixture", "--nocapture"])
+				.args([
+					"--exact",
+					"task::evaluator::tests::descendant_pipe_fixture",
+					"--ignored",
+					"--nocapture",
+				])
 				.stdin(Stdio::null())
 				.spawn()
 				.expect("descendant must start");
@@ -1842,6 +1833,7 @@ process.stdin.on('end', () => {{
 	}
 
 	#[test]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn thread_spawn_failure_fixture() {
 		if env::current_dir()
 			.is_ok_and(|directory| directory.join("force-thread-spawn-failure").is_file())
@@ -1866,6 +1858,7 @@ process.stdin.on('end', () => {{
 		let arguments = vec![
 			"--exact".to_owned(),
 			"task::evaluator::tests::thread_spawn_failure_fixture".to_owned(),
+			"--ignored".to_owned(),
 			"--nocapture".to_owned(),
 		];
 
@@ -1913,6 +1906,7 @@ process.stdin.on('end', () => {{
 		let arguments = vec![
 			"--exact".to_owned(),
 			"task::evaluator::tests::descendant_pipe_fixture".to_owned(),
+			"--ignored".to_owned(),
 			"--nocapture".to_owned(),
 		];
 		let started = Instant::now();

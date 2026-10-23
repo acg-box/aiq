@@ -2161,7 +2161,26 @@ mod tests {
 				("signed_untrusted", 1),
 			])
 		);
-		assert!(serde_json::to_string(&input).expect("serialize").find("score").is_none());
+
+		let wire = serde_json::to_value(&input).expect("aggregation wire");
+
+		assert!(wire.get("score").is_none());
+		assert!(
+			wire["contributions"]
+				.as_array()
+				.expect("contributions")
+				.iter()
+				.all(|contribution| contribution.get("score").is_none())
+		);
+
+		let mut injected = wire;
+
+		injected["score"] = serde_json::json!(1);
+
+		assert!(
+			serde_json::from_value::<AggregationInput>(injected).is_err(),
+			"aggregation cannot accept a claimed score"
+		);
 
 		let mut duplicate = input.contributions.clone();
 

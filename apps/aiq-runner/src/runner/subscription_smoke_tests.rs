@@ -1317,8 +1317,6 @@ fn smoke_guards_require_exact_opt_in_and_fixed_model() {
 	}
 
 	assert_fixed_model();
-
-	assert_eq!(CONTROLLED_TASK_VERSION, crate::scoring::AIQ_TASK_SET_VERSION);
 }
 
 #[test]

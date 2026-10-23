@@ -139,30 +139,41 @@ fn write_json(value: &impl Serialize) -> Result<()> {
 mod tests {
 	use clap::{CommandFactory as _, Parser as _};
 
-	use crate::cli::Cli;
+	use crate::cli::{Cli, Commands};
 
 	#[test]
 	fn parses_primary_workflow_commands() {
 		for command in ["run", "status", "doctor"] {
-			assert!(
-				Cli::try_parse_from(["aiq", command, "--config", "/private/config.json"]).is_ok()
-			);
+			let parsed = Cli::try_parse_from(["aiq", command, "--config", "/private/config.json"])
+				.expect("primary command");
+			let config = match (command, parsed.command) {
+				("run", Commands::Run { config, slot: None })
+				| ("status", Commands::Status { config })
+				| ("doctor", Commands::Doctor { config }) => config,
+				_ => panic!("primary command must retain its identity and default options"),
+			};
+
+			assert_eq!(config.to_str(), Some("/private/config.json"));
 		}
 	}
 
 	#[test]
 	fn run_accepts_one_explicit_recovery_slot() {
-		assert!(
-			Cli::try_parse_from([
-				"aiq",
-				"run",
-				"--config",
-				"/private/config.json",
-				"--slot",
-				"2026-08-12T03-00Z",
-			])
-			.is_ok()
-		);
+		let parsed = Cli::try_parse_from([
+			"aiq",
+			"run",
+			"--config",
+			"/private/config.json",
+			"--slot",
+			"2026-08-12T03-00Z",
+		])
+		.expect("recovery command");
+		let Commands::Run { config, slot } = parsed.command else {
+			panic!("recovery slot must select run");
+		};
+
+		assert_eq!(config.to_str(), Some("/private/config.json"));
+		assert_eq!(slot.as_deref(), Some("2026-08-12T03-00Z"));
 	}
 
 	#[test]

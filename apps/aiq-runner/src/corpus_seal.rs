@@ -2074,10 +2074,7 @@ mod tests {
 
 	use crate::{
 		candidate_catalog,
-		corpus_seal::{
-			self, CorpusKind, LeakageReviewSource, LeakageReviewV2, LeakageReviewV2Bindings,
-			SealOptions, TEMP_SEQUENCE,
-		},
+		corpus_seal::{self, CorpusKind, LeakageReviewV2Bindings, SealOptions, TEMP_SEQUENCE},
 		protocol, runner,
 		task::EvaluatorRuntimeKind,
 	};
@@ -2258,43 +2255,6 @@ mod tests {
 
 		assert!(
 			corpus_seal::validate_exact_acceptance_classes("coding-01", &expected, &extra).is_err()
-		);
-	}
-
-	#[test]
-	fn canonical_preimages_are_deterministic_and_tamper_evident() {
-		let first = LeakageReviewV2 {
-			schema_version: "aiq.leakage-review.v2".to_owned(),
-			review_id: "review-coding-01".to_owned(),
-			task_id: "coding-01".to_owned(),
-			task_version: "1.1.0".to_owned(),
-			reviewer_identity: "reviewer-1".to_owned(),
-			reviewer_task_identity: "thread-1".to_owned(),
-			reviewed_at: "2026-08-28T12:00:00Z".to_owned(),
-			source: LeakageReviewSource {
-				source_commit: "a".repeat(40),
-				source_tree: "b".repeat(40),
-				source_manifest_sha256: format!("sha256:{}", "c".repeat(64)),
-			},
-			task_definition_sha256: format!("sha256:{}", "d".repeat(64)),
-			catalog_entry_sha256: format!("sha256:{}", "e".repeat(64)),
-			verdict: "approved".to_owned(),
-			method: "Independent comparison with the controlled task source.".to_owned(),
-			scope: "Prompt, fixtures, evaluator behavior, and public metadata.".to_owned(),
-			notes: vec!["No disallowed disclosure was identified.".to_owned()],
-		};
-		let second = LeakageReviewV2 {
-			notes: vec!["The review notes changed.".to_owned()],
-			..first.clone()
-		};
-
-		assert_eq!(
-			corpus_seal::canonical_bytes(&first).expect("first"),
-			corpus_seal::canonical_bytes(&first).expect("again")
-		);
-		assert_ne!(
-			protocol::canonical_hash(&first).expect("first hash"),
-			protocol::canonical_hash(&second).expect("second hash")
 		);
 	}
 

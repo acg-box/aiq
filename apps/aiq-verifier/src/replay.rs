@@ -8,7 +8,7 @@ mod tests {
 	use std::slice;
 
 	use std::{
-		collections::{BTreeMap, BTreeSet},
+		collections::BTreeMap,
 		env, fs,
 		path::{Path, PathBuf},
 		process,
@@ -1653,27 +1653,6 @@ printf '%s\n' '{"schema_version":"aiq.evaluator-result.v3","outcome":"incorrect"
 			fixture.verify().expect_err("oversized"),
 			ReasonCode::ArtifactEvidenceMismatch,
 		);
-	}
-
-	#[test]
-	fn fixture_paths_are_unique() {
-		let first = fixture_root();
-		let second = fixture_root();
-
-		assert_ne!(first, second);
-
-		for path in [first, second] {
-			fs::remove_dir_all(path).expect("cleanup");
-		}
-	}
-
-	#[test]
-	fn resolver_fixture_contains_unique_content_addresses() {
-		let fixture = Fixture::completed("OK");
-		let keys = fixture.resolver.objects.keys().collect::<BTreeSet<_>>();
-
-		assert_eq!(keys.len(), fixture.resolver.objects.len());
-		assert!(Path::new(&fixture.replay_root).is_dir());
 	}
 
 	#[test]

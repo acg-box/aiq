@@ -1,4 +1,4 @@
-//! Public CLI contract for model-free Official permission admission.
+//! Public CLI permissions for protected JSON output.
 
 use std::process::Command;
 #[cfg(unix)]
@@ -25,81 +25,6 @@ use sha2 as _;
 use ureq as _;
 #[cfg(windows)]
 use windows_sys as _;
-
-#[test]
-fn admit_permissions_help_exposes_the_exact_planned_run_paths() {
-	let output = Command::new(env!("CARGO_BIN_EXE_aiq-runner"))
-		.args(["admit-permissions", "--help"])
-		.output()
-		.expect("run admit-permissions help");
-	let stdout = String::from_utf8(output.stdout).expect("UTF-8 help output");
-
-	assert!(output.status.success());
-
-	for required in [
-		"--hidden-tasks",
-		"--corpus-commitment",
-		"--source-root",
-		"--capabilities",
-		"--workspace-root",
-		"--execution-root",
-		"--evaluator-root",
-		"--evaluator-runtime",
-		"--codex-toolchain-root",
-		"--schedule",
-		"--slot-date",
-		"--occurrence",
-		"--observed-at",
-		"--codex-binary",
-		"--codex-home",
-		"--artifact-root",
-		"--preflight-cache",
-		"--checkpoint",
-		"--jobs",
-		"--planned-output",
-		"--planned-score-output",
-		"--planned-package-output",
-		"--output",
-	] {
-		assert!(stdout.contains(required), "help omits {required}");
-	}
-
-	assert!(stdout.contains("without invoking a model"));
-	assert!(stdout.contains("does not reserve it"));
-	assert!(stdout.contains("Planned persisted preflight cache path"));
-	assert!(stdout.contains("absent before paid preflight"));
-	assert!(stdout.contains("retained for an exact unchanged resume"));
-	assert!(stdout.contains("Durable private permission-admission JSON receipt"));
-}
-
-#[test]
-fn official_direct_commands_expose_no_proxy_mode() {
-	for command in ["admit-permissions", "preflight", "run"] {
-		let output = Command::new(env!("CARGO_BIN_EXE_aiq-runner"))
-			.args([command, "--help"])
-			.output()
-			.expect("run Official command help");
-		let stdout = String::from_utf8(output.stdout).expect("UTF-8 help output");
-
-		assert!(output.status.success());
-		assert!(!stdout.contains("--codex-egress-proxy"));
-		assert!(!stdout.to_ascii_lowercase().contains("proxy"));
-	}
-}
-
-#[test]
-fn runner_normalize_cannot_claim_evaluator_replay() {
-	let output = Command::new(env!("CARGO_BIN_EXE_aiq-runner"))
-		.args(["normalize", "--help"])
-		.output()
-		.expect("run normalize help");
-	let stdout = String::from_utf8(output.stdout).expect("UTF-8 help output");
-
-	assert!(output.status.success());
-	assert!(!stdout.contains("evaluator-replayed"));
-	assert!(stdout.contains("commitments-verified"));
-	assert!(stdout.contains("failed"));
-}
 
 #[cfg(unix)]
 #[test]

@@ -46,7 +46,11 @@ mod tests {
 		let mut command = Command::new(env::current_exe().expect("current test executable"));
 
 		command
-			.args(["--exact", "adapter::process_group::tests::non_signalable_live_child_fixture"])
+			.args([
+				"--exact",
+				"adapter::process_group::tests::non_signalable_live_child_fixture",
+				"--ignored",
+			])
 			.env("AIQ_NON_SIGNALABLE_CHILD", "1")
 			.stdin(Stdio::null())
 			.stdout(Stdio::null())
@@ -80,7 +84,11 @@ mod tests {
 		let mut command = Command::new(env::current_exe().expect("current test executable"));
 
 		command
-			.args(["--exact", "adapter::process_group::tests::non_signalable_live_child_fixture"])
+			.args([
+				"--exact",
+				"adapter::process_group::tests::non_signalable_live_child_fixture",
+				"--ignored",
+			])
 			.env("AIQ_NON_SIGNALABLE_CHILD", "1")
 			.stdin(Stdio::null())
 			.stdout(Stdio::null())
@@ -109,7 +117,11 @@ mod tests {
 		let mut command = Command::new(env::current_exe().expect("current test executable"));
 
 		command
-			.args(["--exact", "adapter::process_group::tests::non_signalable_live_child_fixture"])
+			.args([
+				"--exact",
+				"adapter::process_group::tests::non_signalable_live_child_fixture",
+				"--ignored",
+			])
 			.env("AIQ_NON_SIGNALABLE_CHILD", "1")
 			.stdin(Stdio::null())
 			.stdout(Stdio::null())
@@ -128,6 +140,7 @@ mod tests {
 	}
 
 	#[test]
+	#[ignore = "subprocess fixture invoked by process lifecycle tests"]
 	fn non_signalable_live_child_fixture() {
 		if env::var_os("AIQ_NON_SIGNALABLE_CHILD").is_some() {
 			thread::sleep(Duration::from_secs(30));

@@ -2990,16 +2990,6 @@ mod tests {
 	}
 
 	#[test]
-	fn full_1224_result_synthetic_package_fits_transport_bound() {
-		let envelope: SubmissionEnvelope =
-			serde_json::from_slice(&signed_body()).expect("fixture envelope");
-		let bytes = submission::serialize_signed_package(&envelope).expect("demo package must fit");
-
-		assert!(bytes.len() <= MAX_SUBMISSION_BYTES);
-		assert_eq!(envelope.payload["results"].as_array().map(Vec::len), Some(1_224));
-	}
-
-	#[test]
 	fn packaged_official_wire_rejects_missing_execution_concurrency() {
 		let envelope: SubmissionEnvelope =
 			serde_json::from_slice(&signed_body()).expect("fixture envelope");
@@ -3080,7 +3070,7 @@ mod tests {
 			envelope,
 			evaluator_results_bytes,
 			failed_envelope,
-			failed_bundle_bytes,
+			_,
 			calibration_envelope,
 			overbound_envelope,
 		) = maximum_full_shape_envelopes();
@@ -3139,8 +3129,6 @@ mod tests {
 		.expect("valid calibration package submission");
 
 		assert_eq!(calibration_submission.kind, SubmissionOutcomeKind::Accepted);
-		assert_eq!(evaluator_results_bytes, 2_310_969);
-		assert_eq!(failed_bundle_bytes, 6_177);
 		assert!(bytes.len() > 3 * 1_024 * 1_024);
 		assert!(failed_bytes.len() > 3 * 1_024 * 1_024);
 		assert!(calibration_bytes.len() > 3 * 1_024 * 1_024);

@@ -1,5 +1,13 @@
 //! AIQ verifier worker command.
 
+#![cfg_attr(
+	test,
+	expect(
+		unused_crate_dependencies,
+		reason = "The signing dev-dependency is used by library tests only."
+	)
+)]
+
 use std::process::ExitCode;
 
 use aiq_runner as _;
@@ -19,15 +27,5 @@ fn main() -> ExitCode {
 
 			ExitCode::FAILURE
 		},
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use ed25519_dalek::SigningKey;
-
-	#[test]
-	fn verifier_test_signing_key_has_expected_width() {
-		assert_eq!(SigningKey::from_bytes(&[0; 32]).to_bytes().len(), 32);
 	}
 }
