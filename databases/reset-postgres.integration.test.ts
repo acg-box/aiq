@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-import { databaseConnectionEnvironment } from './init.ts';
+import { databaseConnectionEnvironment } from './connection.ts';
 import { canonicalSchemaNames, cleanupSql, inventorySql } from './reset.ts';
 
 const databaseUrl = process.env.AIQ_RESET_POSTGRES_URL;

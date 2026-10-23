@@ -1,11 +1,14 @@
+import {
+  joinExactRunScientificEvidence,
+  type ExactRunScientificEvidence,
+  type ScientificRunIdentity,
+} from '../data/scientific-evidence.ts';
 import { formatHumanDuration } from '../data/format-duration.ts';
 import { presentLeaderboardEntry, presentScoreMetric } from '../data/leaderboard-presentation.ts';
 import {
-  isScoredLeaderboardEntry,
   type LeaderboardEntry,
   type PublicModelEfficiency,
   type RunResultSummary,
-  type ScoredLeaderboardEntry,
 } from '../data/types.ts';
 import { formatConfigurationCost, resolveConfigurationCost } from './configuration-cost.ts';
 
@@ -39,98 +42,6 @@ export interface RunScientificSummary {
   batchWallClock: string;
   cost: string;
   metricCoverage: string;
-}
-
-export interface ScientificRunIdentity {
-  id: string;
-  entryId: string;
-  scoringVersion: string;
-  synthetic: boolean;
-}
-
-export interface ExactRunScientificEvidence {
-  score: ScoredLeaderboardEntry | undefined;
-  efficiency: PublicModelEfficiency | undefined;
-}
-
-export function hasExactScientificIdentity(
-  run: ScientificRunIdentity,
-  candidate: {
-    runId: string;
-    entryId: string;
-    scoringVersion: string;
-    synthetic: boolean;
-  },
-): boolean {
-  return (
-    candidate.runId === run.id &&
-    candidate.entryId === run.entryId &&
-    candidate.scoringVersion === run.scoringVersion &&
-    candidate.synthetic === run.synthetic
-  );
-}
-
-export function joinExactRunScientificEvidence({
-  run,
-  entries,
-  efficiencyRows,
-}: {
-  run: ScientificRunIdentity;
-  entries: readonly LeaderboardEntry[];
-  efficiencyRows: readonly PublicModelEfficiency[];
-}): ExactRunScientificEvidence {
-  const identityCandidates = entries.filter((entry) => entry.runId === run.id);
-  if (identityCandidates.length > 1) {
-    throw new Error(`Ambiguous leaderboard evidence for run ${run.id}.`);
-  }
-  const identityCandidate = identityCandidates[0];
-  if (identityCandidate && !isScoredLeaderboardEntry(identityCandidate)) {
-    throw new Error(`Mismatched leaderboard evidence for run ${run.id}.`);
-  }
-  const scoreCandidates = identityCandidates.filter((entry): entry is ScoredLeaderboardEntry =>
-    isScoredLeaderboardEntry(entry),
-  );
-  if (scoreCandidates.length > 1) {
-    throw new Error(`Ambiguous leaderboard evidence for run ${run.id}.`);
-  }
-  const score = scoreCandidates[0];
-  const scoreEntryId = score
-    ? `${score.modelFamily.toLowerCase()}-${score.reasoningTier}`
-    : undefined;
-  if (
-    score &&
-    (scoreEntryId !== score.id ||
-      !hasExactScientificIdentity(run, {
-        runId: score.runId,
-        entryId: score.id,
-        scoringVersion: score.scoringVersion,
-        synthetic: score.synthetic,
-      }))
-  ) {
-    throw new Error(`Mismatched leaderboard evidence for run ${run.id}.`);
-  }
-
-  const efficiencyCandidates = efficiencyRows.filter((row) => row.runId === run.id);
-  if (efficiencyCandidates.length > 1) {
-    throw new Error(`Ambiguous efficiency evidence for run ${run.id}.`);
-  }
-  const efficiency = efficiencyCandidates[0];
-  if (efficiency) {
-    const expectedEntryId = `${efficiency.modelFamily}-${efficiency.reasoningEffort}`;
-    const identityEntries = entries.filter((entry) => entry.id === run.entryId);
-    if (identityEntries.length > 1) {
-      throw new Error(`Ambiguous configuration evidence for run ${run.id}.`);
-    }
-    const identityEntry = identityEntries[0];
-    const entryConfigurationMatches =
-      identityEntry === undefined ||
-      (identityEntry.modelFamily.toLowerCase() === efficiency.modelFamily &&
-        identityEntry.reasoningTier === efficiency.reasoningEffort);
-    if (run.synthetic || expectedEntryId !== run.entryId || !entryConfigurationMatches) {
-      throw new Error(`Mismatched efficiency evidence for run ${run.id}.`);
-    }
-  }
-  return { score, efficiency };
 }
 
 export function buildRunScientificSummary({

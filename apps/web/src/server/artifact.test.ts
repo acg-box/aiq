@@ -1,19 +1,18 @@
+import {
+  ARTIFACT_KIND_MAX_BYTES,
+  CAPABILITY_MARKER_BYTES,
+  isCanonicalEvaluatorResultsBundle,
+  MAX_EVALUATOR_RESULTS_BYTES,
+  type ArtifactObjectIdentity,
+} from './artifact-contract.ts';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
 
 /* oxlint-disable typescript/no-unsafe-type-assertion -- Tests preserve raw adversarial header values that Fetch normalizes or rejects. */
 
-import {
-  ARTIFACT_KIND_MAX_BYTES,
-  CAPABILITY_MARKER_BYTES,
-  handleArtifactUpload,
-  isCanonicalEvaluatorResultsBundle,
-  MAX_EVALUATOR_RESULTS_BYTES,
-  type ArtifactObjectIdentity,
-  type ArtifactUploadDependencies,
-} from './artifact-handler.ts';
-import { canonicalJson } from './submission-contract.ts';
+import { handleArtifactUpload, type ArtifactUploadDependencies } from './artifact-handler.ts';
+import { canonicalJson } from './wire-json.ts';
 
 const token = 'runner-token';
 const runId = `run_${'a'.repeat(64)}`;

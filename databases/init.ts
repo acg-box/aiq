@@ -3,15 +3,14 @@ import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { databaseConnectionEnvironment, assertDatabaseTarget } from './connection.ts';
 
 type JsonObject = Record<string, unknown>;
 
 const CATALOG_IDENTITY = 'sha256:3580555315d49a62b28b6947491819276dca5b261ade802f10b33808569d1708';
 const CATALOG_RELEASE_IDENTITY =
   'sha256:5b651845280ea0b27a8cfc2aec4efe4c149bbbfdeeb0e5a9c883174938b58d69';
-const PRODUCTION_SUPABASE_PROJECT_REF = 'xxnszykaeapolqdnhalx';
-const PRODUCTION_DATABASE_POOLER_HOST = 'aws-0-ca-central-1.pooler.supabase.com';
-const PRODUCTION_DATABASE_POOLER_USER = `postgres.${PRODUCTION_SUPABASE_PROJECT_REF}`;
+
 const TASK_SET_IDENTITY = 'sha256:c7481e46c64dbf5ff9f50a85c83608d48390a03cbf9e94a1d89ab36aeb6df89a';
 const REVIEWED_TASK_COMMITMENTS_IDENTITY =
   'sha256:d8dddd1bc496a1609c3268068fdfdfa4562c589ddfdfec365a6a49caadefe96b';
@@ -58,6 +57,7 @@ export const EXPECTED_MODEL_CONFIGS = [
 ] as const;
 
 const NODE_ROLES = ['runner', 'verifier', 'publisher'] as const;
+
 type NodeRole = (typeof NODE_ROLES)[number];
 
 interface ValidatedNode {
@@ -1345,89 +1345,6 @@ async function runPsql(
   });
 }
 
-export function databaseConnectionEnvironment(databaseUrl: string): NodeJS.ProcessEnv {
-  const parsed = new URL(databaseUrl);
-  const database = decodeURIComponent(parsed.pathname.replace(/^\//, ''));
-
-  if (
-    !['postgres:', 'postgresql:'].includes(parsed.protocol) ||
-    parsed.hostname === '' ||
-    database === '' ||
-    parsed.hash !== ''
-  ) {
-    throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
-  }
-
-  const result: NodeJS.ProcessEnv = {
-    PGHOST: parsed.hostname.replace(/^\[(.*)]$/, '$1'),
-    PGDATABASE: database,
-  };
-  if (parsed.port !== '') result.PGPORT = parsed.port;
-  if (parsed.username !== '') result.PGUSER = decodeURIComponent(parsed.username);
-  if (parsed.password !== '') result.PGPASSWORD = decodeURIComponent(parsed.password);
-
-  const queryEnvironment = new Map([
-    ['application_name', 'PGAPPNAME'],
-    ['channel_binding', 'PGCHANNELBINDING'],
-    ['connect_timeout', 'PGCONNECT_TIMEOUT'],
-    ['gssencmode', 'PGGSSENCMODE'],
-    ['krbsrvname', 'PGKRBSRVNAME'],
-    ['options', 'PGOPTIONS'],
-    ['sslcert', 'PGSSLCERT'],
-    ['sslcrl', 'PGSSLCRL'],
-    ['sslcrldir', 'PGSSLCRLDIR'],
-    ['sslkey', 'PGSSLKEY'],
-    ['sslmode', 'PGSSLMODE'],
-    ['sslnegotiation', 'PGSSLNEGOTIATION'],
-    ['sslpassword', 'PGSSLPASSWORD'],
-    ['sslrootcert', 'PGSSLROOTCERT'],
-    ['target_session_attrs', 'PGTARGETSESSIONATTRS'],
-  ]);
-
-  for (const [key, value] of parsed.searchParams) {
-    const environmentName = queryEnvironment.get(key);
-    if (environmentName === undefined || value === '') {
-      throw new Error('AIQ_DATABASE_URL contains an unsupported connection option');
-    }
-    result[environmentName] = value;
-  }
-
-  return result;
-}
-
-export function assertDatabaseTarget(databaseUrl: string, environment: NodeJS.ProcessEnv): void {
-  let parsed: URL;
-  try {
-    if (databaseUrl.length > 2048 || /\s/.test(databaseUrl)) throw new Error('invalid URL');
-    parsed = new URL(databaseUrl);
-  } catch {
-    throw new Error('AIQ_DATABASE_URL must contain one PostgreSQL connection URL');
-  }
-  const postgresProtocol = parsed.protocol === 'postgres:' || parsed.protocol === 'postgresql:';
-  const sessionPoolerProductionTarget =
-    postgresProtocol &&
-    parsed.hostname === PRODUCTION_DATABASE_POOLER_HOST &&
-    parsed.pathname === '/postgres' &&
-    parsed.port === '5432' &&
-    parsed.username === PRODUCTION_DATABASE_POOLER_USER &&
-    parsed.hash === '';
-  if (sessionPoolerProductionTarget) return;
-  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(parsed.hostname);
-  const localOverride =
-    postgresProtocol &&
-    parsed.pathname !== '' &&
-    parsed.pathname !== '/' &&
-    parsed.hash === '' &&
-    environment.AIQ_DATABASE_ALLOW_LOCAL_TEST_TARGET === 'true' &&
-    (environment.NODE_ENV === 'development' || environment.NODE_ENV === 'test') &&
-    loopback;
-  if (!localOverride) {
-    throw new Error(
-      `AIQ_DATABASE_URL must target Supabase project ${PRODUCTION_SUPABASE_PROJECT_REF} through its Session Pooler on port 5432`,
-    );
-  }
-}
-
 function readinessPassed(output: string, expected: InitializationReceipt): boolean {
   for (const line of output.trim().split(/\r?\n/).toReversed()) {
     try {
@@ -1505,6 +1422,7 @@ function parseArguments(cliArguments: readonly string[]): {
 }
 
 const invokedPath = process.argv[1];
+
 if (invokedPath && import.meta.url === pathToFileURL(resolve(invokedPath)).href) {
   try {
     const cliArguments = parseArguments(process.argv.slice(2));

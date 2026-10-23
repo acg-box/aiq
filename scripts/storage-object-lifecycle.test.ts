@@ -24,6 +24,36 @@ const environment = {
   AIQ_STORAGE_LIFECYCLE_MODE: 'delete',
 };
 
+void test('stops an oversized registry response before reading further chunks or deleting objects', async () => {
+  let pulls = 0;
+  let cancelled = false;
+  const body = new ReadableStream<Uint8Array>(
+    {
+      pull(controller) {
+        pulls += 1;
+        if (pulls === 1) controller.enqueue(new Uint8Array(4 * 1024 * 1024 + 1));
+        else controller.close();
+      },
+      cancel() {
+        cancelled = true;
+      },
+    },
+    { highWaterMark: 0 },
+  );
+  const urls: string[] = [];
+  await assert.rejects(
+    runDeletion(configuration(), async (input) => {
+      urls.push(String(input));
+      return new Response(body);
+    }),
+    /response_too_large/,
+  );
+  assert.equal(cancelled, true);
+  assert.equal(pulls, 1);
+  assert.equal(urls.length, 1);
+  assert.match(urls[0] ?? '', /rpc\/aiq_claim_storage_deletions$/);
+});
+
 function configuration(overrides: Partial<LifecycleConfiguration> = {}): LifecycleConfiguration {
   return { ...readLifecycleConfiguration(environment), ...overrides };
 }
@@ -187,50 +217,52 @@ void test('deletion acknowledges success and idempotent not-found without exposi
   assert.ok(!JSON.stringify(metrics).includes('service-role-key'));
 });
 
-void test('deletion accepts the registered evaluator results artifact kind', async () => {
-  let claimed = false;
-  let deleteCalls = 0;
-  const fetchImplementation: typeof fetch = async (input, init) => {
-    const url = new URL(String(input));
-    if (url.pathname.endsWith('/rpc/aiq_claim_storage_deletions')) {
-      if (claimed) return response([]);
-      claimed = true;
-      return response([
-        {
-          object_id: objectId,
-          object_type: 'runner_artifact',
-          artifact_kind: 'evaluator-results.json',
-          bucket_name: 'aiq-runner-artifacts',
-          object_path: `sha256/${artifactDigest}/evaluator-results.json`,
-          content_sha256: artifactDigest,
-          byte_size: 128,
-          lease_token: leaseToken,
-          lease_expires_at: '2026-07-26T12:05:00Z',
-          attempt: 1,
-        },
-      ]);
-    }
-    if (url.pathname.includes('/storage/v1/object/')) {
-      deleteCalls += 1;
-      return new Response('', { status: 200 });
-    }
-    assert.ok(url.pathname.endsWith('/rpc/aiq_ack_storage_deletion'));
-    const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-    assert.equal(body.supplied_outcome, 'deleted');
-    return response('acknowledged');
-  };
+for (const artifactKind of ['capability-marker.txt', 'evaluator-results.json']) {
+  void test(`deletion accepts the registered ${artifactKind} artifact kind`, async () => {
+    let claimed = false;
+    let deleteCalls = 0;
+    const fetchImplementation: typeof fetch = async (input, init) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/rpc/aiq_claim_storage_deletions')) {
+        if (claimed) return response([]);
+        claimed = true;
+        return response([
+          {
+            object_id: objectId,
+            object_type: 'runner_artifact',
+            artifact_kind: artifactKind,
+            bucket_name: 'aiq-runner-artifacts',
+            object_path: `sha256/${artifactDigest}/${artifactKind}`,
+            content_sha256: artifactDigest,
+            byte_size: artifactKind === 'capability-marker.txt' ? 36 : 128,
+            lease_token: leaseToken,
+            lease_expires_at: '2026-07-26T12:05:00Z',
+            attempt: 1,
+          },
+        ]);
+      }
+      if (url.pathname.includes('/storage/v1/object/')) {
+        deleteCalls += 1;
+        return new Response('', { status: 200 });
+      }
+      assert.ok(url.pathname.endsWith('/rpc/aiq_ack_storage_deletion'));
+      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      assert.equal(body.supplied_outcome, 'deleted');
+      return response('acknowledged');
+    };
 
-  const metrics = await runDeletion(configuration(), fetchImplementation);
-  assert.equal(deleteCalls, 1);
-  assert.deepEqual(metrics, {
-    event: 'aiq_storage_lifecycle',
-    claimed: 1,
-    deleted: 1,
-    not_found: 0,
-    retried: 0,
-    rejected: 0,
+    const metrics = await runDeletion(configuration(), fetchImplementation);
+    assert.equal(deleteCalls, 1);
+    assert.deepEqual(metrics, {
+      event: 'aiq_storage_lifecycle',
+      claimed: 1,
+      deleted: 1,
+      not_found: 0,
+      retried: 0,
+      rejected: 0,
+    });
   });
-});
+}
 
 void test('deletion rejects out-of-allowlist claims and records bounded retry state', async () => {
   const calls: string[] = [];

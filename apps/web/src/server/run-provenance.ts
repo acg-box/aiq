@@ -1,4 +1,5 @@
 import { AIQ_CORE_TASK_METADATA_IDENTITY } from '../aiq-core-contract.ts';
+import { hasExactKeys, isRecord } from './wire-json.ts';
 
 export const RUN_PROVENANCE_SCHEMA = 'aiq.run-provenance.v3';
 export const FROZEN_CATALOG_DIGEST = AIQ_CORE_TASK_METADATA_IDENTITY;
@@ -65,18 +66,6 @@ export interface RunProvenance extends Readonly<Record<string, unknown>> {
   codex_executable_digest: string;
   codex_code_mode_host_digest: string;
   permission_evidence_digest: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasExactKeys(
-  record: Readonly<Record<string, unknown>>,
-  expected: readonly string[],
-): boolean {
-  const actual = Object.keys(record).toSorted();
-  return actual.length === expected.length && actual.every((key, index) => key === expected[index]);
 }
 
 export function isRunProvenance(value: unknown): value is RunProvenance {

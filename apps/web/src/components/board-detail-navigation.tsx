@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ArrowLeftIcon } from '@phosphor-icons/react/dist/csr/ArrowLeft';
 import { resolveWorkspaceReturn, type WorkspaceBoard } from './workspace-return.ts';
@@ -34,18 +34,17 @@ export function BoardDetailNavigation({
   }
   return (
     <div className="board-detail-toolbar">
-      <Link
+      <NavigationLink
         className="ui-action workspace-back"
         href={back.href}
         scroll={false}
-        prefetch={false}
         aria-label={`← ${back.label}`}
         title={back.label}
       >
         <ArrowLeftIcon size={15} aria-hidden="true" />
         <span>{back.label}</span>
         <NavigationPending />
-      </Link>
+      </NavigationLink>
       <nav className="board-detail-navigation" aria-label="Board views">
         {[
           ['data', 'Data'],
@@ -53,17 +52,16 @@ export function BoardDetailNavigation({
           ['method', 'Method'],
           ['records', 'Records'],
         ].map(([id, label]) => (
-          <Link
+          <NavigationLink
             key={id}
             href={destination(id ?? 'leaderboard')}
             scroll={false}
             aria-label={label}
-            prefetch={false}
             aria-current={selected === id ? 'page' : undefined}
           >
             {label}
             <NavigationPending />
-          </Link>
+          </NavigationLink>
         ))}
       </nav>
     </div>

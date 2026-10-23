@@ -7,13 +7,16 @@ export interface AnalyticalUrlHost {
   currentHref: () => string;
   currentSearch: () => string;
   pushState: (url: string) => void;
+  replaceState: (url: string) => void;
   addEventListener: (type: AnalyticalUrlEvent, listener: () => void) => void;
   removeEventListener: (type: AnalyticalUrlEvent, listener: () => void) => void;
   emitAnalyticalChange: () => void;
 }
 
-export interface AnalyticalUrlPushOptions {
+export interface AnalyticalUrlUpdateOptions {
   hasSemanticChange?: boolean;
+  replace?: boolean;
+  sort?: boolean;
 }
 
 export function createAnalyticalUrlStore(host: AnalyticalUrlHost) {
@@ -27,17 +30,18 @@ export function createAnalyticalUrlStore(host: AnalyticalUrlHost) {
         host.removeEventListener(ANALYTICAL_URL_CHANGE, onStoreChange);
       };
     },
-    push(
+    update(
       updates: Readonly<Record<string, string | null>>,
-      { hasSemanticChange = true }: AnalyticalUrlPushOptions = {},
+      { hasSemanticChange = true, replace = false, sort = true }: AnalyticalUrlUpdateOptions = {},
     ): boolean {
       if (!hasSemanticChange) return false;
       const url = new URL(host.currentHref());
-      const next = hrefWithParams(url.pathname, url.searchParams, updates);
+      const next = hrefWithParams(url.pathname, url.searchParams, updates, { sort });
       const nextHref = `${next}${url.hash}`;
-      const currentHref = `${hrefWithParams(url.pathname, url.searchParams, {})}${url.hash}`;
+      const currentHref = `${hrefWithParams(url.pathname, url.searchParams, {}, { sort })}${url.hash}`;
       if (nextHref === currentHref) return false;
-      host.pushState(nextHref);
+      if (replace) host.replaceState(nextHref);
+      else host.pushState(nextHref);
       host.emitAnalyticalChange();
       return true;
     },
@@ -48,6 +52,7 @@ const browserStore = createAnalyticalUrlStore({
   currentHref: () => window.location.href,
   currentSearch: () => window.location.search,
   pushState: (url) => window.history.pushState(null, '', url),
+  replaceState: (url) => window.history.replaceState(null, '', url),
   addEventListener: (type, listener) => window.addEventListener(type, listener),
   removeEventListener: (type, listener) => window.removeEventListener(type, listener),
   emitAnalyticalChange: () => window.dispatchEvent(new Event(ANALYTICAL_URL_CHANGE)),
@@ -127,20 +132,21 @@ export function hrefWithParams(
   pathname: string,
   current: URLSearchParams,
   updates: Readonly<Record<string, string | null>>,
+  { sort = true }: { sort?: boolean } = {},
 ): string {
   const params = new URLSearchParams(current);
   for (const [key, value] of Object.entries(updates)) {
     if (value === null) params.delete(key);
     else params.set(key, value);
   }
-  params.sort();
+  if (sort) params.sort();
   const search = params.toString();
   return search.length > 0 ? `${pathname}?${search}` : pathname;
 }
 
-export function pushAnalyticalUrl(
+export function updateAnalyticalUrl(
   updates: Readonly<Record<string, string | null>>,
-  options?: AnalyticalUrlPushOptions,
+  options?: AnalyticalUrlUpdateOptions,
 ): void {
-  browserStore.push(updates, options);
+  browserStore.update(updates, options);
 }

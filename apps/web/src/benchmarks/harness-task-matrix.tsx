@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import { ArrowRightIcon } from '@phosphor-icons/react/dist/csr/ArrowRight';
 import { useWorkspaceQuery } from '../components/workspace-query.ts';
 import type { HarnessTask } from './harness-plan.ts';
@@ -39,9 +39,9 @@ export function HarnessTaskMatrix({
             {selected.length} task specifications · 3 acceptance gates each · no measured attempts.
           </p>
         </div>
-        <Link href={href({ view: 'method' })}>
+        <NavigationLink href={href({ view: 'method' })}>
           Full task catalogue <ArrowRightIcon size={14} aria-hidden="true" />
-        </Link>
+        </NavigationLink>
       </div>
       <div className="task-matrix-grid">
         {families

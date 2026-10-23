@@ -11,7 +11,6 @@ import type {
 import { AIQ_CORE_BENCHMARK_VERSION, AIQ_CORE_SCORING_VERSION } from '../aiq-core-contract.ts';
 
 import { benchmarkDomainConfig, coreDefinition } from './core-definition.ts';
-export { benchmarkDomainConfig } from './core-definition.ts';
 
 const modelConfig: ReadonlyArray<{
   family: ModelFamily;

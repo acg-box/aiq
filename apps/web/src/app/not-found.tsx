@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
@@ -12,9 +12,9 @@ export default function NotFound() {
       <span className="eyebrow">404 · Not found</span>
       <h1>This evidence is not in the index.</h1>
       <p>The study, case, or run may not exist, or its public source is unavailable.</p>
-      <Link className="button primary" href="/">
+      <NavigationLink className="button primary" href="/">
         Return to the index
-      </Link>
+      </NavigationLink>
     </section>
   );
 }

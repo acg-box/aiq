@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { NavigationLink } from '../../components/navigation-link.tsx';
 import { createPageMetadata } from '../site-metadata.ts';
 
 export const metadata = createPageMetadata({
@@ -19,12 +19,13 @@ export default function AboutPage() {
       <section className="research-section">
         <h2>A board groups tests of one capability</h2>
         <p>
-          <Link href="/benchmarks/intelligence">AI Intelligence</Link> contains AIQ Core.{' '}
-          <Link href="/benchmarks/harness">Harness Rank</Link> studies model–harness combinations,
-          beginning with Codex, Hermes, and Pi. Its first protocol is design only.{' '}
-          <Link href="/benchmarks/memory">Mem</Link> contains native memory, reader, and writer
-          comparisons. A leaderboard belongs to a particular benchmark and its recorded conditions.
-          New capability boards can have their own tests; scores do not combine across boards.
+          <NavigationLink href="/benchmarks/intelligence">AI Intelligence</NavigationLink> contains
+          AIQ Core. <NavigationLink href="/benchmarks/harness">Harness Rank</NavigationLink> studies
+          model–harness combinations, beginning with Codex, Hermes, and Pi. Its first protocol is
+          design only. <NavigationLink href="/benchmarks/memory">Mem</NavigationLink> contains
+          native memory, reader, and writer comparisons. A leaderboard belongs to a particular
+          benchmark and its recorded conditions. New capability boards can have their own tests;
+          scores do not combine across boards.
         </p>
       </section>
       <section className="research-section">
@@ -76,15 +77,18 @@ export default function AboutPage() {
         <h2>AIQ Core has its own contract</h2>
         <p>
           The fixed task matrix, Rasch measurement, Calibration, and Official publication rules
-          belong to the <Link href="/benchmarks/intelligence?view=method">AIQ Core benchmark</Link>.
-          Its Rust runner retains usage accounting, checkpoints, content-addressed packages, and
+          belong to the{' '}
+          <NavigationLink href="/benchmarks/intelligence?view=method">
+            AIQ Core benchmark
+          </NavigationLink>
+          . Its Rust runner retains usage accounting, checkpoints, content-addressed packages, and
           independent evaluator replay. Those rules do not block clearly identified independent
           study pages.
         </p>
       </section>
-      <Link className="research-text-link" href="/">
+      <NavigationLink className="research-text-link" href="/">
         Explore the studies
-      </Link>
+      </NavigationLink>
     </article>
   );
 }

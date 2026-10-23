@@ -8,7 +8,7 @@ import {
   AIQ_CORE_TASK_SCORER_VERSION,
   AIQ_CORE_TASK_SET_VERSION,
 } from '../src/aiq-core-contract.ts';
-import { REQUIRED_RPC_CONTRACT } from '../src/server/readiness.ts';
+import { REQUIRED_RPC_CONTRACT } from '../src/server/readiness-contract.ts';
 
 if (
   generatedPublicFixture.schema_version !== 'aiq.test-generated-public-fixture.v1' ||

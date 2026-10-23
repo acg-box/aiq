@@ -3,7 +3,8 @@ import {
   CAPABILITY_MARKER_BYTES,
   CAPABILITY_MARKER_DIGEST,
   type ArtifactKind,
-} from './artifact-handler.ts';
+  isArtifactKind,
+} from './artifact-contract.ts';
 import { AIQ_RUNNER_ARTIFACT_BUCKET, AIQ_SUBMISSION_PACKAGE_BUCKET } from './storage-buckets.ts';
 
 const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1_000;
@@ -12,16 +13,6 @@ const MAX_STORAGE_OBJECT_BYTES = 4 * 1024 * 1024;
 const digestPattern = /^[a-f0-9]{64}(?![\s\S])/;
 const uuidPattern =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?![\s\S])/;
-const artifactKinds = new Set<ArtifactKind>([
-  'evaluator-results.json',
-  'capability-marker.txt',
-  'final-response.txt',
-  'stderr.txt',
-  'stdout.jsonl',
-  'workspace-manifest.json',
-  'workspace-snapshot.json',
-]);
-
 export type StorageLifecycleObject =
   | Readonly<{
       objectType: 'submission_package';
@@ -84,7 +75,7 @@ function isValidObject(object: StorageLifecycleObject): boolean {
     object.bucket === AIQ_RUNNER_ARTIFACT_BUCKET &&
     (object.artifactKind === 'speed-observation.json'
       ? object.bytes <= MAX_STORAGE_OBJECT_BYTES
-      : artifactKinds.has(object.artifactKind) &&
+      : isArtifactKind(object.artifactKind) &&
         object.bytes <= ARTIFACT_KIND_MAX_BYTES[object.artifactKind]) &&
     object.path === `sha256/${object.digest}/${object.artifactKind}`
   );

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { CAPABILITY_MARKER_BYTES, CAPABILITY_MARKER_DIGEST } from './artifact-handler.ts';
+import { CAPABILITY_MARKER_BYTES, CAPABILITY_MARKER_DIGEST } from './artifact-contract.ts';
 import {
   registerStorageObject,
   type StorageLifecycleObject,

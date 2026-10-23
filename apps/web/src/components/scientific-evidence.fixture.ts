@@ -1,5 +1,5 @@
 import type { ModelFamily, ReasoningTier } from '../data/types.ts';
-import type { ExactEfficiencyRow } from './scientific-evidence-resolution.ts';
+import type { ExactEfficiencyRow } from '../data/scientific-evidence.ts';
 
 const publicFamily = {
   Sol: 'sol',

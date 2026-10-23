@@ -16,9 +16,9 @@ import { readPublicData } from '../../../../../data/read-state.ts';
 import {
   CALIBRATION_MODEL_CONFIGURATIONS,
   calibrationConfigurationKey,
-  createAiqRepository,
   parseCalibrationConfiguration,
-} from '../../../../../data/repository.ts';
+} from '../../../../../data/model-matrix.ts';
+import { createAiqRepository } from '../../../../../data/repository.ts';
 import { uncachedInputTokens } from '../../../../../data/token-usage.ts';
 import { createPageMetadata } from '../../../../site-metadata.ts';
 

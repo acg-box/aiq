@@ -89,8 +89,9 @@ same page. Study selection stays behind Change study in these reference views.
 The Core catalogue download is served at
 `/api/benchmarks/intelligence/catalog`; the frozen repository link remains its
 source reference. No endpoint runs an evaluation.
-The top bar shows peer boards directly for the initial three-board catalogue.
-Larger catalogues use the complete alphabetical board menu. Pending navigation
+The top bar keeps the current board visible and fits peer boards into the available
+desktop width. More contains the remaining boards in alphabetical order. Mobile
+shows only the brand, current board, and More. Pending navigation
 does not reserve space beside a link label or change its width.
 
 ## Historical provenance

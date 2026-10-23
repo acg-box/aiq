@@ -1,21 +1,11 @@
-import { hasValidBearerToken } from './submission-handler.ts';
-import { ARTIFACT_KIND_MAX_BYTES } from './artifact-handler.ts';
+import { readBoundedBody } from './bounded-body.ts';
+import { hasValidBearerToken } from './request-auth.ts';
+import { ARTIFACT_KIND_MAX_BYTES, isArtifactKind, type ArtifactKind } from './artifact-contract.ts';
 
 const MAX_RESOLVE_REQUEST_BYTES = 8 * 1024;
-const artifactKindMaxBytes: Readonly<Record<string, number>> = ARTIFACT_KIND_MAX_BYTES;
 const digestPattern = /^[a-f0-9]{64}(?![\s\S])/;
 const uuidPattern =
   /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}(?![\s\S])/;
-const allowedKinds = new Set([
-  'evaluator-results.json',
-  'capability-marker.txt',
-  'final-response.txt',
-  'stderr.txt',
-  'stdout.jsonl',
-  'workspace-manifest.json',
-  'workspace-snapshot.json',
-]);
-
 export interface ResolvedArtifact {
   bucket: string;
   key: string;
@@ -70,16 +60,17 @@ async function readBody(request: Request): Promise<unknown> {
   ) {
     throw new Error('invalid length');
   }
-  const bytes = new Uint8Array(await request.arrayBuffer());
-  if (bytes.byteLength > MAX_RESOLVE_REQUEST_BYTES) throw new Error('too large');
+  if (!request.body) throw new Error('missing body');
+  const bytes = await readBoundedBody(request.body, MAX_RESOLVE_REQUEST_BYTES);
+  if (!bytes) throw new Error('too large');
   return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
 }
 
-function mapResolved(value: unknown, kind: string, digest: string): ResolvedArtifact {
+function mapResolved(value: unknown, kind: ArtifactKind, digest: string): ResolvedArtifact {
   let candidate = value;
   if (Array.isArray(value)) {
-    const values: readonly unknown[] = value;
-    candidate = values[0];
+    if (value.length !== 1) throw new Error('invalid resolution');
+    candidate = value[0];
   }
   if (
     !isRecord(candidate) ||
@@ -92,7 +83,7 @@ function mapResolved(value: unknown, kind: string, digest: string): ResolvedArti
     typeof candidate.byte_size !== 'number' ||
     !Number.isSafeInteger(candidate.byte_size) ||
     candidate.byte_size < 1 ||
-    candidate.byte_size > (artifactKindMaxBytes[kind] ?? 0) ||
+    candidate.byte_size > ARTIFACT_KIND_MAX_BYTES[kind] ||
     typeof candidate.lease_expires_at !== 'string' ||
     Number.isNaN(Date.parse(candidate.lease_expires_at))
   ) {
@@ -132,7 +123,7 @@ export async function handleArtifactResolve(
     typeof body.lease_token !== 'string' ||
     !uuidPattern.test(body.lease_token) ||
     typeof body.kind !== 'string' ||
-    !allowedKinds.has(body.kind) ||
+    !isArtifactKind(body.kind) ||
     typeof body.digest !== 'string' ||
     !digestPattern.test(body.digest)
   ) {

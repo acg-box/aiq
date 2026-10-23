@@ -4,9 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { assertDatabaseTarget, databaseConnectionEnvironment } from './connection.ts';
 import {
-  assertDatabaseTarget,
-  databaseConnectionEnvironment,
   initializeDatabase,
   type InitializationReceipt,
   type PreparedInitialization,

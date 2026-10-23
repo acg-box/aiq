@@ -1,3 +1,4 @@
+import { createSupabaseRoleClientOptions } from './supabase-http.ts';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, sign, verify } from 'node:crypto';
 import { describe, it } from 'node:test';
@@ -22,17 +23,18 @@ import {
 } from './verification-contract.ts';
 import {
   handleVerification,
-  hasValidVerificationBearerToken,
-  MAX_VERIFICATION_AUTHORIZATION_BYTES,
   type VerificationDependencies,
   verificationRpcFailureDiagnostic,
-  verificationRoleClientOptions,
 } from './verification-handler.ts';
+import {
+  hasValidVerificationBearerToken,
+  MAX_VERIFICATION_AUTHORIZATION_BYTES,
+} from './request-auth.ts';
 import {
   createSupabaseRoleTokenIssuer,
   SUPABASE_ROLE_TOKEN_TTL_SECONDS,
 } from './supabase-role-token.ts';
-import { canonicalJson, sha256Hex } from './submission-contract.ts';
+import { canonicalJson, sha256Hex } from './wire-json.ts';
 import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 
 const token = 'verifier-ingress-token';
@@ -898,7 +900,7 @@ void describe('verifier ingress contract', () => {
       configuration.jwtPrivateJwk,
       () => fixedTime,
     );
-    const verifierOptions = verificationRoleClientOptions(() =>
+    const verifierOptions = createSupabaseRoleClientOptions(() =>
       issueRoleToken({ role: 'aiq_verifier' }),
     );
     const roleToken = await verifierOptions.accessToken();

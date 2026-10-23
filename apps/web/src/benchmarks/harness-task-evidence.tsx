@@ -1,7 +1,7 @@
 'use client';
 
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import { CaretDownIcon } from '@phosphor-icons/react/dist/csr/CaretDown';
 import { EvidenceDrawer } from '../components/evidence-drawer.tsx';
 import type { HarnessTask } from './harness-plan.ts';
@@ -10,18 +10,18 @@ import { useWorkspaceQuery } from '../components/workspace-query.ts';
 export function HarnessEvidenceFilesLink() {
   const { href } = useWorkspaceQuery();
   return (
-    <Link href={`${href({ view: 'data' })}#harness-artifacts`}>
+    <NavigationLink href={`${href({ view: 'data' })}#harness-artifacts`}>
       Required evidence files and preservation policy →
-    </Link>
+    </NavigationLink>
   );
 }
 
 export function HarnessTaskCatalogueLink() {
   const { href } = useWorkspaceQuery();
   return (
-    <Link className="ui-action" href={href({ view: 'method' })}>
+    <NavigationLink className="ui-action" href={href({ view: 'method' })}>
       Browse tasks →
-    </Link>
+    </NavigationLink>
   );
 }
 
@@ -97,7 +97,7 @@ export function HarnessTaskEvidence({
           </li>
         ))}
       </ol>
-      <Link href={evidenceHref}>Required evidence files →</Link>
+      <NavigationLink href={evidenceHref}>Required evidence files →</NavigationLink>
       <details className="research-disclosure">
         <summary>Required deliverables</summary>
         <ul className="research-prose-list">

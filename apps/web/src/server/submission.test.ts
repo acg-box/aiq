@@ -18,14 +18,14 @@ import {
   RESULT_PACKAGE_SCHEMA,
   RUN_PAYLOAD_TYPE,
   CALIBRATION_RUN_PAYLOAD_TYPE,
-  canonicalJson,
-  sha256Hex,
   validateSubmission,
   type SubmissionReceipt,
   type SubmissionObjectIdentity,
   type ValidatedSubmission,
 } from './submission-contract.ts';
-import { handleSubmission, hasValidBearerToken } from './submission-handler.ts';
+import { canonicalJson, sha256Hex } from './wire-json.ts';
+import { handleSubmission } from './submission-handler.ts';
+import { hasValidBearerToken } from './request-auth.ts';
 import { FROZEN_CATALOG_DIGEST } from './run-provenance.ts';
 
 const token = 'runner-submission-token';

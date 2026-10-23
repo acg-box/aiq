@@ -69,6 +69,45 @@ function dependencies(
 }
 
 void describe('verifier claim gateway', () => {
+  void it('cancels a claim stream as soon as it exceeds 8 KiB without a declared length', async () => {
+    let pulls = 0;
+    let cancelled = false;
+    let claims = 0;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          pulls += 1;
+          if (pulls === 1) controller.enqueue(new Uint8Array(8 * 1024 + 1));
+          else controller.close();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const options: RequestInit & { duplex: 'half' } = {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+      body,
+      duplex: 'half',
+    };
+    const response = await handleVerifierClaim(
+      new Request('http://localhost/api/claims', options),
+      dependencies({
+        claim: async () => {
+          claims += 1;
+          return [];
+        },
+      }),
+    );
+    assert.equal(response.status, 400);
+    assert.deepEqual(await response.json(), { error: 'INVALID_REQUEST' });
+    assert.equal(cancelled, true);
+    assert.equal(pulls, 1);
+    assert.equal(claims, 0);
+  });
+
   void it('authorizes before reading a malformed body', async () => {
     let claimCalls = 0;
     const response = await handleVerifierClaim(

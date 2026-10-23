@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import { BenchmarkBoards } from '../components/benchmark-boards.tsx';
 
 export default function HomePage() {
@@ -13,7 +13,7 @@ export default function HomePage() {
       <BenchmarkBoards />
       <p className="directory-note">
         Metrics belong to the selected benchmark.{' '}
-        <Link href="/about">Metric definitions and evidence scope</Link>
+        <NavigationLink href="/about">Metric definitions and evidence scope</NavigationLink>
       </p>
     </div>
   );

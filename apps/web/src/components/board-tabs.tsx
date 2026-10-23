@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import { useRouter } from 'next/navigation';
 import { useId, useLayoutEffect, useRef, type ReactNode } from 'react';
 import { alphabetical } from '../display-order.ts';
@@ -52,7 +52,7 @@ export function BoardTabs({ tabs }: { tabs: { id: string; label: string; content
     <WorkspacePositionContext.Provider value={savedWorkspacePosition(href({}))}>
       <div className="board-tabs" role="tablist" aria-label="Board views">
         {orderedTabs.map((tab, index) => (
-          <Link
+          <NavigationLink
             key={tab.id}
             id={`${prefix}-${tab.id}-tab`}
             href={href({ view: tab.id })}
@@ -87,7 +87,7 @@ export function BoardTabs({ tabs }: { tabs: { id: string; label: string; content
           >
             {tab.label}
             <NavigationPending />
-          </Link>
+          </NavigationLink>
         ))}
       </div>
       {orderedTabs.map((tab, index) => (

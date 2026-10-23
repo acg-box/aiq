@@ -619,10 +619,20 @@ export interface RadarNode {
   synthetic: boolean;
 }
 
+export interface HistoricalCoreResult {
+  entry: ScoredLeaderboardEntry;
+  run: BenchmarkRunSummary;
+  /** Validated source row for download. Display code uses the normalized run. */
+  source: Readonly<object>;
+}
+
 export interface AiqRepository {
   readonly mode: 'synthetic' | 'live';
   readonly configuration: PublicDataConfiguration;
   listLeaderboard(): Promise<readonly LeaderboardEntry[]>;
+  listHistoricalCoreResults(
+    entries: readonly LeaderboardEntry[],
+  ): Promise<readonly HistoricalCoreResult[]>;
   listTrendPoints(range?: TrendRange): Promise<readonly TrendPoint[]>;
   listSpeedObservations(): Promise<readonly PublicSpeedObservation[]>;
   listSpeedTrendPoints(range?: TrendRange): Promise<readonly SpeedTrendPoint[]>;

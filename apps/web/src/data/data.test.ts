@@ -1,3 +1,4 @@
+import { benchmarkDomainConfig } from './core-definition.ts';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { describe, it } from 'node:test';
@@ -27,41 +28,45 @@ import {
 } from './leaderboard-presentation.ts';
 import {
   CALIBRATION_MODEL_CONFIGURATIONS,
-  CALIBRATION_RUN_PAGE_SIZE,
   CANONICAL_MODEL_MATRIX_IDS,
+  type ModelMatrixRow,
+} from './model-matrix.ts';
+import {
+  CALIBRATION_RUN_PAGE_SIZE,
   buildSeedCalibrationRunPage,
   buildSeedRunHistoryPage,
-  calibrationExplanationSummaryForOutcome,
-  calibrationFailureCodeForOutcome,
-  executionStatusForOutcome,
   classifyPublicDataConfiguration,
   collectPaginatedRows,
   createAiqRepository,
   decodeCalibrationRunCursor,
-  joinModelMatrixWithLeaderboard,
   decodeRunHistoryCursor,
   encodeCalibrationRunCursor,
   encodeRunHistoryCursor,
-  mapRunRow,
-  parseDistributedRadarRows,
   PUBLIC_READ_PAGE_SIZE,
-  PUBLIC_VIEW_NAMES,
   RUN_HISTORY_PAGE_SIZE,
   SeedAiqRepository,
   SPEED_TREND_MAX_POINTS,
   SupabaseAiqRepository,
-  type DistributedRadarRow,
+  TREND_MAX_POINTS,
+} from './repository.ts';
+import {
+  resultExplanationSummaryForOutcome,
+  resultFailureCodeForOutcome,
+  executionStatusForOutcome,
+} from './result-outcomes.ts';
+import {
+  joinModelMatrixWithLeaderboard,
+  mapRunRow,
   type LeaderboardRow,
-  type ModelMatrixRow,
   type RunResultRow,
   type RunRow,
-  TREND_MAX_POINTS,
   type TrendRow,
-} from './repository.ts';
+} from './rows/core.ts';
+import { parseDistributedRadarRows, type DistributedRadarRow } from './rows/radar.ts';
+import { PUBLIC_VIEW_NAMES } from './public-views.ts';
 import { inspectPublicSupabaseConfiguration } from './public-configuration.ts';
 import { readPublicData } from './read-state.ts';
 import {
-  benchmarkDomainConfig,
   seedLeaderboard,
   seedMethodology,
   seedRadarNodes,
@@ -1973,11 +1978,11 @@ void describe('presentation aggregates', () => {
       Array.from({ length: 72 }, (_, taskIndex) => {
         const outcome = CALIBRATION_OUTCOMES[taskIndex % CALIBRATION_OUTCOMES.length] ?? 'correct';
         const unavailableContextBand = taskIndex === 1;
-        const explanationSummary = calibrationExplanationSummaryForOutcome(outcome);
+        const explanationSummary = resultExplanationSummaryForOutcome(outcome);
         const failureCode =
           outcome === 'invalid' && taskIndex === 8
             ? 'workspace_integrity'
-            : calibrationFailureCodeForOutcome(outcome);
+            : resultFailureCodeForOutcome(outcome);
         const index = configurationIndex * 72 + taskIndex;
         return {
           result_id: `result_${index.toString(16).padStart(64, '0')}`,
@@ -2069,10 +2074,7 @@ void describe('presentation aggregates', () => {
       assert.ok(outcomeResult);
       assert.equal(outcomeResult.failureCode, null);
       assert.equal(outcomeResult.explanationCode, null);
-      assert.equal(
-        outcomeResult.explanationSummary,
-        calibrationExplanationSummaryForOutcome(outcome),
-      );
+      assert.equal(outcomeResult.explanationSummary, resultExplanationSummaryForOutcome(outcome));
     }
     const workspaceIntegrity = calibration.results.find(
       (result) => result.failureCode === 'workspace_integrity',

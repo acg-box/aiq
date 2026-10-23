@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from '../components/navigation-link.tsx';
 import type { ReactNode } from 'react';
 import { useWorkspaceQuery } from '../components/workspace-query.ts';
 import { ComparisonFilters } from '../components/comparison-filters.tsx';
@@ -120,7 +120,9 @@ export function HarnessResults({
         is unqualified. Task specifications are authored; workspace packages and graders are
         pending.
       </p>
-      <Link href={href({ view: 'method' })}>Full comparison method and acceptance criteria</Link>
+      <NavigationLink href={href({ view: 'method' })}>
+        Full comparison method and acceptance criteria
+      </NavigationLink>
     </TableNotes>
   );
   return (
@@ -151,12 +153,15 @@ export function HarnessResults({
           </dl>
           {notes}
           <div className="harness-draft-links">
-            <Link className="ui-action" href={href({ view: 'method' })}>
+            <NavigationLink className="ui-action" href={href({ view: 'method' })}>
               Review {plannedTasks} task specifications →
-            </Link>
-            <Link className="ui-action" href={`${href({ view: 'data' })}#harness-artifacts`}>
+            </NavigationLink>
+            <NavigationLink
+              className="ui-action"
+              href={`${href({ view: 'data' })}#harness-artifacts`}
+            >
               Required evidence and protocol →
-            </Link>
+            </NavigationLink>
           </div>
         </section>
       ) : (
@@ -223,7 +228,9 @@ export function HarnessResults({
             <div>
               <h3>No measured combinations</h3>
             </div>
-            <Link href={href({ view: 'method' })}>Review {plannedTasks} task specifications</Link>
+            <NavigationLink href={href({ view: 'method' })}>
+              Review {plannedTasks} task specifications
+            </NavigationLink>
           </div>
         </section>
       )}

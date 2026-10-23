@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import { PUBLIC_VIEW_NAMES, SeedAiqRepository } from '../data/repository.ts';
+import { PUBLIC_VIEW_NAMES } from '../data/public-views.ts';
+import { SeedAiqRepository } from '../data/repository.ts';
 
 /* oxlint-disable typescript/no-unsafe-type-assertion -- Tests inspect checked-in JSON as adversarial unknown records. */
 

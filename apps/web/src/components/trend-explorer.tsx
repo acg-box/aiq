@@ -3,7 +3,7 @@
 import { ExpandableTableRow, RowDetailContext, TableRowFacts } from './expandable-table-row.tsx';
 import { TableColumnHeading } from './table-column-heading.tsx';
 import type { EChartsCoreOption } from 'echarts/core';
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import { usePathname } from 'next/navigation';
 import { useMemo, useTransition } from 'react';
 import { alphabetical } from '../display-order.ts';
@@ -25,7 +25,7 @@ import type {
 import { formatHumanDuration } from '../data/format-duration.ts';
 import {
   hrefWithParams,
-  pushAnalyticalUrl,
+  updateAnalyticalUrl,
   readBoundedIntegerParam,
   readEnumParam,
   useAnalyticalSearchParams,
@@ -36,7 +36,7 @@ import { ReadStateNote } from './read-state-note.tsx';
 import {
   EXACT_SCIENTIFIC_EVIDENCE_UNAVAILABLE,
   resolveExactScientificEvidence,
-} from './scientific-evidence-resolution.ts';
+} from '../data/scientific-evidence.ts';
 import {
   TREND_BAR_MAX_WIDTH,
   trendIntervalData,
@@ -702,7 +702,7 @@ export function TrendExplorer({
                 aria-pressed={metric === candidate.value}
                 onClick={() =>
                   startTransition(() =>
-                    pushAnalyticalUrl(
+                    updateAnalyticalUrl(
                       { trendMetric: candidate.value },
                       { hasSemanticChange: candidate.value !== metric },
                     ),
@@ -718,7 +718,7 @@ export function TrendExplorer({
           <span>Period</span>
           <nav className="range-tabs" aria-label="Trend time range">
             {ranges.map((candidate) => (
-              <Link
+              <NavigationLink
                 key={candidate.value}
                 aria-current={range === candidate.value ? 'page' : undefined}
                 href={`${hrefWithParams(pathname, searchParams, {
@@ -727,7 +727,7 @@ export function TrendExplorer({
                 })}${pathname === '/' ? '#trends' : ''}`}
               >
                 {candidate.label}
-              </Link>
+              </NavigationLink>
             ))}
           </nav>
         </div>
@@ -741,7 +741,7 @@ export function TrendExplorer({
                 aria-pressed={seriesFilter === candidate}
                 onClick={() =>
                   startTransition(() =>
-                    pushAnalyticalUrl(
+                    updateAnalyticalUrl(
                       { trendFamily: candidate, trendZoom: null },
                       { hasSemanticChange: candidate !== seriesFilter },
                     ),
@@ -761,7 +761,7 @@ export function TrendExplorer({
             value={reasoningFilter}
             onChange={(event) =>
               startTransition(() =>
-                pushAnalyticalUrl(
+                updateAnalyticalUrl(
                   { trendReasoning: event.target.value, trendZoom: null },
                   { hasSemanticChange: event.target.value !== reasoningFilter },
                 ),
@@ -786,7 +786,7 @@ export function TrendExplorer({
                   aria-pressed={mode === candidate}
                   onClick={() =>
                     startTransition(() =>
-                      pushAnalyticalUrl(
+                      updateAnalyticalUrl(
                         { trendEncoding: candidate },
                         { hasSemanticChange: candidate !== mode },
                       ),
@@ -816,7 +816,7 @@ export function TrendExplorer({
             <button
               type="button"
               onClick={() =>
-                pushAnalyticalUrl(
+                updateAnalyticalUrl(
                   { trendZoom: String(maximumZoomStart) },
                   { hasSemanticChange: zoomStart !== maximumZoomStart },
                 )
@@ -828,7 +828,7 @@ export function TrendExplorer({
               type="button"
               disabled={zoomStart === null || zoomStart === 0}
               onClick={() =>
-                pushAnalyticalUrl({
+                updateAnalyticalUrl({
                   trendZoom: String(Math.max(0, (zoomStart ?? 0) - TREND_ZOOM_DATE_COUNT)),
                 })
               }
@@ -839,7 +839,7 @@ export function TrendExplorer({
               type="button"
               disabled={zoomStart === null || zoomStart === maximumZoomStart}
               onClick={() =>
-                pushAnalyticalUrl({
+                updateAnalyticalUrl({
                   trendZoom: String(
                     Math.min(maximumZoomStart, (zoomStart ?? 0) + TREND_ZOOM_DATE_COUNT),
                   ),
@@ -851,7 +851,7 @@ export function TrendExplorer({
             <button
               type="button"
               disabled={zoomStart === null}
-              onClick={() => pushAnalyticalUrl({ trendZoom: null })}
+              onClick={() => updateAnalyticalUrl({ trendZoom: null })}
             >
               Reset: all dates
             </button>
@@ -1107,9 +1107,11 @@ export function TrendExplorer({
                             'Synthetic fixture · no run detail'
                           ) : (
                             <>
-                              <Link href={`/benchmarks/intelligence/records/${point.runId}`}>
+                              <NavigationLink
+                                href={`/benchmarks/intelligence/records/${point.runId}`}
+                              >
                                 {point.runId}
-                              </Link>
+                              </NavigationLink>
                               <br />
                               Latest of {point.representedRunCount} run
                               {point.representedRunCount === 1 ? '' : 's'}

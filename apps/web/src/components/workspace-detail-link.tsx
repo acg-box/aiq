@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import type { ReactNode } from 'react';
 import { useWorkspaceQuery } from './workspace-query.ts';
 
@@ -15,8 +15,11 @@ export function WorkspaceDetailLink({
 }) {
   const workspace = useWorkspaceQuery();
   return (
-    <Link className={className} href={`${href}?return=${encodeURIComponent(workspace.href({}))}`}>
+    <NavigationLink
+      className={className}
+      href={`${href}?return=${encodeURIComponent(workspace.href({}))}`}
+    >
       {children}
-    </Link>
+    </NavigationLink>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import { useWorkspaceQuery } from './workspace-query.ts';
 
 export function ReferenceViewLinks({
@@ -12,9 +12,9 @@ export function ReferenceViewLinks({
   return (
     <nav className="reference-actions" aria-label="Related views">
       {links.map((link) => (
-        <Link key={link.view} className="ui-action" href={href({ view: link.view })}>
+        <NavigationLink key={link.view} className="ui-action" href={href({ view: link.view })}>
           {link.label} →
-        </Link>
+        </NavigationLink>
       ))}
     </nav>
   );

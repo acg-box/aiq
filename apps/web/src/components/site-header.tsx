@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import { usePathname } from 'next/navigation';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { CaretDownIcon } from '@phosphor-icons/react/dist/csr/CaretDown';
@@ -24,7 +24,7 @@ function BoardLinks({
   return (
     <nav aria-label={label} className="workspace-boards">
       {boards.map((board) => (
-        <Link
+        <NavigationLink
           key={board.id}
           href={`/benchmarks/${board.id}`}
           aria-label={board.title}
@@ -33,7 +33,7 @@ function BoardLinks({
         >
           {board.title}
           <NavigationPending />
-        </Link>
+        </NavigationLink>
       ))}
     </nav>
   );
@@ -43,23 +43,23 @@ function WorkspaceLinks({ onNavigate }: { onNavigate?: (destination: string) => 
   const pathname = usePathname();
   return (
     <nav aria-label="Workspace information" className="workspace-links">
-      <Link
+      <NavigationLink
         href="/about"
         aria-current={pathname === '/about' ? 'page' : undefined}
         aria-label="About & definitions"
         onClick={() => onNavigate?.('/about')}
       >
         About
-      </Link>
+      </NavigationLink>
       <a href="https://github.com/acg-box/aiq">GitHub ↗</a>
       {onNavigate ? (
-        <Link
+        <NavigationLink
           href="/"
           aria-current={pathname === '/' ? 'page' : undefined}
           onClick={() => onNavigate?.('/')}
         >
           Overview
-        </Link>
+        </NavigationLink>
       ) : null}
     </nav>
   );
@@ -156,9 +156,9 @@ export function SiteHeader() {
     <>
       <header className="workspace-header">
         <div className="workspace-header-inner">
-          <Link className="research-brand" href="/" aria-label="AIQ Overview">
+          <NavigationLink className="research-brand" href="/" aria-label="AIQ Overview">
             AIQ <span className="workspace-home-label">Overview</span>
-          </Link>
+          </NavigationLink>
           <div className="workspace-desktop-navigation" ref={navigation}>
             <BoardLinks boards={visibleBoards} />
             <button

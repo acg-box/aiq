@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-import { canonicalJson } from './submission-contract.ts';
+import { canonicalJson } from './wire-json.ts';
 
 export const SPEED_OBSERVATION_SCHEMA_VERSION = 'aiq.speed-observation-batch.v1';
 export const SPEED_CREDIT_RATE_CARD_VERSION = 'openai-codex-rate-card-2026-08-10';

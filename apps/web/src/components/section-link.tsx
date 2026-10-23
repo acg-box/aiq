@@ -1,6 +1,6 @@
 'use client';
 
-import Link from 'next/link';
+import { NavigationLink } from './navigation-link.tsx';
 import type { ReactNode } from 'react';
 
 export function SectionLink({
@@ -19,11 +19,10 @@ export function SectionLink({
   children: ReactNode;
 }) {
   return (
-    <Link
+    <NavigationLink
       href={href}
       aria-label={label}
       aria-current={current ? 'location' : undefined}
-      prefetch={false}
       onNavigate={(event) => {
         const target = document.getElementById(targetId);
         if (!target) return;
@@ -51,6 +50,6 @@ export function SectionLink({
       }}
     >
       {children}
-    </Link>
+    </NavigationLink>
   );
 }

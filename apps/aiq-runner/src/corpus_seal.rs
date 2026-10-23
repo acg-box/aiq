@@ -27,9 +27,8 @@ use crate::{
 		self, CANDIDATE_CATALOG_GENERATOR_PATH, CANDIDATE_CATALOG_PATH,
 		CANDIDATE_CATALOG_SCHEMA_VERSION, CANDIDATE_TASK_SET_VERSION, CandidateCatalogAuthority,
 	},
-	cli,
 	corpus_commitment::{self, ExecutionToolPolicy, ToolchainCommand},
-	protocol, runner,
+	pinned_path, protocol, runner,
 	task::{
 		DirectoryTaskSource, EvaluatorRuntime, EvaluatorRuntimeKind, TaskDefinition, TaskSource,
 		Visibility, evaluator,
@@ -462,7 +461,7 @@ pub fn seal_corpus(options: &SealOptions) -> Result<String, Box<dyn Error>> {
 
 	let result = build_seal(options, &temporary).and_then(|canonical_sha256| {
 		File::open(&temporary)?.sync_all()?;
-		cli::atomic_rename_no_replace(&temporary, &output).map_err(|error| -> Box<dyn Error> {
+		pinned_path::atomic_rename_no_replace(&temporary, &output).map_err(|error| -> Box<dyn Error> {
 			format!("cannot install create-new sealed directory: {error}").into()
 		})?;
 		File::open(&parent)?.sync_all()?;
